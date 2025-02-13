@@ -77,7 +77,7 @@ fn test_get_default_model_for_provider() {
     );
     assert_eq!(
         get_default_model_for_provider(&LLMProviderType::Claude),
-        "claude-3-5-sonnet-20240620"
+        "claude-3-5-sonnet-20241022"
     );
     assert_eq!(
         get_default_model_for_provider(&LLMProviderType::Test),

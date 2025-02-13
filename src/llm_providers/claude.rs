@@ -80,7 +80,7 @@ impl LLMProvider for ClaudeProvider {
 pub(super) fn get_metadata() -> ProviderMetadata {
     ProviderMetadata {
         name: "Claude",
-        default_model: "claude-3-5-sonnet-20240620",
+        default_model: "claude-3-5-sonnet-20241022",
         default_token_limit: 150_000,
         requires_api_key: true,
     }
