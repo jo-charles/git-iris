@@ -200,7 +200,8 @@ impl ChangeAnalyzer {
 
     /// Extract associated issue numbers from the commit message
     fn extract_associated_issues(commit_message: &str) -> Vec<String> {
-        let re = Regex::new(r"(?:#|GH-)(\d+)").unwrap();
+        let re = Regex::new(r"(?:#|GH-)(\d+)")
+            .expect("Failed to compile issue number regex pattern - this is a bug");
         re.captures_iter(commit_message)
             .map(|cap| format!("#{}", &cap[1]))
             .collect()
@@ -208,12 +209,15 @@ impl ChangeAnalyzer {
 
     /// Extract pull request number from the commit message
     fn extract_pull_request(commit_message: &str) -> Option<String> {
-        let re = Regex::new(r"(?i)(?:pull request|PR)\s*#?(\d+)").unwrap();
+        let re = Regex::new(r"(?i)(?:pull request|PR)\s*#?(\d+)")
+            .expect("Failed to compile pull request regex pattern - this is a bug");
         re.captures(commit_message)
             .map(|cap| format!("PR #{}", &cap[1]))
     }
 
     /// Calculate the impact score of the change
+    #[allow(clippy::cast_precision_loss)]
+    #[allow(clippy::as_conversions)]
     fn calculate_impact_score(
         metrics: &ChangeMetrics,
         file_changes: &[FileChange],

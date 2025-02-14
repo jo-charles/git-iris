@@ -269,6 +269,7 @@ pub fn draw_status(f: &mut Frame, state: &mut TuiState, area: Rect) {
             )
         };
 
+    #[allow(clippy::as_conversions)]
     let terminal_width = f.area().width as usize;
 
     // Ensure we don't overflow when calculating padding
