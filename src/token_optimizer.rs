@@ -1,4 +1,5 @@
 use crate::context::CommitContext;
+use crate::log_debug;
 use tiktoken_rs::cl100k_base;
 
 pub struct TokenOptimizer {
@@ -17,19 +18,32 @@ impl TokenOptimizer {
 
     pub fn optimize_context(&self, context: &mut CommitContext) {
         let mut remaining_tokens = self.max_tokens;
+        let mut total_tokens = 0;
 
         // Step 1: Allocate tokens for the diffs (highest priority)
         for file in &mut context.staged_files {
             let diff_tokens = self.count_tokens(&file.diff);
-            if diff_tokens > remaining_tokens {
+            if total_tokens + diff_tokens > self.max_tokens {
+                log_debug!(
+                    "Truncating diff for {} from {} tokens to {} tokens",
+                    file.path,
+                    diff_tokens,
+                    remaining_tokens
+                );
                 file.diff = self.truncate_string(&file.diff, remaining_tokens);
+                total_tokens += remaining_tokens;
                 remaining_tokens = 0;
             } else {
-                remaining_tokens = remaining_tokens.saturating_sub(diff_tokens);
+                total_tokens += diff_tokens;
+                remaining_tokens = self.max_tokens.saturating_sub(total_tokens);
             }
 
             if remaining_tokens == 0 {
                 // If we exhaust the tokens in step 1, clear commits and contents
+                log_debug!(
+                    "Token budget exhausted after diffs (total: {}), clearing commits and contents",
+                    total_tokens
+                );
                 Self::clear_commits_and_contents(context);
                 return;
             }
@@ -38,15 +52,26 @@ impl TokenOptimizer {
         // Step 2: Allocate remaining tokens for recent commits (medium priority)
         for commit in &mut context.recent_commits {
             let commit_tokens = self.count_tokens(&commit.message);
-            if commit_tokens > remaining_tokens {
+            if total_tokens + commit_tokens > self.max_tokens {
+                log_debug!(
+                    "Truncating commit message from {} tokens to {} tokens",
+                    commit_tokens,
+                    remaining_tokens
+                );
                 commit.message = self.truncate_string(&commit.message, remaining_tokens);
+                total_tokens += remaining_tokens;
                 remaining_tokens = 0;
             } else {
-                remaining_tokens = remaining_tokens.saturating_sub(commit_tokens);
+                total_tokens += commit_tokens;
+                remaining_tokens = self.max_tokens.saturating_sub(total_tokens);
             }
 
             if remaining_tokens == 0 {
                 // If we exhaust the tokens in step 2, clear contents
+                log_debug!(
+                    "Token budget exhausted after commits (total: {}), clearing contents",
+                    total_tokens
+                );
                 Self::clear_contents(context);
                 return;
             }
@@ -56,18 +81,32 @@ impl TokenOptimizer {
         for file in &mut context.staged_files {
             if let Some(content) = &mut file.content {
                 let content_tokens = self.count_tokens(content);
-                if content_tokens > remaining_tokens {
+                if total_tokens + content_tokens > self.max_tokens {
+                    log_debug!(
+                        "Truncating file content for {} from {} tokens to {} tokens",
+                        file.path,
+                        content_tokens,
+                        remaining_tokens
+                    );
                     *content = self.truncate_string(content, remaining_tokens);
+                    total_tokens += remaining_tokens;
                     remaining_tokens = 0;
                 } else {
-                    remaining_tokens = remaining_tokens.saturating_sub(content_tokens);
+                    total_tokens += content_tokens;
+                    remaining_tokens = self.max_tokens.saturating_sub(total_tokens);
                 }
 
                 if remaining_tokens == 0 {
+                    log_debug!(
+                        "Token budget exhausted after file contents (total: {})",
+                        total_tokens
+                    );
                     return; // Exit early if we've exhausted the token budget
                 }
             }
         }
+
+        log_debug!("Final token count after optimization: {}", total_tokens);
     }
 
     // Truncate a string to fit within the specified token limit

@@ -291,6 +291,7 @@ impl GitRepo {
         if Self::is_binary_diff(&diff_string) {
             Ok("[Binary file changed]".to_string())
         } else {
+            log_debug!("Generated diff for {} ({} bytes)", path, diff_string.len());
             Ok(diff_string)
         }
     }

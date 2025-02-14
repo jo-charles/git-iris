@@ -8,7 +8,9 @@ use crate::config::Config;
 use crate::context::{CommitContext, GeneratedMessage};
 use crate::git::{CommitResult, GitRepo};
 use crate::llm;
-use crate::llm_providers::LLMProviderType;
+use crate::llm_providers::{get_provider_metadata, LLMProviderType};
+use crate::log_debug;
+use crate::token_optimizer::TokenOptimizer;
 
 /// Service for handling Git commit operations with AI assistance
 pub struct IrisCommitService {
@@ -93,16 +95,68 @@ impl IrisCommitService {
         config_clone.instruction_preset = preset.to_string();
         config_clone.instructions = instructions.to_string();
 
-        let context = self.get_git_info().await?;
+        let mut context = self.get_git_info().await?;
 
+        // Get the token limit from the provider config
+        let token_limit = config_clone
+            .providers
+            .get(&self.provider_type.to_string())
+            .and_then(|p| p.token_limit)
+            .unwrap_or_else(|| get_provider_metadata(&self.provider_type).default_token_limit);
+
+        // Create system prompt first to know its token count
         let system_prompt = create_system_prompt(&config_clone)?;
+
+        // Create a token optimizer to count tokens
+        let optimizer = TokenOptimizer::new(token_limit);
+        let system_tokens = optimizer.count_tokens(&system_prompt);
+
+        log_debug!("Token limit: {}", token_limit);
+        log_debug!("System prompt tokens: {}", system_tokens);
+
+        // Reserve tokens for system prompt and some buffer for formatting
+        let context_token_limit = token_limit.saturating_sub(system_tokens + 1000); // 1000 token buffer for safety
+        log_debug!("Available tokens for context: {}", context_token_limit);
+
+        // Count tokens before optimization
+        let user_prompt_before = create_user_prompt(&context);
+        let total_tokens_before = system_tokens + optimizer.count_tokens(&user_prompt_before);
+        log_debug!("Total tokens before optimization: {}", total_tokens_before);
+
+        // Optimize the context with remaining token budget
+        context.optimize(context_token_limit);
+
         let user_prompt = create_user_prompt(&context);
+        let user_tokens = optimizer.count_tokens(&user_prompt);
+        let total_tokens = system_tokens + user_tokens;
+
+        log_debug!("User prompt tokens after optimization: {}", user_tokens);
+        log_debug!("Total tokens after optimization: {}", total_tokens);
+
+        // If we're still over the limit, truncate the user prompt directly
+        let final_user_prompt = if total_tokens > token_limit {
+            log_debug!(
+                "Total tokens {} still exceeds limit {}, truncating user prompt",
+                total_tokens,
+                token_limit
+            );
+            let max_user_tokens = token_limit.saturating_sub(system_tokens + 100); // 100 token safety buffer
+            optimizer.truncate_string(&user_prompt, max_user_tokens)
+        } else {
+            user_prompt
+        };
+
+        let final_tokens = system_tokens + optimizer.count_tokens(&final_user_prompt);
+        log_debug!(
+            "Final total tokens after potential truncation: {}",
+            final_tokens
+        );
 
         let mut generated_message = llm::get_refined_message::<GeneratedMessage>(
             &config_clone,
             &self.provider_type,
             &system_prompt,
-            &user_prompt,
+            &final_user_prompt,
         )
         .await?;
 
