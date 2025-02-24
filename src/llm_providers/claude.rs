@@ -35,6 +35,10 @@ impl LLMProvider for ClaudeProvider {
 
         // Add additional parameters from the configuration
         for (key, value) in &self.config.additional_params {
+            // Skip token_limit parameter for Claude 3.7 models
+            if key == "token_limit" && self.config.model.contains("claude-3-7") {
+                continue;
+            }
             request_body[key] = serde_json::Value::String(value.clone());
         }
 
@@ -80,7 +84,7 @@ impl LLMProvider for ClaudeProvider {
 pub(super) fn get_metadata() -> ProviderMetadata {
     ProviderMetadata {
         name: "Claude",
-        default_model: "claude-3-5-sonnet-20241022",
+        default_model: "claude-3-7-sonnet-20250219",
         default_token_limit: 150_000,
         requires_api_key: true,
     }

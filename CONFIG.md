@@ -58,7 +58,7 @@ Each provider has its own subtable under `[providers]` with these fields:
 1. OpenAI
    - Default model: "gpt-o4"
 2. Claude
-   - Default model: "claude-3-sonnet-20240320"
+   - Default model: "claude-3-7-sonnet-20250219"
 
 ## Example Configuration File
 
@@ -78,7 +78,7 @@ custom_token_limit = 8000
 
 [providers.claude]
 api_key = "sk-abcdef1234567890"
-model = "claude-3-sonnet-20240320"
+model = "claude-3-7-sonnet-20250219"
 additional_params = { temperature = "0.8" }
 custom_token_limit = 100000
 ```
