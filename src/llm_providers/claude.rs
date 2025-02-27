@@ -35,10 +35,6 @@ impl LLMProvider for ClaudeProvider {
 
         // Add additional parameters from the configuration
         for (key, value) in &self.config.additional_params {
-            // Skip token_limit parameter for Claude 3.7 models
-            if key == "token_limit" && self.config.model.contains("claude-3-7") {
-                continue;
-            }
             request_body[key] = serde_json::Value::String(value.clone());
         }
 

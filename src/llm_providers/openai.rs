@@ -34,6 +34,10 @@ impl LLMProvider for OpenAIProvider {
 
         // Add additional parameters from the configuration
         for (key, value) in &self.config.additional_params {
+            // Skip token_limit parameter as it's for internal use only
+            if key == "token_limit" {
+                continue;
+            }
             request_body[key] = serde_json::Value::String(value.clone());
         }
 

@@ -247,12 +247,7 @@ impl ProviderConfig {
 
     /// Convert to `LLMProviderConfig`
     pub fn to_llm_provider_config(&self) -> LLMProviderConfig {
-        let mut additional_params = self.additional_params.clone();
-
-        // Add token limit to additional params if set
-        if let Some(limit) = self.token_limit {
-            additional_params.insert("token_limit".to_string(), limit.to_string());
-        }
+        let additional_params = self.additional_params.clone();
 
         LLMProviderConfig {
             api_key: self.api_key.clone(),
