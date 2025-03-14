@@ -3,7 +3,7 @@ use crate::ui::{
     PLASMA_CYAN, SOLAR_YELLOW, STARLIGHT,
 };
 use lazy_static::lazy_static;
-use rand::seq::SliceRandom;
+use rand::prelude::*;
 use ratatui::style::Color;
 
 #[derive(Clone)]
@@ -201,16 +201,12 @@ lazy_static! {
 
 #[allow(clippy::unwrap_used)] // todo: handle unwrap
 pub fn get_waiting_message() -> ColoredMessage {
-    WAITING_MESSAGES
-        .choose(&mut rand::thread_rng())
-        .unwrap()
-        .clone()
+    let mut rng = rand::rng();
+    WAITING_MESSAGES.choose(&mut rng).unwrap().clone()
 }
 
 #[allow(clippy::unwrap_used)] // todo: handle unwrap
 pub fn get_user_message() -> ColoredMessage {
-    USER_MESSAGES
-        .choose(&mut rand::thread_rng())
-        .unwrap()
-        .clone()
+    let mut rng = rand::rng();
+    USER_MESSAGES.choose(&mut rng).unwrap().clone()
 }
