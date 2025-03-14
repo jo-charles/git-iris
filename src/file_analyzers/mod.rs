@@ -37,37 +37,43 @@ mod rust;
 mod yaml;
 
 /// Get the appropriate file analyzer based on the file extension
-#[allow(clippy::case_sensitive_file_extension_comparisons)] // todo: check if we should compare case-insensitively
 pub fn get_analyzer(file: &str) -> Box<dyn FileAnalyzer + Send + Sync> {
-    if file.ends_with(".c") || file == "Makefile" {
-        Box::new(c::CAnalyzer)
-    } else if file.ends_with(".cpp")
-        || file.ends_with(".cc")
-        || file.ends_with(".cxx")
-        || file == "CMakeLists.txt"
-    {
-        Box::new(cpp::CppAnalyzer)
-    } else if file.ends_with(".rs") {
-        Box::new(rust::RustAnalyzer)
-    } else if file.ends_with(".js") || file.ends_with(".ts") {
-        Box::new(javascript::JavaScriptAnalyzer)
-    } else if file.ends_with(".py") {
-        Box::new(python::PythonAnalyzer)
-    } else if file.ends_with(".yaml") || file.ends_with(".yml") {
-        Box::new(yaml::YamlAnalyzer)
-    } else if file.ends_with(".json") {
-        Box::new(json::JsonAnalyzer)
-    } else if file.ends_with(".md") {
-        Box::new(markdown::MarkdownAnalyzer)
-    } else if file.ends_with(".java") {
-        Box::new(java::JavaAnalyzer)
-    } else if file.ends_with(".kt") {
-        Box::new(kotlin::KotlinAnalyzer)
-    } else if file.ends_with(".gradle") || file.ends_with(".gradle.kts") {
-        Box::new(gradle::GradleAnalyzer)
-    } else {
-        Box::new(DefaultAnalyzer)
+    let file_lower = file.to_lowercase();
+    let path = std::path::Path::new(&file_lower);
+
+    // Special cases for files with specific names
+    if file == "Makefile" {
+        return Box::new(c::CAnalyzer);
+    } else if file == "CMakeLists.txt" {
+        return Box::new(cpp::CppAnalyzer);
     }
+
+    // Special cases for compound extensions
+    if file_lower.ends_with(".gradle") || file_lower.ends_with(".gradle.kts") {
+        return Box::new(gradle::GradleAnalyzer);
+    }
+
+    // Standard extension-based matching
+    if let Some(ext) = path.extension() {
+        if let Some(ext_str) = ext.to_str() {
+            let ext_lower = ext_str.to_lowercase();
+            match ext_lower.as_str() {
+                "c" => return Box::new(c::CAnalyzer),
+                "cpp" | "cc" | "cxx" => return Box::new(cpp::CppAnalyzer),
+                "rs" => return Box::new(rust::RustAnalyzer),
+                "py" => return Box::new(python::PythonAnalyzer),
+                "js" | "jsx" | "ts" | "tsx" => return Box::new(javascript::JavaScriptAnalyzer),
+                "java" => return Box::new(java::JavaAnalyzer),
+                "kt" | "kts" => return Box::new(kotlin::KotlinAnalyzer),
+                "json" => return Box::new(json::JsonAnalyzer),
+                "md" | "markdown" => return Box::new(markdown::MarkdownAnalyzer),
+                "yaml" | "yml" => return Box::new(yaml::YamlAnalyzer),
+                _ => {}
+            }
+        }
+    }
+
+    Box::new(DefaultAnalyzer)
 }
 
 /// Default analyzer for unsupported file types
@@ -99,7 +105,6 @@ impl FileAnalyzer for DefaultAnalyzer {
 /// # Returns
 ///
 /// A boolean indicating whether the file should be excluded.
-#[allow(clippy::unwrap_used)]
 pub fn should_exclude_file(path: &str) -> bool {
     log_debug!("Checking if file should be excluded: {}", path);
     let exclude_patterns = vec![
@@ -126,17 +131,28 @@ pub fn should_exclude_file(path: &str) -> bool {
     let path = Path::new(path);
 
     for (pattern, is_extension) in exclude_patterns {
-        let re = Regex::new(&pattern).expect("Could not compile regex");
+        let re = match Regex::new(&pattern) {
+            Ok(re) => re,
+            Err(e) => {
+                log_debug!("Failed to compile regex '{}': {}", pattern, e);
+                continue;
+            }
+        };
+
         if is_extension {
             if let Some(file_name) = path.file_name() {
-                if re.is_match(file_name.to_str().unwrap()) {
-                    log_debug!("File excluded: {}", path.display());
-                    return true;
+                if let Some(file_name_str) = file_name.to_str() {
+                    if re.is_match(file_name_str) {
+                        log_debug!("File excluded: {}", path.display());
+                        return true;
+                    }
                 }
             }
-        } else if re.is_match(path.to_str().unwrap()) {
-            log_debug!("File excluded: {}", path.display());
-            return true;
+        } else if let Some(path_str) = path.to_str() {
+            if re.is_match(path_str) {
+                log_debug!("File excluded: {}", path.display());
+                return true;
+            }
         }
     }
     log_debug!("File not excluded: {}", path.display());

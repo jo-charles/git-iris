@@ -35,11 +35,10 @@ impl FileAnalyzer for JavaScriptAnalyzer {
         "JavaScript/TypeScript source file"
     }
 
-    #[allow(clippy::case_sensitive_file_extension_comparisons)] // todo: check if we should compare case-insensitively
     fn extract_metadata(&self, file: &str, content: &str) -> ProjectMetadata {
         let mut metadata = ProjectMetadata {
             language: Some(
-                if file.ends_with(".ts") {
+                if file.to_lowercase().ends_with(".ts") {
                     "TypeScript"
                 } else {
                     "JavaScript"

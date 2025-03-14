@@ -11,14 +11,15 @@ pub async fn get_readme_summary(
     config: &Config,
     provider_type: &LLMProviderType,
 ) -> Result<Option<String>> {
-    if let Some(readme_content) = git_repo
+    match git_repo
         .get_readme_at_commit(commit_ish)
         .context("Failed to get README at specified commit")?
     {
-        let summary = summarize_readme(config, provider_type, &readme_content).await?;
-        Ok(Some(summary))
-    } else {
-        Ok(None)
+        Some(readme_content) => {
+            let summary = summarize_readme(config, provider_type, &readme_content).await?;
+            Ok(Some(summary))
+        }
+        _ => Ok(None),
     }
 }
 

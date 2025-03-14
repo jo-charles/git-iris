@@ -409,9 +409,14 @@ async fn test_multiple_staged_files_with_exclusions() {
         assert_eq!(file.diff, "[Content excluded]");
         assert_eq!(file.analysis, vec!["[Analysis excluded]"]);
     }
-    #[allow(clippy::case_sensitive_file_extension_comparisons)] // todo: check if this is necessary
+
     for file in &included_files {
-        assert!(file.path.starts_with("file") && file.path.ends_with(".txt"));
+        assert!(
+            file.path.starts_with("file")
+                && std::path::Path::new(&file.path)
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("txt"))
+        );
         assert_ne!(file.diff, "[Content excluded]");
         assert_ne!(file.analysis, vec!["[Analysis excluded]"]);
     }
@@ -424,6 +429,7 @@ async fn test_token_optimization_integration() {
 
     // Set a small token limit for the OpenAI provider to force truncation
     let small_token_limit = 200;
+    let optimizer = TokenOptimizer::new(small_token_limit);
 
     let context = git_repo
         .get_git_info(&config)
@@ -435,7 +441,6 @@ async fn test_token_optimization_integration() {
     let prompt = format!("{system_prompt}\n{user_prompt}");
 
     // Check that the prompt is within the token limit
-    let optimizer = TokenOptimizer::new(small_token_limit);
     let prompt = optimizer.truncate_string(&prompt, small_token_limit);
 
     let token_count = optimizer.count_tokens(&prompt);

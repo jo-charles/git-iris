@@ -46,6 +46,7 @@ impl TuiCommit {
         Self { state, service }
     }
 
+    #[allow(clippy::unused_async)]
     pub async fn run(
         initial_messages: Vec<GeneratedMessage>,
         custom_instructions: String,
@@ -64,10 +65,11 @@ impl TuiCommit {
             service,
             use_gitmoji,
         );
-        app.run_app().await.map_err(Error::from)
+
+        app.run_app().map_err(Error::from)
     }
 
-    pub async fn run_app(&mut self) -> io::Result<()> {
+    pub fn run_app(&mut self) -> io::Result<()> {
         // Setup
         enable_raw_mode()?;
         let mut stdout = io::stdout();
@@ -76,7 +78,7 @@ impl TuiCommit {
         let mut terminal = Terminal::new(backend)?;
 
         // Run main loop
-        let result = self.main_loop(&mut terminal).await;
+        let result = self.main_loop(&mut terminal);
 
         // Cleanup
         disable_raw_mode()?;
@@ -105,8 +107,7 @@ impl TuiCommit {
         Ok(())
     }
 
-    #[allow(clippy::unused_async)] // todo: check if this is needed
-    async fn main_loop(
+    fn main_loop(
         &mut self,
         terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     ) -> anyhow::Result<ExitStatus> {
@@ -228,6 +229,7 @@ impl TuiCommit {
     }
 }
 
+#[allow(clippy::unused_async)]
 pub async fn run_tui_commit(
     initial_messages: Vec<GeneratedMessage>,
     custom_instructions: String,

@@ -5,11 +5,17 @@ use super::{
 use crate::common::{get_combined_instructions, DetailLevel};
 use crate::config::Config;
 use crate::gitmoji::get_gitmoji_list;
+use crate::log_debug;
 
-#[allow(clippy::unwrap_used)] // todo: handle unwrap
 pub fn create_changelog_system_prompt(config: &Config) -> String {
     let changelog_schema = schemars::schema_for!(ChangelogResponse);
-    let changelog_schema_str = serde_json::to_string_pretty(&changelog_schema).unwrap();
+    let changelog_schema_str = match serde_json::to_string_pretty(&changelog_schema) {
+        Ok(schema) => schema,
+        Err(e) => {
+            log_debug!("Failed to serialize changelog schema: {}", e);
+            "{ \"error\": \"Failed to serialize schema\" }".to_string()
+        }
+    };
 
     let mut prompt = String::from(
         "You are an AI assistant specialized in generating clear, concise, and informative changelogs for software projects. \
@@ -116,10 +122,15 @@ pub fn create_changelog_system_prompt(config: &Config) -> String {
     prompt
 }
 
-#[allow(clippy::unwrap_used)] // todo: handle unwrap maybe use try_from instead
 pub fn create_release_notes_system_prompt(config: &Config) -> String {
     let release_notes_schema = schemars::schema_for!(ReleaseNotesResponse);
-    let release_notes_schema_str = serde_json::to_string_pretty(&release_notes_schema).unwrap();
+    let release_notes_schema_str = match serde_json::to_string_pretty(&release_notes_schema) {
+        Ok(schema) => schema,
+        Err(e) => {
+            log_debug!("Failed to serialize release notes schema: {}", e);
+            "{ \"error\": \"Failed to serialize schema\" }".to_string()
+        }
+    };
 
     let mut prompt = String::from(
         "You are an AI assistant specialized in generating comprehensive and user-friendly release notes for software projects. \

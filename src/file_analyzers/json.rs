@@ -1,5 +1,6 @@
 use super::{FileAnalyzer, ProjectMetadata};
 use crate::context::StagedFile;
+use crate::log_debug;
 use regex::Regex;
 use std::collections::HashSet;
 
@@ -82,20 +83,31 @@ impl JsonAnalyzer {
     }
 }
 
-#[allow(clippy::unwrap_used)] // todo: handle unwrap maybe use try_from instead
 fn extract_modified_top_level_keys(diff: &str) -> Option<Vec<String>> {
     let lines: Vec<&str> = diff.lines().collect();
-    let re = Regex::new(r#"^[+-]\s*"(\w+)"\s*:"#).expect("Could not compile regex");
+    let re = match Regex::new(r#"^[+-]\s*"(\w+)"\s*:"#) {
+        Ok(re) => re,
+        Err(e) => {
+            log_debug!("Failed to compile regex: {}", e);
+            return None;
+        }
+    };
     let mut keys = HashSet::new();
 
     for (i, line) in lines.iter().enumerate() {
         if let Some(cap) = re.captures(line) {
-            let key = cap.get(1).unwrap().as_str();
-            let prev_line = if i > 0 { lines[i - 1] } else { "" };
-            let next_line = lines.get(i + 1).unwrap_or(&"");
+            if let Some(key_match) = cap.get(1) {
+                let key = key_match.as_str();
+                let prev_line = if i > 0 { lines[i - 1] } else { "" };
+                let next_line = if i + 1 < lines.len() {
+                    lines[i + 1]
+                } else {
+                    ""
+                };
 
-            if !prev_line.trim().ends_with('{') && !next_line.trim().starts_with('}') {
-                keys.insert(key.to_string());
+                if !prev_line.trim().ends_with('{') && !next_line.trim().starts_with('}') {
+                    keys.insert(key.to_string());
+                }
             }
         }
     }

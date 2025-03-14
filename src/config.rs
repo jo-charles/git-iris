@@ -200,7 +200,6 @@ impl Config {
 }
 
 impl Default for Config {
-    #[allow(clippy::unwrap_used)] // todo: handle unwrap
     fn default() -> Self {
         let mut providers = HashMap::new();
         for provider in get_available_providers() {
@@ -210,10 +209,20 @@ impl Default for Config {
             );
         }
 
+        // Default to OpenAI if available, otherwise use the first available provider
+        let default_provider = if providers.contains_key("OpenAI") {
+            "OpenAI".to_string()
+        } else {
+            providers.keys().next().map_or_else(
+                || "OpenAI".to_string(), // Fallback even if no providers (should never happen)
+                std::clone::Clone::clone,
+            )
+        };
+
         Self {
-            default_provider: get_available_providers().first().unwrap().to_string(),
+            default_provider,
             providers,
-            use_gitmoji: true,
+            use_gitmoji: default_gitmoji(),
             instructions: String::new(),
             instruction_preset: default_instruction_preset(),
             temp_instructions: None,

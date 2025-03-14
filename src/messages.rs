@@ -199,14 +199,24 @@ lazy_static! {
     ];
 }
 
-#[allow(clippy::unwrap_used)] // todo: handle unwrap
 pub fn get_waiting_message() -> ColoredMessage {
     let mut rng = rand::rng();
-    WAITING_MESSAGES.choose(&mut rng).unwrap().clone()
+    WAITING_MESSAGES
+        .choose(&mut rng)
+        .cloned()
+        .unwrap_or_else(|| ColoredMessage {
+            text: "Processing your request...".to_string(),
+            color: SOLAR_YELLOW,
+        })
 }
 
-#[allow(clippy::unwrap_used)] // todo: handle unwrap
 pub fn get_user_message() -> ColoredMessage {
     let mut rng = rand::rng();
-    USER_MESSAGES.choose(&mut rng).unwrap().clone()
+    USER_MESSAGES
+        .choose(&mut rng)
+        .cloned()
+        .unwrap_or_else(|| ColoredMessage {
+            text: "What would you like to do?".to_string(),
+            color: CELESTIAL_BLUE,
+        })
 }

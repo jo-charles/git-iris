@@ -1,3 +1,4 @@
+use crate::log_debug;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -117,16 +118,47 @@ pub struct SectionItem {
 
 impl From<String> for ChangelogResponse {
     /// Converts a JSON string to a `ChangelogResponse`
-    #[allow(clippy::unwrap_used)] // todo: handle unwrap maybe use try_from instead
     fn from(value: String) -> Self {
-        serde_json::from_str(&value).unwrap()
+        serde_json::from_str(&value).unwrap_or_else(|e| {
+            log_debug!("Failed to parse ChangelogResponse: {}", e);
+            Self {
+                version: Some("Error".to_string()),
+                release_date: Some("Error".to_string()),
+                sections: HashMap::new(),
+                breaking_changes: Vec::new(),
+                metrics: ChangeMetrics {
+                    total_commits: 0,
+                    files_changed: 0,
+                    insertions: 0,
+                    deletions: 0,
+                    total_lines_changed: 0,
+                },
+            }
+        })
     }
 }
 
 impl From<String> for ReleaseNotesResponse {
     /// Converts a JSON string to a `ReleaseNotesResponse`
-    #[allow(clippy::unwrap_used)] // todo: handle unwrap maybe use try_from instead
     fn from(value: String) -> Self {
-        serde_json::from_str(&value).unwrap()
+        serde_json::from_str(&value).unwrap_or_else(|e| {
+            log_debug!("Failed to parse ReleaseNotesResponse: {}", e);
+            Self {
+                version: Some("Error".to_string()),
+                release_date: Some("Error".to_string()),
+                summary: format!("Error parsing response: {e}"),
+                highlights: Vec::new(),
+                sections: Vec::new(),
+                breaking_changes: Vec::new(),
+                upgrade_notes: Vec::new(),
+                metrics: ChangeMetrics {
+                    total_commits: 0,
+                    files_changed: 0,
+                    insertions: 0,
+                    deletions: 0,
+                    total_lines_changed: 0,
+                },
+            }
+        })
     }
 }

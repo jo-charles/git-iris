@@ -1,3 +1,4 @@
+use crate::log_debug;
 use crate::token_optimizer::TokenOptimizer;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -40,9 +41,15 @@ pub struct GeneratedMessage {
 }
 
 impl From<String> for GeneratedMessage {
-    #[allow(clippy::unwrap_used)] // todo: handle error maybe replace with try_from
     fn from(value: String) -> Self {
-        serde_json::from_str(&value).unwrap()
+        serde_json::from_str(&value).unwrap_or_else(|e| {
+            log_debug!("Failed to parse GeneratedMessage: {}", e);
+            GeneratedMessage {
+                emoji: None,
+                title: "Parsing Error".to_string(),
+                message: format!("Failed to parse response: {e}"),
+            }
+        })
     }
 }
 

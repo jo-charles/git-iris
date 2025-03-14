@@ -108,6 +108,52 @@ impl ChangeAnalyzer {
                     _ => ChangeType::Modified,
                 };
 
+                let file_path = new_file.path().map_or_else(
+                    || {
+                        old_file
+                            .path()
+                            .map(|p| p.to_string_lossy().into_owned())
+                            .unwrap_or_default()
+                    },
+                    |p| p.to_string_lossy().into_owned(),
+                );
+
+                // Perform file-specific analysis based on file type
+                let mut analysis = Vec::new();
+
+                // Determine file type and add relevant analysis
+                if let Some(extension) = std::path::Path::new(&file_path).extension() {
+                    if let Some(ext_str) = extension.to_str() {
+                        match ext_str.to_lowercase().as_str() {
+                            "rs" => analysis.push("Rust source code changes".to_string()),
+                            "js" | "ts" => {
+                                analysis.push("JavaScript/TypeScript changes".to_string());
+                            }
+                            "py" => analysis.push("Python code changes".to_string()),
+                            "java" => analysis.push("Java code changes".to_string()),
+                            "c" | "cpp" | "h" => analysis.push("C/C++ code changes".to_string()),
+                            "md" => analysis.push("Documentation changes".to_string()),
+                            "json" | "yml" | "yaml" | "toml" => {
+                                analysis.push("Configuration changes".to_string());
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+
+                // Add analysis based on change type
+                match change_type {
+                    ChangeType::Added => analysis.push("New file added".to_string()),
+                    ChangeType::Deleted => analysis.push("File removed".to_string()),
+                    ChangeType::Modified => {
+                        if file_path.contains("test") || file_path.contains("spec") {
+                            analysis.push("Test modifications".to_string());
+                        } else if file_path.contains("README") || file_path.contains("docs/") {
+                            analysis.push("Documentation updates".to_string());
+                        }
+                    }
+                }
+
                 let file_change = FileChange {
                     old_path: old_file
                         .path()
@@ -118,7 +164,7 @@ impl ChangeAnalyzer {
                         .map(|p| p.to_string_lossy().into_owned())
                         .unwrap_or_default(),
                     change_type,
-                    analysis: vec![], // TODO: Implement file-specific analysis if needed
+                    analysis,
                 };
 
                 file_changes.push(file_change);
