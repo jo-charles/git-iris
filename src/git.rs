@@ -527,11 +527,27 @@ impl GitRepo {
         let hook_path = repo.path().join("hooks").join(hook_name);
 
         if hook_path.exists() {
-            let mut child = Command::new(&hook_path)
-                .current_dir(repo.path())
+            log_debug!("Executing hook: {}", hook_name);
+            log_debug!("Hook path: {:?}", hook_path);
+
+            // Get the repository's working directory (top level)
+            let repo_workdir = repo
+                .workdir()
+                .context("Repository has no working directory")?;
+            log_debug!("Repository working directory: {:?}", repo_workdir);
+
+            // Create a command with the proper environment and working directory
+            let mut command = Command::new(&hook_path);
+            command
+                .current_dir(repo_workdir) // Use the repository's working directory, not .git
+                .env("GIT_DIR", repo.path()) // Set GIT_DIR to the .git directory
+                .env("GIT_WORK_TREE", repo_workdir) // Set GIT_WORK_TREE to the working directory
                 .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .spawn()?;
+                .stderr(Stdio::piped());
+
+            log_debug!("Executing hook command: {:?}", command);
+
+            let mut child = command.spawn()?;
 
             let stdout = child.stdout.take().context("Could not get stdout")?;
             let stderr = child.stderr.take().context("Could not get stderr")?;
@@ -554,6 +570,10 @@ impl GitRepo {
                     status.code()
                 ));
             }
+
+            log_debug!("Hook '{}' executed successfully", hook_name);
+        } else {
+            log_debug!("Hook '{}' not found at {:?}", hook_name, hook_path);
         }
 
         Ok(())
@@ -566,13 +586,20 @@ impl GitRepo {
     /// A Result containing a boolean indicating if inside a work tree or an error.
     pub fn is_inside_work_tree() -> Result<bool> {
         log_debug!("Checking if inside Git work tree");
-        let repo = Repository::open(env::current_dir()?)?;
-        if repo.is_bare() {
-            log_debug!("Not inside Git work tree (bare repository)");
-            Ok(false)
-        } else {
-            log_debug!("Inside Git work tree");
-            Ok(true)
+        match Repository::discover(env::current_dir()?) {
+            Ok(repo) => {
+                if repo.is_bare() {
+                    log_debug!("Not inside Git work tree (bare repository)");
+                    Ok(false)
+                } else {
+                    log_debug!("Inside Git work tree");
+                    Ok(true)
+                }
+            }
+            Err(e) => {
+                log_debug!("Error discovering Git repository: {}", e);
+                Err(anyhow!("Not in a Git repository: {}", e))
+            }
         }
     }
 

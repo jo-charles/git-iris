@@ -168,21 +168,48 @@ impl IrisCommitService {
         Ok(generated_message)
     }
 
-    /// Perform a commit with the given message
+    /// Performs a commit with the given message.
     ///
     /// # Arguments
     ///
-    /// * `message` - The commit message to use
+    /// * `message` - The commit message.
     ///
     /// # Returns
     ///
-    /// A Result containing the `CommitResult` or an error
+    /// A Result containing the `CommitResult` or an error.
     pub fn perform_commit(&self, message: &str) -> Result<CommitResult> {
         let processed_message = process_commit_message(message.to_string(), self.use_gitmoji);
-        if self.verify {
-            self.repo.commit_and_verify(&processed_message)
-        } else {
-            self.repo.commit(&processed_message)
+        log_debug!("Performing commit with message: {}", processed_message);
+
+        if !self.verify {
+            log_debug!("Skipping pre-commit hook (verify=false)");
+            return self.repo.commit(&processed_message);
+        }
+
+        // Execute pre-commit hook
+        log_debug!("Executing pre-commit hook");
+        if let Err(e) = self.repo.execute_hook("pre-commit") {
+            log_debug!("Pre-commit hook failed: {}", e);
+            return Err(e);
+        }
+        log_debug!("Pre-commit hook executed successfully");
+
+        // Perform the commit
+        match self.repo.commit(&processed_message) {
+            Ok(result) => {
+                // Execute post-commit hook
+                log_debug!("Executing post-commit hook");
+                if let Err(e) = self.repo.execute_hook("post-commit") {
+                    log_debug!("Post-commit hook failed: {}", e);
+                    // We don't fail the commit if post-commit hook fails
+                }
+                log_debug!("Commit performed successfully");
+                Ok(result)
+            }
+            Err(e) => {
+                log_debug!("Commit failed: {}", e);
+                Err(e)
+            }
         }
     }
 
