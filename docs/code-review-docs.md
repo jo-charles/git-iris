@@ -99,7 +99,22 @@ You can use instruction presets to guide the review:
 git-iris review --preset security
 ```
 
-This will apply security-focused instructions to the review process.
+Git-Iris now includes several review-specific presets:
+
+- `security` - Focus on security vulnerabilities and best practices
+- `performance` - Analyze code for performance optimizations
+- `architecture` - Evaluate architectural patterns and design decisions
+- `testing` - Focus on test coverage and testing strategies
+- `maintainability` - Evaluate code for long-term maintenance
+- `conventions` - Check adherence to language and project coding standards
+
+You can view all available presets with:
+
+```bash
+git-iris list-presets
+```
+
+This will display all presets categorized by their type (general, review-specific, or commit-specific).
 
 ## 5. Review Output Format
 

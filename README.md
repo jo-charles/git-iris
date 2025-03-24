@@ -256,16 +256,24 @@ To list available presets:
 git-iris list-presets
 ```
 
-This will display a list of all available presets with a brief description of each.
+This will display a list of all available presets with a brief description of each, categorized by type (general, review-specific, or commit-specific).
 
 Some key presets include:
 
-- `default`: Standard commit message style
+- `default`: Standard professional style (for both commits and reviews)
 - `conventional`: Follows the Conventional Commits specification
-- `detailed`: Provides more context and explanation in commit messages
-- `concise`: Short and to-the-point commit messages
-- `cosmic`: Mystical, space-themed commit messages
-- ..and lots more styles
+- `detailed`: Provides more context and explanation
+- `concise`: Short and to-the-point responses
+- `cosmic`: Mystical, space-themed language
+
+For code reviews specifically, Git-Iris includes specialized presets:
+
+- `security`: Focus on security vulnerabilities and best practices
+- `performance`: Analyze code for performance optimizations
+- `architecture`: Evaluate architectural patterns and design decisions
+- `testing`: Focus on test coverage and testing strategies
+- `maintainability`: Evaluate code for long-term maintenance
+- `conventions`: Check adherence to language and project coding standards
 
 To use a preset for a single commit:
 
@@ -273,7 +281,13 @@ To use a preset for a single commit:
 git-iris gen --preset conventional
 ```
 
-To set a default preset for all commits:
+To use a preset for a code review:
+
+```bash
+git-iris review --preset security
+```
+
+To set a default preset:
 
 ```bash
 git-iris config --preset conventional

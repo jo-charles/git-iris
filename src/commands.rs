@@ -1,7 +1,9 @@
 use crate::ProviderConfig;
 use crate::common::CommonParams;
 use crate::config::Config;
-use crate::instruction_presets::get_instruction_preset_library;
+use crate::instruction_presets::{
+    PresetType, get_instruction_preset_library, list_presets_formatted_by_type,
+};
 use crate::llm_providers::get_available_providers;
 use crate::log_debug;
 use crate::ui;
@@ -9,8 +11,6 @@ use anyhow::Context;
 use anyhow::{Result, anyhow};
 use colored::Colorize;
 use std::collections::HashMap;
-
-use unicode_width::UnicodeWidthStr;
 
 /// Handle the 'config' command
 #[allow(clippy::too_many_lines)]
@@ -160,44 +160,40 @@ fn parse_additional_params(params: &[String]) -> HashMap<String, String> {
 
 /// Handle the '`list_presets`' command
 pub fn handle_list_presets_command() -> Result<()> {
-    let preset_library = get_instruction_preset_library();
+    let library = get_instruction_preset_library();
+
+    // Get different categories of presets
+    let both_presets = list_presets_formatted_by_type(&library, Some(PresetType::Both));
+    let commit_only_presets = list_presets_formatted_by_type(&library, Some(PresetType::Commit));
+    let review_only_presets = list_presets_formatted_by_type(&library, Some(PresetType::Review));
 
     println!(
         "{}",
-        "\n🔮 Available Instruction Presets 🔮"
-            .bright_purple()
+        "\nGit-Iris Instruction Presets\n".bright_magenta().bold()
+    );
+
+    println!(
+        "{}",
+        "General Presets (usable for both commit and review):"
+            .bright_cyan()
             .bold()
     );
-    println!("{}", "━".repeat(50).bright_purple());
+    println!("{both_presets}\n");
 
-    let mut presets = preset_library.list_presets();
-    presets.sort_by(|a, b| a.0.cmp(b.0)); // Sort alphabetically by key
-
-    let max_key_length = presets
-        .iter()
-        .map(|(key, _)| key.width())
-        .max()
-        .unwrap_or(0);
-
-    for (key, preset) in presets {
-        println!(
-            "{} {:<width$} {}",
-            "•".bright_cyan(),
-            key.bright_green().bold(),
-            preset.name.cyan().italic(),
-            width = max_key_length
-        );
-        println!("  {}", format!("\"{}\"", preset.description).bright_white());
-        println!(); // Add a blank line between presets
+    if !commit_only_presets.is_empty() {
+        println!("{}", "Commit-specific Presets:".bright_green().bold());
+        println!("{commit_only_presets}\n");
     }
 
-    println!("{}", "━".repeat(50).bright_purple());
-    println!(
-        "{}",
-        "Use with: git-iris gen --preset <preset-name>"
-            .bright_yellow()
-            .italic()
-    );
+    if !review_only_presets.is_empty() {
+        println!("{}", "Review-specific Presets:".bright_blue().bold());
+        println!("{review_only_presets}\n");
+    }
+
+    println!("{}", "Usage:".bright_yellow().bold());
+    println!("  git-iris gen --preset <preset-key>");
+    println!("  git-iris review --preset <preset-key>");
+    println!("\nPreset types: [B] = Both commands, [C] = Commit only, [R] = Review only");
 
     Ok(())
 }

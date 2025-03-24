@@ -7,6 +7,7 @@ use super::prompt::{create_system_prompt, create_user_prompt, process_commit_mes
 use crate::config::Config;
 use crate::context::{CommitContext, GeneratedMessage, GeneratedReview};
 use crate::git::{CommitResult, GitRepo};
+use crate::instruction_presets::{PresetType, get_instruction_preset_library};
 use crate::llm;
 use crate::llm_providers::{LLMProviderType, get_provider_metadata};
 use crate::log_debug;
@@ -171,7 +172,26 @@ impl IrisCommitService {
         instructions: &str,
     ) -> anyhow::Result<GeneratedMessage> {
         let mut config_clone = self.config.clone();
-        config_clone.instruction_preset = preset.to_string();
+
+        // Check if the preset exists and is valid for commits
+        if preset.is_empty() {
+            config_clone.instruction_preset = "default".to_string();
+        } else {
+            let library = get_instruction_preset_library();
+            if let Some(preset_info) = library.get_preset(preset) {
+                if preset_info.preset_type == PresetType::Review {
+                    log_debug!(
+                        "Warning: Preset '{}' is review-specific, not ideal for commits",
+                        preset
+                    );
+                }
+                config_clone.instruction_preset = preset.to_string();
+            } else {
+                log_debug!("Preset '{}' not found, using default", preset);
+                config_clone.instruction_preset = "default".to_string();
+            }
+        }
+
         config_clone.instructions = instructions.to_string();
 
         let context = self.get_git_info().await?;
@@ -215,7 +235,26 @@ impl IrisCommitService {
         instructions: &str,
     ) -> anyhow::Result<GeneratedReview> {
         let mut config_clone = self.config.clone();
-        config_clone.instruction_preset = preset.to_string();
+
+        // Check if the preset exists and is valid for reviews
+        if preset.is_empty() {
+            config_clone.instruction_preset = "default".to_string();
+        } else {
+            let library = get_instruction_preset_library();
+            if let Some(preset_info) = library.get_preset(preset) {
+                if preset_info.preset_type == PresetType::Commit {
+                    log_debug!(
+                        "Warning: Preset '{}' is commit-specific, not ideal for reviews",
+                        preset
+                    );
+                }
+                config_clone.instruction_preset = preset.to_string();
+            } else {
+                log_debug!("Preset '{}' not found, using default", preset);
+                config_clone.instruction_preset = "default".to_string();
+            }
+        }
+
         config_clone.instructions = instructions.to_string();
 
         let context = self.get_git_info().await?;

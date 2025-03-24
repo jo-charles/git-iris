@@ -1,5 +1,5 @@
 use crate::config::Config;
-use crate::instruction_presets::get_instruction_preset_library;
+use crate::instruction_presets::{PresetType, get_instruction_preset_library};
 use crate::llm_providers::LLMProviderType;
 use anyhow::Result;
 use clap::Args;
@@ -46,7 +46,10 @@ pub struct CommonParams {
     pub instructions: Option<String>,
 
     /// Select an instruction preset
-    #[arg(long, help = "Select an instruction preset")]
+    #[arg(
+        long,
+        help = "Select an instruction preset (use 'git-iris list-presets' to see available presets for commits and reviews)"
+    )]
     pub preset: Option<String>,
 
     /// Enable or disable Gitmoji
@@ -78,6 +81,16 @@ impl CommonParams {
         }
         Ok(())
     }
+
+    /// Check if the provided preset is valid for the specified preset type
+    pub fn is_valid_preset_for_type(&self, preset_type: PresetType) -> bool {
+        if let Some(preset_name) = &self.preset {
+            let library = get_instruction_preset_library();
+            let valid_presets = library.list_valid_presets_for_command(preset_type);
+            return valid_presets.iter().any(|(key, _)| *key == preset_name);
+        }
+        true // No preset specified is always valid
+    }
 }
 
 /// Validate provider input against available providers
@@ -100,14 +113,14 @@ pub fn get_combined_instructions(config: &Config) -> String {
     if let Some(preset_instructions) = preset_library.get_preset(config.instruction_preset.as_str())
     {
         prompt.push_str(&format!(
-            "\n\nUse this style for the commit message:\n{}\n\n",
+            "\n\nUse this style for your output:\n{}\n\n",
             preset_instructions.instructions
         ));
     }
 
     if !config.instructions.is_empty() {
         prompt.push_str(&format!(
-            "\n\nAdditional instructions for the commit message:\n{}\n\n",
+            "\n\nAdditional instructions for the request:\n{}\n\n",
             config.instructions
         ));
     }

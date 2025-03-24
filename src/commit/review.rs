@@ -1,6 +1,7 @@
 use super::service::IrisCommitService;
 use crate::common::CommonParams;
 use crate::config::Config;
+use crate::instruction_presets::PresetType;
 use crate::llm_providers::LLMProviderType;
 use crate::messages;
 use crate::ui;
@@ -11,6 +12,14 @@ use std::sync::Arc;
 
 /// Handles the review command which generates an AI code review of staged changes
 pub async fn handle_review_command(common: CommonParams, print: bool) -> Result<()> {
+    // Check if the preset is appropriate for code reviews
+    if !common.is_valid_preset_for_type(PresetType::Review) {
+        ui::print_warning(
+            "The specified preset may not be suitable for code reviews. Consider using a review or general preset instead.",
+        );
+        ui::print_info("Run 'git-iris list-presets' to see available presets for reviews.");
+    }
+
     let mut config = Config::load()?;
     common.apply_to_config(&mut config)?;
     let current_dir = std::env::current_dir()?;

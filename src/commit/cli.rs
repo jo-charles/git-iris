@@ -3,6 +3,7 @@ use super::service::IrisCommitService;
 use crate::common::CommonParams;
 use crate::config::Config;
 use crate::context::format_commit_message;
+use crate::instruction_presets::PresetType;
 use crate::llm_providers::LLMProviderType;
 use crate::messages;
 use crate::tui::run_tui_commit;
@@ -19,6 +20,14 @@ pub async fn handle_gen_command(
     print: bool,
     verify: bool,
 ) -> Result<()> {
+    // Check if the preset is appropriate for commit messages
+    if !common.is_valid_preset_for_type(PresetType::Commit) {
+        ui::print_warning(
+            "The specified preset may not be suitable for commit messages. Consider using a commit or general preset instead.",
+        );
+        ui::print_info("Run 'git-iris list-presets' to see available presets for commits.");
+    }
+
     let mut config = Config::load()?;
     common.apply_to_config(&mut config)?;
     let current_dir = std::env::current_dir()?;
