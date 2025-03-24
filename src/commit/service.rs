@@ -5,7 +5,7 @@ use tokio::sync::{mpsc, RwLock};
 
 use super::prompt::{create_system_prompt, create_user_prompt, process_commit_message};
 use crate::config::Config;
-use crate::context::{CommitContext, GeneratedMessage};
+use crate::context::{CommitContext, GeneratedMessage, GeneratedReview};
 use crate::git::{CommitResult, GitRepo};
 use crate::llm;
 use crate::llm_providers::{get_provider_metadata, LLMProviderType};
@@ -76,6 +76,85 @@ impl IrisCommitService {
         Ok(context)
     }
 
+    /// Private helper method to handle common token optimization logic
+    ///
+    /// # Arguments
+    ///
+    /// * `config_clone` - Configuration with preset and instructions
+    /// * `system_prompt` - The system prompt to use
+    /// * `context` - The commit context
+    /// * `create_user_prompt_fn` - A function that creates a user prompt from a context
+    ///
+    /// # Returns
+    ///
+    /// A tuple containing the optimized context and final user prompt
+    fn optimize_prompt<F>(
+        &self,
+        config_clone: &Config,
+        system_prompt: &str,
+        mut context: CommitContext,
+        create_user_prompt_fn: F,
+    ) -> (CommitContext, String)
+    where
+        F: Fn(&CommitContext) -> String,
+    {
+        // Get the token limit from the provider config
+        let token_limit = config_clone
+            .providers
+            .get(&self.provider_type.to_string())
+            .and_then(|p| p.token_limit)
+            .unwrap_or_else(|| get_provider_metadata(&self.provider_type).default_token_limit);
+
+        // Create a token optimizer to count tokens
+        let optimizer = TokenOptimizer::new(token_limit);
+        let system_tokens = optimizer.count_tokens(system_prompt);
+
+        log_debug!("Token limit: {}", token_limit);
+        log_debug!("System prompt tokens: {}", system_tokens);
+
+        // Reserve tokens for system prompt and some buffer for formatting
+        // 1000 token buffer provides headroom for model responses and formatting
+        let context_token_limit = token_limit.saturating_sub(system_tokens + 1000);
+        log_debug!("Available tokens for context: {}", context_token_limit);
+
+        // Count tokens before optimization
+        let user_prompt_before = create_user_prompt_fn(&context);
+        let total_tokens_before = system_tokens + optimizer.count_tokens(&user_prompt_before);
+        log_debug!("Total tokens before optimization: {}", total_tokens_before);
+
+        // Optimize the context with remaining token budget
+        context.optimize(context_token_limit);
+
+        let user_prompt = create_user_prompt_fn(&context);
+        let user_tokens = optimizer.count_tokens(&user_prompt);
+        let total_tokens = system_tokens + user_tokens;
+
+        log_debug!("User prompt tokens after optimization: {}", user_tokens);
+        log_debug!("Total tokens after optimization: {}", total_tokens);
+
+        // If we're still over the limit, truncate the user prompt directly
+        // 100 token safety buffer ensures we stay under the limit
+        let final_user_prompt = if total_tokens > token_limit {
+            log_debug!(
+                "Total tokens {} still exceeds limit {}, truncating user prompt",
+                total_tokens,
+                token_limit
+            );
+            let max_user_tokens = token_limit.saturating_sub(system_tokens + 100);
+            optimizer.truncate_string(&user_prompt, max_user_tokens)
+        } else {
+            user_prompt
+        };
+
+        let final_tokens = system_tokens + optimizer.count_tokens(&final_user_prompt);
+        log_debug!(
+            "Final total tokens after potential truncation: {}",
+            final_tokens
+        );
+
+        (context, final_user_prompt)
+    }
+
     /// Generate a commit message using AI
     ///
     /// # Arguments
@@ -95,61 +174,17 @@ impl IrisCommitService {
         config_clone.instruction_preset = preset.to_string();
         config_clone.instructions = instructions.to_string();
 
-        let mut context = self.get_git_info().await?;
-
-        // Get the token limit from the provider config
-        let token_limit = config_clone
-            .providers
-            .get(&self.provider_type.to_string())
-            .and_then(|p| p.token_limit)
-            .unwrap_or_else(|| get_provider_metadata(&self.provider_type).default_token_limit);
-
-        // Create system prompt first to know its token count
+        let context = self.get_git_info().await?;
+        
+        // Create system prompt
         let system_prompt = create_system_prompt(&config_clone)?;
-
-        // Create a token optimizer to count tokens
-        let optimizer = TokenOptimizer::new(token_limit);
-        let system_tokens = optimizer.count_tokens(&system_prompt);
-
-        log_debug!("Token limit: {}", token_limit);
-        log_debug!("System prompt tokens: {}", system_tokens);
-
-        // Reserve tokens for system prompt and some buffer for formatting
-        let context_token_limit = token_limit.saturating_sub(system_tokens + 1000); // 1000 token buffer for safety
-        log_debug!("Available tokens for context: {}", context_token_limit);
-
-        // Count tokens before optimization
-        let user_prompt_before = create_user_prompt(&context);
-        let total_tokens_before = system_tokens + optimizer.count_tokens(&user_prompt_before);
-        log_debug!("Total tokens before optimization: {}", total_tokens_before);
-
-        // Optimize the context with remaining token budget
-        context.optimize(context_token_limit);
-
-        let user_prompt = create_user_prompt(&context);
-        let user_tokens = optimizer.count_tokens(&user_prompt);
-        let total_tokens = system_tokens + user_tokens;
-
-        log_debug!("User prompt tokens after optimization: {}", user_tokens);
-        log_debug!("Total tokens after optimization: {}", total_tokens);
-
-        // If we're still over the limit, truncate the user prompt directly
-        let final_user_prompt = if total_tokens > token_limit {
-            log_debug!(
-                "Total tokens {} still exceeds limit {}, truncating user prompt",
-                total_tokens,
-                token_limit
-            );
-            let max_user_tokens = token_limit.saturating_sub(system_tokens + 100); // 100 token safety buffer
-            optimizer.truncate_string(&user_prompt, max_user_tokens)
-        } else {
-            user_prompt
-        };
-
-        let final_tokens = system_tokens + optimizer.count_tokens(&final_user_prompt);
-        log_debug!(
-            "Final total tokens after potential truncation: {}",
-            final_tokens
+        
+        // Use the shared optimization logic
+        let (_, final_user_prompt) = self.optimize_prompt(
+            &config_clone,
+            &system_prompt,
+            context,
+            create_user_prompt,
         );
 
         let mut generated_message = llm::get_refined_message::<GeneratedMessage>(
@@ -166,6 +201,47 @@ impl IrisCommitService {
         }
 
         Ok(generated_message)
+    }
+
+    /// Generate a code review using AI
+    ///
+    /// # Arguments
+    ///
+    /// * `preset` - The instruction preset to use
+    /// * `instructions` - Custom instructions for the AI
+    ///
+    /// # Returns
+    ///
+    /// A Result containing the generated code review or an error
+    pub async fn generate_review(
+        &self,
+        preset: &str,
+        instructions: &str,
+    ) -> anyhow::Result<GeneratedReview> {
+        let mut config_clone = self.config.clone();
+        config_clone.instruction_preset = preset.to_string();
+        config_clone.instructions = instructions.to_string();
+
+        let context = self.get_git_info().await?;
+        
+        // Create system prompt
+        let system_prompt = super::prompt::create_review_system_prompt(&config_clone)?;
+        
+        // Use the shared optimization logic
+        let (_, final_user_prompt) = self.optimize_prompt(
+            &config_clone,
+            &system_prompt,
+            context,
+            super::prompt::create_review_user_prompt,
+        );
+
+        llm::get_refined_message::<GeneratedReview>(
+            &config_clone,
+            &self.provider_type,
+            &system_prompt,
+            &final_user_prompt,
+        )
+        .await
     }
 
     /// Performs a commit with the given message.

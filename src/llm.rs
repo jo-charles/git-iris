@@ -1,16 +1,16 @@
 use crate::config::{Config, ProviderConfig};
 use crate::llm_providers::{
-    create_provider, get_available_providers, get_provider_metadata, LLMProviderConfig,
-    LLMProviderType,
+    LLMProviderConfig, LLMProviderType, create_provider, get_available_providers,
+    get_provider_metadata,
 };
-use crate::{log_debug, LLMProvider};
-use anyhow::{anyhow, Result};
-use serde::de::DeserializeOwned;
+use crate::{LLMProvider, log_debug};
+use anyhow::{Result, anyhow};
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 use std::collections::HashMap;
 use std::time::Duration;
-use tokio_retry::strategy::ExponentialBackoff;
 use tokio_retry::Retry;
+use tokio_retry::strategy::ExponentialBackoff;
 
 /// Generates a message using the given configuration
 pub async fn get_refined_message<T>(

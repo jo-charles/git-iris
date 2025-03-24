@@ -1,7 +1,8 @@
 use crate::common::get_combined_instructions;
 use crate::config::Config;
 use crate::context::{
-    ChangeType, CommitContext, GeneratedMessage, ProjectMetadata, RecentCommit, StagedFile,
+    ChangeType, CommitContext, GeneratedMessage, GeneratedReview, ProjectMetadata, RecentCommit,
+    StagedFile,
 };
 use crate::gitmoji::{apply_gitmoji, get_gitmoji_list};
 
@@ -192,4 +193,109 @@ pub fn process_commit_message(message: String, use_gitmoji: bool) -> String {
     } else {
         message
     }
+}
+
+/// Creates a system prompt for code review generation
+pub fn create_review_system_prompt(config: &Config) -> anyhow::Result<String> {
+    let review_schema = schemars::schema_for!(GeneratedReview);
+    let review_schema_str = serde_json::to_string_pretty(&review_schema)?;
+
+    let mut prompt = String::from(
+        "You are an AI assistant specializing in code reviews. \
+        Your task is to provide a comprehensive, professional, and constructive review of the code changes provided.
+
+        Work step-by-step and follow these guidelines exactly:
+
+        1. Analyze the code changes carefully, focusing on:
+           - Code quality and readability
+           - Potential bugs or errors
+           - Architecture and design patterns
+           - Performance implications
+           - Security considerations
+           - Maintainability and testability
+
+        2. Provide constructive feedback:
+           - Be specific and actionable in your suggestions
+           - Point out both strengths and areas for improvement
+           - Explain why certain patterns or practices are problematic
+           - Suggest alternative approaches when appropriate
+
+        3. Focus on substantive issues:
+           - Prioritize significant issues over minor stylistic concerns
+           - Consider the context of the codebase and changes
+           - Note potential edge cases or scenarios that might not be handled
+
+        4. Be professional and constructive:
+           - Frame feedback positively and constructively
+           - Focus on the code, not the developer
+           - Acknowledge good practices and improvements
+
+        Your review should be based entirely on the information provided in the context, without any speculation or assumptions.
+      ");
+
+    prompt.push_str(get_combined_instructions(config).as_str());
+
+    prompt.push_str("
+        Your response must be a valid JSON object with the following structure:
+
+        {
+          \"summary\": \"A brief summary of the changes and their quality\",
+          \"code_quality\": \"An assessment of the overall code quality\",
+          \"suggestions\": [\"Suggestion 1\", \"Suggestion 2\", ...],
+          \"issues\": [\"Issue 1\", \"Issue 2\", ...],
+          \"positive_aspects\": [\"Positive aspect 1\", \"Positive aspect 2\", ...]
+        }
+
+        Follow these steps to generate the code review:
+
+        1. Analyze the provided context, including staged changes, recent commits, and project metadata.
+        2. Evaluate the code quality, looking for potential issues, improvements, and good practices.
+        3. Create a concise summary of the changes and their quality.
+        4. List specific issues found in the code.
+        5. Provide actionable suggestions for improvements.
+        6. Acknowledge positive aspects and good practices in the code.
+        7. Construct the final JSON object with all components.
+
+        Here's a minimal example of the expected output format:
+
+        {
+          \"summary\": \"The changes implement a new authentication system with good separation of concerns, but lacks proper error handling in several places.\",
+          \"code_quality\": \"The code is generally well-structured with clear naming conventions. The architecture follows established patterns, but there are some inconsistencies in error handling approaches.\",
+          \"suggestions\": [\"Consider implementing a consistent error handling strategy across all authentication operations\", \"Add unit tests for edge cases in the token validation logic\"],
+          \"issues\": [\"Missing error handling in the user registration flow\", \"Potential race condition in token refresh mechanism\"],
+          \"positive_aspects\": [\"Good separation of concerns with clear service boundaries\", \"Consistent naming conventions throughout the added components\"]
+        }
+
+        Ensure that your response is a valid JSON object matching this structure.
+        "
+    );
+
+    prompt.push_str(&review_schema_str);
+
+    Ok(prompt)
+}
+
+/// Creates a user prompt for code review generation
+pub fn create_review_user_prompt(context: &CommitContext) -> String {
+    let scorer = RelevanceScorer::new();
+    let relevance_scores = scorer.score(context);
+    let detailed_changes = format_detailed_changes(&context.staged_files, &relevance_scores);
+
+    let prompt = format!(
+        "Based on the following context, generate a code review:\n\n\
+        Branch: {}\n\n\
+        Recent commits:\n{}\n\n\
+        Staged changes:\n{}\n\n\
+        Project metadata:\n{}\n\n\
+        Detailed changes:\n{}",
+        context.branch,
+        format_recent_commits(&context.recent_commits),
+        format_staged_files(&context.staged_files, &relevance_scores),
+        format_project_metadata(&context.project_metadata),
+        detailed_changes
+    );
+
+    log_debug!("Review context details:\n{}", detailed_changes);
+
+    prompt
 }

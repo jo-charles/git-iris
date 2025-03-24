@@ -1,9 +1,9 @@
-use crate::log_debug;
 use crate::token_optimizer::TokenOptimizer;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use textwrap::wrap;
+use colored::Colorize;
 
 #[derive(Serialize, Debug, Clone)]
 pub struct CommitContext {
@@ -33,23 +33,65 @@ pub struct StagedFile {
     pub content_excluded: bool,
 }
 
+/// Model for commit message generation results
 #[derive(Serialize, Deserialize, JsonSchema, Debug, Clone)]
 pub struct GeneratedMessage {
+    /// Optional emoji for the commit message
     pub emoji: Option<String>,
+    /// Commit message title/subject line
     pub title: String,
+    /// Detailed commit message body
     pub message: String,
 }
 
+/// Model for code review generation results
+#[derive(Serialize, Deserialize, Debug, Clone, JsonSchema)]
+pub struct GeneratedReview {
+    /// Brief summary of the code changes and overall review
+    pub summary: String,
+    /// Detailed assessment of the overall code quality
+    pub code_quality: String,
+    /// List of specific suggestions for improving the code
+    pub suggestions: Vec<String>,
+    /// List of identified issues or problems in the code
+    pub issues: Vec<String>,
+    /// List of positive aspects or good practices in the code
+    pub positive_aspects: Vec<String>,
+}
+
 impl From<String> for GeneratedMessage {
-    fn from(value: String) -> Self {
-        serde_json::from_str(&value).unwrap_or_else(|e| {
-            log_debug!("Failed to parse GeneratedMessage: {}", e);
-            GeneratedMessage {
-                emoji: None,
-                title: "Parsing Error".to_string(),
-                message: format!("Failed to parse response: {e}"),
+    fn from(s: String) -> Self {
+        match serde_json::from_str(&s) {
+            Ok(message) => message,
+            Err(e) => {
+                eprintln!("Failed to parse JSON: {e}\nInput was: {s}");
+                Self {
+                    emoji: None,
+                    title: "Error parsing commit message".to_string(),
+                    message: "There was an error parsing the commit message from the AI. Please try again.".to_string(),
+                }
             }
-        })
+        }
+    }
+}
+
+impl From<String> for GeneratedReview {
+    fn from(s: String) -> Self {
+        match serde_json::from_str(&s) {
+            Ok(review) => review,
+            Err(e) => {
+                crate::log_debug!("Failed to parse review JSON: {}", e);
+                crate::log_debug!("Input was: {}", s);
+                Self {
+                    summary: "Error parsing code review".to_string(),
+                    code_quality: "There was an error parsing the code review from the AI."
+                        .to_string(),
+                    suggestions: vec!["Please try again.".to_string()],
+                    issues: vec![],
+                    positive_aspects: vec![],
+                }
+            }
+        }
     }
 }
 
@@ -128,6 +170,7 @@ impl CommitContext {
     }
 }
 
+/// Formats a commit message from a `GeneratedMessage`
 pub fn format_commit_message(response: &GeneratedMessage) -> String {
     let mut message = String::new();
 
@@ -145,4 +188,44 @@ pub fn format_commit_message(response: &GeneratedMessage) -> String {
     }
 
     message
+}
+
+impl GeneratedReview {
+    /// Formats the review into a readable string with colors and emojis for terminal display
+    pub fn format(&self) -> String {
+        let mut formatted = String::new();
+
+        formatted.push_str(&format!("{}\n\n{}\n\n",
+            "✨ Code Review Summary ✨".bright_magenta().bold(),
+            self.summary.bright_white()));
+
+        formatted.push_str(&format!("{}\n\n{}\n\n",
+            "🔍 Code Quality Assessment".bright_cyan().bold(),
+            self.code_quality.bright_white()));
+
+        if !self.positive_aspects.is_empty() {
+            formatted.push_str(&format!("{}\n\n", "✅ Positive Aspects".green().bold()));
+            for (i, aspect) in self.positive_aspects.iter().enumerate() {
+                formatted.push_str(&format!("{}. {}\n", i + 1, aspect.green()));
+            }
+            formatted.push('\n');
+        }
+
+        if !self.issues.is_empty() {
+            formatted.push_str(&format!("{}\n\n", "❌ Issues Identified".yellow().bold()));
+            for (i, issue) in self.issues.iter().enumerate() {
+                formatted.push_str(&format!("{}. {}\n", i + 1, issue.yellow()));
+            }
+            formatted.push('\n');
+        }
+
+        if !self.suggestions.is_empty() {
+            formatted.push_str(&format!("{}\n\n", "💡 Suggestions for Improvement".bright_blue().bold()));
+            for (i, suggestion) in self.suggestions.iter().enumerate() {
+                formatted.push_str(&format!("{}. {}\n", i + 1, suggestion.bright_blue()));
+            }
+        }
+
+        formatted
+    }
 }

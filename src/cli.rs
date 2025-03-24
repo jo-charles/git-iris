@@ -5,8 +5,8 @@ use crate::common::CommonParams;
 use crate::llm::get_available_provider_names;
 use crate::log_debug;
 use crate::ui;
-use clap::builder::{styling::AnsiColor, Styles};
-use clap::{crate_version, Parser, Subcommand};
+use clap::builder::{Styles, styling::AnsiColor};
+use clap::{Parser, Subcommand, crate_version};
 
 const LOG_FILE: &str = "git-iris-debug.log";
 
@@ -73,6 +73,19 @@ pub enum Commands {
         /// Skip the verification step (pre/post commit hooks)
         #[arg(long, help = "Skip verification steps (pre/post commit hooks)")]
         no_verify: bool,
+    },
+    /// Review staged changes and provide feedback
+    #[command(
+        about = "Review staged changes using AI",
+        long_about = "Generate a detailed code review of staged changes using AI based on the current Git context."
+    )]
+    Review {
+        #[command(flatten)]
+        common: CommonParams,
+
+        /// Print the generated review to stdout and exit
+        #[arg(short, long, help = "Print the generated review to stdout and exit")]
+        print: bool,
     },
     /// Configure the AI-assisted Git commit message generator
     #[command(about = "Configure the AI-assisted Git commit message generator")]
@@ -200,7 +213,11 @@ pub async fn handle_command(command: Commands) -> anyhow::Result<()> {
         } => {
             log_debug!(
                 "Handling 'gen' command with common: {:?}, auto_commit: {}, no_gitmoji: {}, print: {}, no_verify: {}",
-                common, auto_commit, no_gitmoji, print, no_verify
+                common,
+                auto_commit,
+                no_gitmoji,
+                print,
+                no_verify
             );
 
             ui::print_version(crate_version!());
@@ -217,7 +234,11 @@ pub async fn handle_command(command: Commands) -> anyhow::Result<()> {
         } => {
             log_debug!(
                 "Handling 'config' command with common: {:?}, api_key: {:?}, model: {:?}, token_limit: {:?}, param: {:?}",
-                common, api_key, model, token_limit, param
+                common,
+                api_key,
+                model,
+                token_limit,
+                param
             );
             commands::handle_config_command(common, api_key, model, token_limit, param)?;
         }
@@ -242,6 +263,16 @@ pub async fn handle_command(command: Commands) -> anyhow::Result<()> {
                 to
             );
             changes::handle_release_notes_command(common, from, to).await?;
+        }
+        Commands::Review { common, print } => {
+            log_debug!(
+                "Handling 'review' command with common: {:?}, print: {}",
+                common,
+                print
+            );
+            ui::print_version(crate_version!());
+            println!();
+            commit::review::handle_review_command(common, print).await?;
         }
     }
 

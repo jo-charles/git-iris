@@ -1,10 +1,12 @@
 mod cli;
 mod relevance;
+pub mod review;
 
 pub mod prompt;
 pub mod service;
 
 pub use cli::handle_gen_command;
+pub use review::handle_review_command;
 use git2::FileMode;
 pub use service::IrisCommitService;
 
