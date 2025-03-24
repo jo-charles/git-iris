@@ -15,14 +15,21 @@ The configuration file is organized into these main sections:
 ### Global Settings
 
 - `use_gitmoji`: Boolean (optional)
+
   - Description: Enables Gitmoji in commit messages.
   - Default: `false`
   - Example: `use_gitmoji = true`
 
 - `custom_instructions`: String (optional)
-  - Description: Custom instructions included in all LLM prompts.
+
+  - Description: Custom instructions included in all LLM prompts for commit messages, code reviews, changelogs, and release notes.
   - Default: `""`
   - Example: `custom_instructions = "Always mention the ticket number and focus on the impact of changes."`
+
+- `instruction_preset`: String (optional)
+  - Description: Default preset for AI instructions.
+  - Default: `"default"`
+  - Example: `instruction_preset = "conventional"`
 
 ### Default Provider
 
@@ -36,15 +43,18 @@ The configuration file is organized into these main sections:
 Each provider has its own subtable under `[providers]` with these fields:
 
 - `api_key`: String (required)
+
   - Description: The provider's API key.
   - Example: `api_key = "sk-1234567890abcdef"`
 
 - `model`: String (optional)
+
   - Description: The specific model to use.
   - Default: Provider-dependent
   - Example: `model = "gpt-4o"`
 
 - `additional_params`: Table (optional)
+
   - Description: Additional provider or model-specific parameters.
   - Example: `additional_params = { temperature = "0.7", max_tokens = "150" }`
 
@@ -69,6 +79,7 @@ Always mention the ticket number if applicable.
 Focus on the impact of changes rather than implementation details.
 """
 default_provider = "openai"
+instruction_preset = "conventional"
 
 [providers.openai]
 api_key = "sk-1234567890abcdef"
@@ -94,6 +105,7 @@ git-iris config --provider openai --param temperature=0.7 --param max_tokens=150
 git-iris config --gitmoji true
 git-iris config --custom-instructions "Your custom instructions here"
 git-iris config --token-limit 8000
+git-iris config --preset conventional
 ```
 
 You can also edit the `~/.config/git-iris/config.toml` file directly with a text editor.
@@ -136,5 +148,6 @@ If you encounter issues:
 2. Check that you're using supported models for each provider.
 3. Ensure your custom instructions don't exceed token limits.
 4. Review the Git-Iris logs for any error messages.
+5. For code review or changelog generation issues, try using a higher token limit.
 
 For further assistance, please refer to the [Git-Iris documentation](https://github.com/hyperb1iss/git-iris/wiki) or [open an issue](https://github.com/hyperb1iss/git-iris/issues) on the GitHub repository.

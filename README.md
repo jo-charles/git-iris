@@ -2,11 +2,14 @@
 
 <div align="center">
 
-[![CI/CD](https://github.com/hyperb1iss/git-iris/actions/workflows/cicd.yml/badge.svg)](https://github.com/hyperb1iss/git-iris/actions)
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![GitHub Release][releases-shield]][releases]
+[![CI/CD](https://img.shields.io/github/actions/workflow/status/hyperb1iss/git-iris/cicd.yml?style=for-the-badge&logo=github-actions&logoColor=white&color=4C566A)](https://github.com/hyperb1iss/git-iris/actions)
+[![License](https://img.shields.io/badge/License-Apache%202.0-5E81AC?style=for-the-badge&logo=apache&logoColor=white&color=3B6EA8)](https://opensource.org/licenses/Apache-2.0)
+[![GitHub Release](https://img.shields.io/github/release/hyperb1iss/git-iris.svg?style=for-the-badge&logo=github&logoColor=white&color=9D6DB3)][releases]
+[![Crates.io](https://img.shields.io/crates/v/git-iris.svg?style=for-the-badge&logo=rust&logoColor=white&color=D35D47)][crates]
+[![Rust](https://img.shields.io/badge/rust-stable-EBCB8B?style=for-the-badge&logo=rust&logoColor=white&color=EFBB4D)](https://www.rust-lang.org/)
+[![ko-fi](https://img.shields.io/badge/Ko--fi-Support%20Me-A3BE8C?style=for-the-badge&logo=ko-fi&logoColor=white&color=82B062)](https://ko-fi.com/hyperb1iss)
 
-*Elevate your Git workflow with the power of AI* 🚀
+_Elevate your Git workflow with the power of AI_ 🚀
 
 [Installation](#installation) • [Configuration](#configuration) • [Usage](#usage) • [Contributing](#contributing) • [License](#license)
 
@@ -18,17 +21,18 @@
   <img src="https://raw.githubusercontent.com/hyperb1iss/git-iris/main/docs/images/git-iris-screenshot-3.png" alt="Git-Iris Screenshot 3" width="33%">
 </div>
 
-*Git-Iris in action: AI-powered Git workflow assistance*
+_Git-Iris in action: AI-powered Git workflow assistance_
 
 ## 🌟 Overview
 
-Git-Iris is a comprehensive AI-powered Git workflow assistant that enhances your development process from start to finish. It offers intelligent support for crafting meaningful commit messages, generating insightful changelogs, and creating detailed release notes. By leveraging advanced AI models, Git-Iris  boosts your productivity and improves the quality of your project documentation.
+Git-Iris is a comprehensive AI-powered Git workflow assistant that enhances your development process from start to finish. It offers intelligent support for crafting meaningful commit messages, generating insightful changelogs, creating detailed release notes, and providing code reviews. By leveraging advanced AI models, Git-Iris boosts your productivity and improves the quality of your project documentation.
 
 ## ✨ Features
 
 Git-Iris offers a suite of AI-powered tools to enhance your Git workflow:
 
 - 🤖 **Intelligent Commit Messages**: Generate context-aware, meaningful commit messages
+- 🔍 **AI-Powered Code Reviews**: Get detailed feedback on your changes before committing
 - 📜 **Dynamic Changelog Generation**: Create structured, detailed changelogs between any two Git references
 - 📋 **Comprehensive Release Notes**: Automatically generate release notes with summaries and key changes
 - 🔄 **Multi-Provider AI Support**: Leverage OpenAI GPT-4o, Anthropic Claude, or Ollama for AI capabilities
@@ -58,6 +62,7 @@ cargo install git-iris
 ### Manual Installation
 
 1. Clone the repository:
+
    ```bash
    git clone https://github.com/hyperb1iss/git-iris.git
    cd git-iris
@@ -120,6 +125,7 @@ git-iris gen
 ```
 
 Options:
+
 - `-a`, `--auto-commit`: Automatically commit with the generated message
 - `-i`, `--instructions`: Provide custom instructions for this commit
 - `--provider`: Specify an LLM provider (openai, claude, ollama)
@@ -130,6 +136,7 @@ Options:
 - `--no-verify`: Skip verification steps (pre/post commit hooks)
 
 Example:
+
 ```bash
 git-iris gen -a -i "Focus on performance improvements" --provider claude --preset detailed
 ```
@@ -154,6 +161,37 @@ The interactive CLI allows you to refine and perfect your commit messages:
 - Press Enter to commit
 - Press Esc to cancel
 
+### Getting an AI Code Review
+
+Git-Iris can analyze your staged changes and provide a detailed code review:
+
+```bash
+git-iris review
+```
+
+The review includes:
+
+- A summary of the changes
+- Code quality assessment
+- Suggestions for improvement
+- Identified issues
+- Positive aspects of your code
+
+Options:
+
+- `-i`, `--instructions`: Provide custom instructions for this review
+- `--provider`: Specify an LLM provider (openai, claude, ollama)
+- `--preset`: Use a specific instruction preset
+- `-p`, `--print`: Print the generated review to stdout and exit
+
+Example:
+
+```bash
+git-iris review -i "Pay special attention to error handling" --provider claude
+```
+
+This allows you to get valuable feedback on your code before committing it, improving code quality and catching potential issues early.
+
 ### Generating a Changelog
 
 Git-Iris can generate changelogs between two Git references:
@@ -163,6 +201,7 @@ git-iris changelog --from <from-ref> --to <to-ref>
 ```
 
 Options:
+
 - `--from`: Starting Git reference (commit hash, tag, or branch name)
 - `--to`: Ending Git reference (defaults to HEAD if not specified)
 - `--instructions`: Custom instructions for changelog generation
@@ -171,6 +210,7 @@ Options:
 - `--gitmoji`: Enable or disable Gitmoji in the changelog
 
 Example:
+
 ```bash
 git-iris changelog --from v1.0.0 --to v1.1.0 --detail-level detailed --gitmoji true
 ```
@@ -186,6 +226,7 @@ git-iris release-notes --from <from-ref> --to <to-ref>
 ```
 
 Options:
+
 - `--from`: Starting Git reference (commit hash, tag, or branch name)
 - `--to`: Ending Git reference (defaults to HEAD if not specified)
 - `--instructions`: Custom instructions for release notes generation
@@ -194,6 +235,7 @@ Options:
 - `--gitmoji`: Enable or disable Gitmoji in the release notes
 
 Example:
+
 ```bash
 git-iris release-notes --from v1.0.0 --to v1.1.0 --preset conventional --detail-level standard
 ```
@@ -244,11 +286,13 @@ Presets work seamlessly with other Git-Iris features. For example, if you have G
 Custom instructions allow you to provide specific guidance for commit message generation. These can be set globally or per-commit.
 
 Setting global custom instructions:
+
 ```bash
 git-iris config --instructions "Always include the ticket number and mention performance impacts"
 ```
 
 Providing per-commit instructions:
+
 ```bash
 git-iris gen -i "Emphasize security implications of this change"
 ```
@@ -274,21 +318,25 @@ This will use the 'detailed' preset instead of your default, along with the cust
 ### Examples of Custom Instructions
 
 1. **Ticket Number Integration**
+
    ```
    Always start the commit message with the JIRA ticket number in square brackets
    ```
 
 2. **Language-Specific Conventions**
+
    ```
    For Rust files, mention any changes to public APIs or use of unsafe code
    ```
 
 3. **Team-Specific Guidelines**
+
    ```
    Follow the Angular commit message format: <type>(<scope>): <subject>
    ```
 
 4. **Project-Specific Context**
+
    ```
    For the authentication module, always mention if there are changes to the user model or permissions
    ```
@@ -316,13 +364,6 @@ Distributed under the Apache 2.0 License. See `LICENSE` for more information.
 
 </div>
 
-## 💖 Acknowledgements
-
-- [OpenAI](https://openai.com/) and [Anthropic](https://www.anthropic.com/) for their cutting-edge language models
-- The Rust community for the robust ecosystem and tooling
-
----
-
 <div align="center">
 
 Created by [Stefanie Jane 🌠](https://github.com/hyperb1iss)
@@ -331,8 +372,8 @@ If you find Git-Iris useful, [buy me a Monster Ultra Violet](https://ko-fi.com/h
 
 </div>
 
-[crates-shield]: https://img.shields.io/crates/v/git-iris.svg
+[crates-shield]: https://img.shields.io/crates/v/git-iris.svg?style=for-the-badge&logo=rust&logoColor=white&color=D35D47
 [crates]: https://crates.io/crates/git-iris
-[releases-shield]: https://img.shields.io/github/release/hyperb1iss/git-iris.svg
+[releases-shield]: https://img.shields.io/github/release/hyperb1iss/git-iris.svg?style=for-the-badge&logo=github&logoColor=white&color=9D6DB3
 [releases]: https://github.com/hyperb1iss/git-iris/releases
-[license-shield]: https://img.shields.io/github/license/hyperb1iss/git-iris.svg
+[license-shield]: https://img.shields.io/github/license/hyperb1iss/git-iris.svg?style=for-the-badge&logo=apache&logoColor=white&color=3B6EA8
