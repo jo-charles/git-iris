@@ -7,6 +7,7 @@ use crate::log_debug;
 use crate::ui;
 use clap::builder::{Styles, styling::AnsiColor};
 use clap::{Parser, Subcommand, crate_version};
+use colored::Colorize;
 
 const LOG_FILE: &str = "git-iris-debug.log";
 
@@ -15,8 +16,8 @@ const LOG_FILE: &str = "git-iris-debug.log";
 #[command(
     author,
     version = crate_version!(),
-    about = "AI-assisted Git commit message generator",
-    long_about = None,
+    about = "Git-Iris: AI-powered Git workflow assistant",
+    long_about = "Git-Iris enhances your Git workflow with AI-assisted commit messages, code reviews, changelogs, and more.",
     disable_version_flag = true,
     after_help = get_dynamic_help(),
     styles = get_styles(),
@@ -47,7 +48,10 @@ pub struct Cli {
 
 /// Enumeration of available subcommands
 #[derive(Subcommand)]
+#[command(subcommand_negates_reqs = true)]
+#[command(subcommand_precedence_over_arg = true)]
 pub enum Commands {
+    // Feature commands first
     /// Generate a commit message using AI
     #[command(
         about = "Generate a commit message using AI",
@@ -74,6 +78,7 @@ pub enum Commands {
         #[arg(long, help = "Skip verification steps (pre/post commit hooks)")]
         no_verify: bool,
     },
+
     /// Review staged changes and provide feedback
     #[command(
         about = "Review staged changes using AI",
@@ -87,8 +92,46 @@ pub enum Commands {
         #[arg(short, long, help = "Print the generated review to stdout and exit")]
         print: bool,
     },
+
+    /// Generate a changelog
+    #[command(
+        about = "Generate a changelog",
+        long_about = "Generate a changelog between two specified Git references."
+    )]
+    Changelog {
+        #[command(flatten)]
+        common: CommonParams,
+
+        /// Starting Git reference (commit hash, tag, or branch name)
+        #[arg(long, required = true)]
+        from: String,
+
+        /// Ending Git reference (commit hash, tag, or branch name). Defaults to HEAD if not specified.
+        #[arg(long)]
+        to: Option<String>,
+    },
+
+    /// Generate release notes
+    #[command(
+        about = "Generate release notes",
+        long_about = "Generate comprehensive release notes between two specified Git references."
+    )]
+    ReleaseNotes {
+        #[command(flatten)]
+        common: CommonParams,
+
+        /// Starting Git reference (commit hash, tag, or branch name)
+        #[arg(long, required = true)]
+        from: String,
+
+        /// Ending Git reference (commit hash, tag, or branch name). Defaults to HEAD if not specified.
+        #[arg(long)]
+        to: Option<String>,
+    },
+
+    // Configuration and utility commands
     /// Configure the AI-assisted Git commit message generator
-    #[command(about = "Configure the AI-assisted Git commit message generator")]
+    #[command(about = "Configure Git-Iris settings and providers")]
     Config {
         #[command(flatten)]
         common: CommonParams,
@@ -116,41 +159,6 @@ pub enum Commands {
     /// List available instruction presets
     #[command(about = "List available instruction presets")]
     ListPresets,
-
-    /// Generate a changelog
-    #[command(
-        about = "Generate a changelog",
-        long_about = "Generate a changelog between two specified Git references."
-    )]
-    Changelog {
-        #[command(flatten)]
-        common: CommonParams,
-
-        /// Starting Git reference (commit hash, tag, or branch name)
-        #[arg(long, required = true)]
-        from: String,
-
-        /// Ending Git reference (commit hash, tag, or branch name). Defaults to HEAD if not specified.
-        #[arg(long)]
-        to: Option<String>,
-    },
-    /// Generate release notes
-    #[command(
-        about = "Generate release notes",
-        long_about = "Generate comprehensive release notes between two specified Git references."
-    )]
-    ReleaseNotes {
-        #[command(flatten)]
-        common: CommonParams,
-
-        /// Starting Git reference (commit hash, tag, or branch name)
-        #[arg(long, required = true)]
-        from: String,
-
-        /// Ending Git reference (commit hash, tag, or branch name). Defaults to HEAD if not specified.
-        #[arg(long)]
-        to: Option<String>,
-    },
 }
 
 /// Define custom styles for Clap
@@ -172,8 +180,16 @@ pub fn parse_args() -> Cli {
 
 /// Generate dynamic help including available LLM providers
 fn get_dynamic_help() -> String {
-    let providers = get_available_provider_names().join(", ");
-    format!("Available providers: {providers}")
+    let mut providers = get_available_provider_names();
+    providers.sort(); // Sort alphabetically
+
+    let providers_list = providers
+        .iter()
+        .map(|p| format!("{}", p.bold()))
+        .collect::<Vec<_>>()
+        .join(" • ");
+
+    format!("\nAvailable LLM Providers: {providers_list}")
 }
 
 /// Main function to parse arguments and handle the command
