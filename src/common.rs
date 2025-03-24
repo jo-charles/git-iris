@@ -68,7 +68,13 @@ pub struct CommonParams {
 impl CommonParams {
     pub fn apply_to_config(&self, config: &mut Config) -> Result<()> {
         if let Some(provider) = &self.provider {
-            config.default_provider.clone_from(provider);
+            // Convert "claude" to "anthropic" for backward compatibility
+            let provider_name = if provider.to_lowercase() == "claude" {
+                "anthropic".to_string()
+            } else {
+                provider.clone()
+            };
+            config.default_provider.clone_from(&provider_name);
         }
         if let Some(instructions) = &self.instructions {
             config.set_temp_instructions(Some(instructions.clone()));
@@ -95,7 +101,13 @@ impl CommonParams {
 
 /// Validates that a provider name is available in the system
 pub fn available_providers_parser(s: &str) -> Result<String, String> {
-    let provider_name = s.to_lowercase();
+    let mut provider_name = s.to_lowercase();
+
+    // Handle legacy "claude" provider name by mapping it to "anthropic"
+    if provider_name == "claude" {
+        provider_name = "anthropic".to_string();
+    }
+
     let available_providers = llm::get_available_provider_names();
 
     if available_providers

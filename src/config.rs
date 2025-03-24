@@ -65,7 +65,34 @@ impl Config {
             return Ok(Self::default());
         }
         let config_content = fs::read_to_string(config_path)?;
-        let config: Self = toml::from_str(&config_content)?;
+        let mut config: Self = toml::from_str(&config_content)?;
+
+        // Migration: rename "claude" provider to "anthropic" if it exists
+        let mut migration_performed = false;
+        if config.providers.contains_key("claude") {
+            log_debug!("Migrating 'claude' provider to 'anthropic'");
+            if let Some(claude_config) = config.providers.remove("claude") {
+                config
+                    .providers
+                    .insert("anthropic".to_string(), claude_config);
+            }
+
+            // Update default provider if it was set to claude
+            if config.default_provider == "claude" {
+                config.default_provider = "anthropic".to_string();
+            }
+
+            migration_performed = true;
+        }
+
+        // Save the config if a migration was performed
+        if migration_performed {
+            log_debug!("Saving configuration after migration");
+            if let Err(e) = config.save() {
+                log_debug!("Failed to save migrated config: {}", e);
+            }
+        }
+
         log_debug!("Configuration loaded: {:?}", config);
         Ok(config)
     }
@@ -184,10 +211,17 @@ impl Config {
 
     /// Get the configuration for a specific provider
     pub fn get_provider_config(&self, provider: &str) -> Option<&ProviderConfig> {
+        // Special case: redirect "claude" to "anthropic"
+        let provider_to_lookup = if provider.to_lowercase() == "claude" {
+            "anthropic"
+        } else {
+            provider
+        };
+
         // First try direct lookup
-        self.providers.get(provider).or_else(|| {
+        self.providers.get(provider_to_lookup).or_else(|| {
             // If not found, try lowercased version
-            let lowercase_provider = provider.to_lowercase();
+            let lowercase_provider = provider_to_lookup.to_lowercase();
 
             self.providers.get(&lowercase_provider).or_else(|| {
                 // If the provider is not in the config, check if it's a valid provider

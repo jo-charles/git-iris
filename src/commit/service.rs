@@ -105,10 +105,10 @@ impl IrisCommitService {
             .and_then(|p| p.token_limit)
             .unwrap_or({
                 match self.provider_name.as_str() {
-                    "openai" => 16_000,     // Default for OpenAI
-                    "anthropic" => 100_000, // Anthropic Claude has large context
+                    "openai" => 16_000,          // Default for OpenAI
+                    "anthropic" => 100_000,      // Anthropic Claude has large context
                     "google" | "groq" => 32_000, // Default for Google and Groq
-                    _ => 8_000,             // Conservative default for other providers
+                    _ => 8_000,                  // Conservative default for other providers
                 }
             });
 
