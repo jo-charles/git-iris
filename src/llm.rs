@@ -64,11 +64,13 @@ where
         }
     }
 
-    // Set max tokens if specified in additional params
+    // Set max tokens if specified in additional params, otherwise use 4096 as default
     if let Some(max_tokens) = provider_config.additional_params.get("max_tokens") {
         if let Ok(mt_val) = max_tokens.parse::<u32>() {
             builder = builder.max_tokens(mt_val);
         }
+    } else {
+        builder = builder.max_tokens(4096);
     }
 
     // Set top_p if specified in additional params
