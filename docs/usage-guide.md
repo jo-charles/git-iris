@@ -52,6 +52,9 @@ git-iris config --provider openai --api-key YOUR_OPENAI_API_KEY
 # Set up Claude as the provider
 git-iris config --provider claude --api-key YOUR_CLAUDE_API_KEY
 
+# Set up Gemini as the provider
+git-iris config --provider gemini --api-key YOUR_GEMINI_API_KEY
+
 # Enable Gitmoji
 git-iris config --gitmoji true
 

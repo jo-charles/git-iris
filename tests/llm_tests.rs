@@ -80,6 +80,10 @@ fn test_get_default_model_for_provider() {
         "claude-3-7-sonnet-20250219"
     );
     assert_eq!(
+        get_default_model_for_provider(&LLMProviderType::Gemini),
+        "gemini-2.0-flash"
+    );
+    assert_eq!(
         get_default_model_for_provider(&LLMProviderType::Test),
         "test-model"
     );
@@ -94,6 +98,10 @@ fn test_get_default_token_limit_for_provider() -> Result<()> {
     assert_eq!(
         get_default_token_limit_for_provider(&LLMProviderType::Claude)?,
         150_000
+    );
+    assert_eq!(
+        get_default_token_limit_for_provider(&LLMProviderType::Gemini)?,
+        1_048_576
     );
     assert_eq!(
         get_default_token_limit_for_provider(&LLMProviderType::Test)?,
@@ -111,6 +119,10 @@ fn test_llm_provider_type_from_str() -> Result<()> {
     assert_eq!(
         LLMProviderType::from_str("claude")?,
         LLMProviderType::Claude
+    );
+    assert_eq!(
+        LLMProviderType::from_str("gemini")?,
+        LLMProviderType::Gemini
     );
     assert_eq!(LLMProviderType::from_str("test")?, LLMProviderType::Test);
     assert!(LLMProviderType::from_str("invalid").is_err());

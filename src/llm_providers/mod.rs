@@ -6,6 +6,7 @@ use std::str::FromStr;
 use strum::IntoEnumIterator;
 use strum_macros::{AsRefStr, EnumIter};
 mod claude;
+mod gemini;
 mod ollama;
 mod openai;
 
@@ -18,6 +19,7 @@ pub enum LLMProviderType {
     OpenAI,
     Claude,
     Ollama,
+    Gemini,
     Test,
 }
 
@@ -35,6 +37,7 @@ impl FromStr for LLMProviderType {
             "openai" => Ok(Self::OpenAI),
             "claude" => Ok(Self::Claude),
             "ollama" => Ok(Self::Ollama),
+            "gemini" => Ok(Self::Gemini),
             "test" => Ok(Self::Test),
             _ => Err(anyhow::anyhow!("Unsupported provider: {}", s)),
         }
@@ -68,6 +71,7 @@ pub fn create_provider(
         LLMProviderType::OpenAI => Ok(Box::new(openai::OpenAIProvider::new(config))),
         LLMProviderType::Claude => Ok(Box::new(claude::ClaudeProvider::new(config))),
         LLMProviderType::Ollama => Ok(Box::new(ollama::OllamaProvider::new(config))),
+        LLMProviderType::Gemini => Ok(Box::new(gemini::GeminiProvider::new(config))),
         LLMProviderType::Test => Ok(Box::new(test::TestLLMProvider::new(config))),
     }
 }
@@ -77,6 +81,7 @@ pub fn get_provider_metadata(provider_type: &LLMProviderType) -> ProviderMetadat
         LLMProviderType::OpenAI => openai::get_metadata(),
         LLMProviderType::Claude => claude::get_metadata(),
         LLMProviderType::Ollama => ollama::get_metadata(),
+        LLMProviderType::Gemini => gemini::get_metadata(),
         LLMProviderType::Test => test::get_metadata(),
     }
 }

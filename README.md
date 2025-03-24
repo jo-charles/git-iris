@@ -35,7 +35,7 @@ Git-Iris offers a suite of AI-powered tools to enhance your Git workflow:
 - 🔍 **AI-Powered Code Reviews**: Get detailed feedback on your changes before committing
 - 📜 **Dynamic Changelog Generation**: Create structured, detailed changelogs between any two Git references
 - 📋 **Comprehensive Release Notes**: Automatically generate release notes with summaries and key changes
-- 🔄 **Multi-Provider AI Support**: Leverage OpenAI GPT-4o, Anthropic Claude, or Ollama for AI capabilities
+- 🔄 **Multi-Provider AI Support**: Leverage OpenAI GPT-4o, Anthropic Claude, Gemini, or Ollama for AI capabilities
 - 🎨 **Gitmoji Integration**: Add expressive emojis to your commits, changelogs, and release notes
 - 🖥️ **Interactive CLI**: Refine AI-generated content through an intuitive command-line interface
 - 🔧 **Customizable Workflows**: Tailor AI behavior with custom instructions and presets
@@ -84,6 +84,9 @@ git-iris config --provider openai --api-key YOUR_OPENAI_API_KEY
 
 # For Anthropic Claude
 git-iris config --provider claude --api-key YOUR_CLAUDE_API_KEY
+
+# For Google Gemini
+git-iris config --provider gemini --api-key YOUR_GEMINI_API_KEY
 
 # For Ollama (no API key required)
 git-iris config --provider ollama

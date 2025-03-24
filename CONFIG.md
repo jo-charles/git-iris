@@ -69,6 +69,8 @@ Each provider has its own subtable under `[providers]` with these fields:
    - Default model: "gpt-o4"
 2. Claude
    - Default model: "claude-3-7-sonnet-20250219"
+3. Gemini
+   - Default model: "gemini-2.0-flash"
 
 ## Example Configuration File
 
@@ -92,6 +94,12 @@ api_key = "sk-abcdef1234567890"
 model = "claude-3-7-sonnet-20250219"
 additional_params = { temperature = "0.8" }
 custom_token_limit = 100000
+
+[providers.gemini]
+api_key = "your-gemini-api-key"
+model = "gemini-2.0-flash"
+additional_params = { temperature = "0.7" }
+custom_token_limit = 1048576
 ```
 
 ## Changing Configuration
