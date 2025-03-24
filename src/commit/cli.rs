@@ -4,12 +4,10 @@ use crate::common::CommonParams;
 use crate::config::Config;
 use crate::context::format_commit_message;
 use crate::instruction_presets::PresetType;
-use crate::llm_providers::LLMProviderType;
 use crate::messages;
 use crate::tui::run_tui_commit;
 use crate::ui;
 use anyhow::{Context, Result};
-use std::str::FromStr;
 use std::sync::Arc;
 
 #[allow(clippy::fn_params_excessive_bools)] // its ok to use multiple bools here
@@ -32,13 +30,13 @@ pub async fn handle_gen_command(
     common.apply_to_config(&mut config)?;
     let current_dir = std::env::current_dir()?;
 
-    let provider_type = LLMProviderType::from_str(&config.default_provider)?;
+    let provider_name = &config.default_provider;
 
     let service = Arc::new(
         IrisCommitService::new(
             config.clone(),
             &current_dir.clone(),
-            provider_type,
+            provider_name,
             use_gitmoji && config.use_gitmoji,
             verify,
         )

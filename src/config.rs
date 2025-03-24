@@ -1,7 +1,7 @@
 use crate::git::GitRepo;
 use crate::instruction_presets::get_instruction_preset_library;
-use crate::llm_providers::{
-    LLMProviderConfig, LLMProviderType, get_available_providers, get_provider_metadata,
+use crate::llm::{
+    get_available_provider_names, get_default_model_for_provider, provider_requires_api_key,
 };
 use crate::log_debug;
 
@@ -11,7 +11,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
-use std::str::FromStr;
 
 /// Configuration structure for the Git-Iris application
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -146,11 +145,11 @@ impl Config {
             self.default_provider.clone_from(&provider);
             if !self.providers.contains_key(&provider) {
                 // Only insert a new provider if it requires configuration
-                let provider_type =
-                    LLMProviderType::from_str(&provider).unwrap_or(LLMProviderType::OpenAI);
-                if get_provider_metadata(&provider_type).requires_api_key {
-                    self.providers
-                        .insert(provider.clone(), ProviderConfig::default_for(&provider));
+                if provider_requires_api_key(&provider.to_lowercase()) {
+                    self.providers.insert(
+                        provider.clone(),
+                        ProviderConfig::default_for(&provider.to_lowercase()),
+                    );
                 }
             }
         }
@@ -185,16 +184,22 @@ impl Config {
 
     /// Get the configuration for a specific provider
     pub fn get_provider_config(&self, provider: &str) -> Option<&ProviderConfig> {
+        // First try direct lookup
         self.providers.get(provider).or_else(|| {
-            // If the provider is not in the config, check if it's a valid provider
-            if LLMProviderType::from_str(provider).is_ok() {
-                // Return None for valid providers not in the config
-                // This allows the code to use default values for providers like Ollama
-                None
-            } else {
-                // Return None for invalid providers
-                None
-            }
+            // If not found, try lowercased version
+            let lowercase_provider = provider.to_lowercase();
+
+            self.providers.get(&lowercase_provider).or_else(|| {
+                // If the provider is not in the config, check if it's a valid provider
+                if get_available_provider_names().contains(&lowercase_provider) {
+                    // Return None for valid providers not in the config
+                    // This allows the code to use default values for providers like Ollama
+                    None
+                } else {
+                    // Return None for invalid providers
+                    None
+                }
+            })
         })
     }
 }
@@ -202,19 +207,16 @@ impl Config {
 impl Default for Config {
     fn default() -> Self {
         let mut providers = HashMap::new();
-        for provider in get_available_providers() {
-            providers.insert(
-                provider.to_string(),
-                ProviderConfig::default_for(provider.as_ref()),
-            );
+        for provider in get_available_provider_names() {
+            providers.insert(provider.clone(), ProviderConfig::default_for(&provider));
         }
 
         // Default to OpenAI if available, otherwise use the first available provider
-        let default_provider = if providers.contains_key("OpenAI") {
-            "OpenAI".to_string()
+        let default_provider = if providers.contains_key("openai") {
+            "openai".to_string()
         } else {
             providers.keys().next().map_or_else(
-                || "OpenAI".to_string(), // Fallback even if no providers (should never happen)
+                || "openai".to_string(), // Fallback even if no providers (should never happen)
                 std::clone::Clone::clone,
             )
         };
@@ -234,34 +236,16 @@ impl Default for Config {
 impl ProviderConfig {
     /// Create a default provider configuration for a given provider
     pub fn default_for(provider: &str) -> Self {
-        let provider_type =
-            LLMProviderType::from_str(provider).unwrap_or_else(|_| get_available_providers()[0]);
-        let metadata = get_provider_metadata(&provider_type);
         Self {
             api_key: String::new(),
-            model: metadata.default_model.to_string(),
+            model: get_default_model_for_provider(provider).to_string(),
             additional_params: HashMap::new(),
-            token_limit: Some(metadata.default_token_limit),
+            token_limit: None, // Will use the default from get_default_token_limit_for_provider
         }
     }
 
     /// Get the token limit for this provider configuration
-    pub fn get_token_limit(&self) -> usize {
-        self.token_limit.unwrap_or_else(|| {
-            let provider_type = LLMProviderType::from_str(&self.model)
-                .unwrap_or_else(|_| get_available_providers()[0]);
-            get_provider_metadata(&provider_type).default_token_limit
-        })
-    }
-
-    /// Convert to `LLMProviderConfig`
-    pub fn to_llm_provider_config(&self) -> LLMProviderConfig {
-        let additional_params = self.additional_params.clone();
-
-        LLMProviderConfig {
-            api_key: self.api_key.clone(),
-            model: self.model.clone(),
-            additional_params,
-        }
+    pub fn get_token_limit(&self) -> Option<usize> {
+        self.token_limit
     }
 }

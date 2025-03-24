@@ -2,7 +2,6 @@ use anyhow::Result;
 use git_iris::commit::IrisCommitService;
 use git_iris::config::Config;
 use git_iris::git::GitRepo;
-use git_iris::llm_providers::LLMProviderType;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tempfile::TempDir;
@@ -39,11 +38,11 @@ async fn test_perform_commit() -> Result<()> {
     let (temp_dir, _git_repo) = setup_test_repo()?;
     let config = Config::default();
     let repo_path = PathBuf::from(temp_dir.path());
-    let provider_type = LLMProviderType::Test;
+    let provider_name = "test";
     let use_gitmoji = true;
     let verify = true;
 
-    let service = IrisCommitService::new(config, &repo_path, provider_type, use_gitmoji, verify)?;
+    let service = IrisCommitService::new(config, &repo_path, provider_name, use_gitmoji, verify)?;
 
     let result = service.perform_commit("Test commit message")?;
     println!("Perform commit result: {result:?}");

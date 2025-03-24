@@ -1,6 +1,6 @@
 use crate::config::Config;
 use crate::instruction_presets::{PresetType, get_instruction_preset_library};
-use crate::llm_providers::LLMProviderType;
+use crate::llm;
 use anyhow::Result;
 use clap::Args;
 use std::str::FromStr;
@@ -68,7 +68,7 @@ pub struct CommonParams {
 impl CommonParams {
     pub fn apply_to_config(&self, config: &mut Config) -> Result<()> {
         if let Some(provider) = &self.provider {
-            config.default_provider = LLMProviderType::from_str(provider)?.to_string();
+            config.default_provider.clone_from(provider);
         }
         if let Some(instructions) = &self.instructions {
             config.set_temp_instructions(Some(instructions.clone()));
@@ -93,14 +93,20 @@ impl CommonParams {
     }
 }
 
-/// Validate provider input against available providers
+/// Validates that a provider name is available in the system
 pub fn available_providers_parser(s: &str) -> Result<String, String> {
-    let available_providers = crate::llm::get_available_provider_names();
-    if available_providers.contains(&s.to_lowercase()) && s.to_lowercase() != "test" {
-        Ok(s.to_lowercase())
+    let provider_name = s.to_lowercase();
+    let available_providers = llm::get_available_provider_names();
+
+    if available_providers
+        .iter()
+        .any(|p| p.to_lowercase() == provider_name)
+    {
+        Ok(provider_name)
     } else {
         Err(format!(
-            "Invalid provider. Available providers are: {}",
+            "Invalid provider '{}'. Available providers: {}",
+            s,
             available_providers.join(", ")
         ))
     }

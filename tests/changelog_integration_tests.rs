@@ -8,7 +8,6 @@ use git_iris::changes::models::{ChangelogResponse, ReleaseNotesResponse};
 use git_iris::changes::{ChangelogGenerator, ReleaseNotesGenerator};
 use git_iris::common::DetailLevel;
 use git_iris::config::Config;
-use git_iris::llm_providers::LLMProviderType;
 use git_iris::logger;
 use git2::Repository;
 use std::env;
@@ -88,7 +87,7 @@ fn setup_test_repo() -> Result<(TempDir, Repository)> {
 fn setup_config() -> Result<Config> {
     dotenv().ok();
     let mut config = Config::default();
-    config.default_provider = LLMProviderType::OpenAI.to_string();
+    config.default_provider = "openai".to_string();
     let api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
     config
         .providers

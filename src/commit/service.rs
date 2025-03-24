@@ -9,7 +9,6 @@ use crate::context::{CommitContext, GeneratedMessage, GeneratedReview};
 use crate::git::{CommitResult, GitRepo};
 use crate::instruction_presets::{PresetType, get_instruction_preset_library};
 use crate::llm;
-use crate::llm_providers::{LLMProviderType, get_provider_metadata};
 use crate::log_debug;
 use crate::token_optimizer::TokenOptimizer;
 
@@ -17,7 +16,7 @@ use crate::token_optimizer::TokenOptimizer;
 pub struct IrisCommitService {
     config: Config,
     repo: Arc<GitRepo>,
-    provider_type: LLMProviderType,
+    provider_name: String,
     use_gitmoji: bool,
     verify: bool,
     cached_context: Arc<RwLock<Option<CommitContext>>>,
@@ -30,7 +29,7 @@ impl IrisCommitService {
     ///
     /// * `config` - The configuration for the service
     /// * `repo_path` - The path to the Git repository
-    /// * `provider_type` - The type of LLM provider to use
+    /// * `provider_name` - The name of the LLM provider to use
     /// * `use_gitmoji` - Whether to use Gitmoji in commit messages
     /// * `verify` - Whether to verify commits
     ///
@@ -40,14 +39,14 @@ impl IrisCommitService {
     pub fn new(
         config: Config,
         repo_path: &Path,
-        provider_type: LLMProviderType,
+        provider_name: &str,
         use_gitmoji: bool,
         verify: bool,
     ) -> Result<Self> {
         Ok(Self {
             config,
             repo: Arc::new(GitRepo::new(repo_path)?),
-            provider_type,
+            provider_name: provider_name.to_string(),
             use_gitmoji,
             verify,
             cached_context: Arc::new(RwLock::new(None)),
@@ -99,12 +98,19 @@ impl IrisCommitService {
     where
         F: Fn(&CommitContext) -> String,
     {
-        // Get the token limit from the provider config
+        // Get the token limit for the provider from config or default value
         let token_limit = config_clone
             .providers
-            .get(&self.provider_type.to_string())
+            .get(&self.provider_name)
             .and_then(|p| p.token_limit)
-            .unwrap_or_else(|| get_provider_metadata(&self.provider_type).default_token_limit);
+            .unwrap_or({
+                match self.provider_name.as_str() {
+                    "openai" => 16_000,     // Default for OpenAI
+                    "anthropic" => 100_000, // Anthropic Claude has large context
+                    "google" | "groq" => 32_000, // Default for Google and Groq
+                    _ => 8_000,             // Conservative default for other providers
+                }
+            });
 
         // Create a token optimizer to count tokens
         let optimizer = TokenOptimizer::new(token_limit);
@@ -205,7 +211,7 @@ impl IrisCommitService {
 
         let mut generated_message = llm::get_refined_message::<GeneratedMessage>(
             &config_clone,
-            &self.provider_type,
+            &self.provider_name,
             &system_prompt,
             &final_user_prompt,
         )
@@ -272,7 +278,7 @@ impl IrisCommitService {
 
         llm::get_refined_message::<GeneratedReview>(
             &config_clone,
-            &self.provider_type,
+            &self.provider_name,
             &system_prompt,
             &final_user_prompt,
         )

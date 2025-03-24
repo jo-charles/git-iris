@@ -1,7 +1,6 @@
 use crate::config::Config;
 use crate::git::GitRepo;
 use crate::llm;
-use crate::llm_providers::LLMProviderType;
 use anyhow::{Context, Result};
 use std::sync::Arc;
 
@@ -9,14 +8,14 @@ pub async fn get_readme_summary(
     git_repo: Arc<GitRepo>,
     commit_ish: &str,
     config: &Config,
-    provider_type: &LLMProviderType,
+    provider_name: &str,
 ) -> Result<Option<String>> {
     match git_repo
         .get_readme_at_commit(commit_ish)
         .context("Failed to get README at specified commit")?
     {
         Some(readme_content) => {
-            let summary = summarize_readme(config, provider_type, &readme_content).await?;
+            let summary = summarize_readme(config, provider_name, &readme_content).await?;
             Ok(Some(summary))
         }
         _ => Ok(None),
@@ -25,7 +24,7 @@ pub async fn get_readme_summary(
 
 async fn summarize_readme(
     config: &Config,
-    provider_type: &LLMProviderType,
+    provider_name: &str,
     readme_content: &str,
 ) -> Result<String> {
     let system_prompt = "You are an AI assistant tasked with summarizing README files for software projects. \
@@ -44,7 +43,7 @@ async fn summarize_readme(
         "Please summarize the following README content, adhering to the guidelines provided:\n\n{readme_content}"
     );
 
-    llm::get_refined_message(config, provider_type, system_prompt, &user_prompt)
+    llm::get_refined_message(config, provider_name, system_prompt, &user_prompt)
         .await
         .context("Failed to generate README summary")
 }

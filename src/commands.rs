@@ -4,7 +4,7 @@ use crate::config::Config;
 use crate::instruction_presets::{
     PresetType, get_instruction_preset_library, list_presets_formatted_by_type,
 };
-use crate::llm_providers::get_available_providers;
+use crate::llm::get_available_provider_names;
 use crate::log_debug;
 use crate::ui;
 use anyhow::Context;
@@ -35,9 +35,9 @@ pub fn handle_config_command(
     let mut changes_made = false;
 
     if let Some(provider) = common.provider {
-        if !get_available_providers()
+        if !get_available_provider_names()
             .iter()
-            .any(|p| p.to_string() == provider)
+            .any(|p| p == &provider)
         {
             return Err(anyhow!("Invalid provider: {}", provider));
         }

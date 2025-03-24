@@ -1,13 +1,15 @@
-use crate::config::{Config, ProviderConfig};
-use crate::llm_providers::{
-    LLMProviderConfig, LLMProviderType, create_provider, get_available_providers,
-    get_provider_metadata,
-};
-use crate::{LLMProvider, log_debug};
+use crate::config::Config;
+use crate::log_debug;
 use anyhow::{Result, anyhow};
+use llm::{
+    LLMProvider,
+    builder::{LLMBackend, LLMBuilder},
+    chat::ChatMessage,
+};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use std::collections::HashMap;
+use std::str::FromStr;
 use std::time::Duration;
 use tokio_retry::Retry;
 use tokio_retry::strategy::ExponentialBackoff;
@@ -15,7 +17,7 @@ use tokio_retry::strategy::ExponentialBackoff;
 /// Generates a message using the given configuration
 pub async fn get_refined_message<T>(
     config: &Config,
-    provider_type: &LLMProviderType,
+    provider_name: &str,
     system_prompt: &str,
     user_prompt: &str,
 ) -> Result<T>
@@ -23,38 +25,73 @@ where
     T: Serialize + DeserializeOwned + std::fmt::Debug,
     String: Into<T>,
 {
-    // Get provider metadata and configuration
-    let provider_metadata = get_provider_metadata(provider_type);
-    let provider_config = if provider_metadata.requires_api_key {
-        config
-            .get_provider_config(provider_type.as_ref())
-            .ok_or_else(|| anyhow!("Provider '{}' not found in configuration", provider_type))?
-            .clone()
-    } else {
-        ProviderConfig::default_for(provider_type.as_ref())
-    };
-
-    // Create the LLM provider instance
-    let llm_provider = create_provider(*provider_type, provider_config.to_llm_provider_config())?;
-
     log_debug!(
         "Generating refined message using provider: {}",
-        provider_type
+        provider_name
     );
     log_debug!("System prompt: {}", system_prompt);
     log_debug!("User prompt: {}", user_prompt);
 
-    // Call get_refined_message_with_provider
-    let result =
-        get_refined_message_with_provider::<T>(llm_provider, system_prompt, user_prompt).await?;
+    // Parse the provider type
+    let backend =
+        LLMBackend::from_str(provider_name).map_err(|e| anyhow!("Invalid provider: {}", e))?;
+
+    // Get provider configuration
+    let provider_config = config
+        .get_provider_config(provider_name)
+        .ok_or_else(|| anyhow!("Provider '{}' not found in configuration", provider_name))?;
+
+    // Build the provider
+    let mut builder = LLMBuilder::new().backend(backend.clone());
+
+    // Set model
+    if !provider_config.model.is_empty() {
+        builder = builder.model(provider_config.model.clone());
+    }
+
+    // Set system prompt
+    builder = builder.system(system_prompt.to_string());
+
+    // Set API key if needed
+    if requires_api_key(&backend) && !provider_config.api_key.is_empty() {
+        builder = builder.api_key(provider_config.api_key.clone());
+    }
+
+    // Set temperature if specified in additional params
+    if let Some(temp) = provider_config.additional_params.get("temperature") {
+        if let Ok(temp_val) = temp.parse::<f32>() {
+            builder = builder.temperature(temp_val);
+        }
+    }
+
+    // Set max tokens if specified in additional params
+    if let Some(max_tokens) = provider_config.additional_params.get("max_tokens") {
+        if let Ok(mt_val) = max_tokens.parse::<u32>() {
+            builder = builder.max_tokens(mt_val);
+        }
+    }
+
+    // Set top_p if specified in additional params
+    if let Some(top_p) = provider_config.additional_params.get("top_p") {
+        if let Ok(tp_val) = top_p.parse::<f32>() {
+            builder = builder.top_p(tp_val);
+        }
+    }
+
+    // Build the provider
+    let provider = builder
+        .build()
+        .map_err(|e| anyhow!("Failed to build provider: {}", e))?;
+
+    // Generate the message
+    let result = get_refined_message_with_provider::<T>(provider, user_prompt).await?;
 
     Ok(result)
 }
 
 /// Generates a message using the given provider (mainly for testing purposes)
 pub async fn get_refined_message_with_provider<T>(
-    llm_provider: Box<dyn LLMProvider + Send + Sync>,
-    system_prompt: &str,
+    provider: Box<dyn LLMProvider + Send + Sync>,
     user_prompt: &str,
 ) -> Result<T>
 where
@@ -67,15 +104,16 @@ where
 
     let result = Retry::spawn(retry_strategy, || async {
         log_debug!("Attempting to generate message");
-        match tokio::time::timeout(
-            Duration::from_secs(30),
-            llm_provider.generate_message(system_prompt, user_prompt),
-        )
-        .await
-        {
-            Ok(Ok(refined_message)) => {
+
+        // Create chat message with user prompt
+        let messages = vec![ChatMessage::user().content(user_prompt.to_string()).build()];
+
+        match tokio::time::timeout(Duration::from_secs(30), provider.chat(&messages)).await {
+            Ok(Ok(response)) => {
                 log_debug!("Received response from provider");
-                let cleaned_message = clean_json_from_llm(&refined_message);
+                let response_text = response.text().unwrap_or_default();
+                let cleaned_message = clean_json_from_llm(&response_text);
+
                 if std::any::type_name::<T>() == std::any::type_name::<String>() {
                     // If T is String, return the raw string response
                     Ok(cleaned_message.into())
@@ -92,7 +130,7 @@ where
             }
             Ok(Err(e)) => {
                 log_debug!("Provider error: {}", e);
-                Err(e)
+                Err(anyhow!("Provider error: {}", e))
             }
             Err(_) => {
                 log_debug!("Provider timed out");
@@ -116,39 +154,68 @@ where
 
 /// Returns a list of available LLM providers as strings
 pub fn get_available_provider_names() -> Vec<String> {
-    get_available_providers()
-        .into_iter()
-        .filter(|p| *p != LLMProviderType::Test)
-        .map(|p| p.to_string())
-        .collect()
+    vec![
+        "openai".to_string(),
+        "anthropic".to_string(),
+        "ollama".to_string(),
+        "google".to_string(),
+        "groq".to_string(),
+        "xai".to_string(),
+        "deepseek".to_string(),
+        "phind".to_string(),
+    ]
 }
 
 /// Returns the default model for a given provider
-pub fn get_default_model_for_provider(provider_type: &LLMProviderType) -> &'static str {
-    get_provider_metadata(provider_type).default_model
+pub fn get_default_model_for_provider(provider_type: &str) -> &'static str {
+    match provider_type.to_lowercase().as_str() {
+        "anthropic" => "claude-3-7-sonnet-20250219",
+        "ollama" => "llama3",
+        "google" => "gemini-2.0-flash",
+        "groq" => "llama-3.1-70b-versatile",
+        "xai" => "grok-2-beta",
+        "deepseek" => "deepseek-chat",
+        "phind" => "phind-v2",
+        _ => "gpt-4o", // Default to OpenAI's model
+    }
 }
 
 /// Returns the default token limit for a given provider
-pub fn get_default_token_limit_for_provider(provider_type: &LLMProviderType) -> Result<usize> {
-    Ok(get_provider_metadata(provider_type).default_token_limit)
+pub fn get_default_token_limit_for_provider(provider_type: &str) -> Result<usize> {
+    let limit = match provider_type.to_lowercase().as_str() {
+        "anthropic" => 200_000,
+        "ollama" | "openai" | "groq" | "xai" => 128_000,
+        "google" => 1_000_000,
+        "deepseek" => 64_000,
+        "phind" => 32_000,
+        _ => 8_192, // Default token limit
+    };
+    Ok(limit)
 }
 
 /// Checks if a provider requires an API key
-pub fn provider_requires_api_key(provider_type: &LLMProviderType) -> bool {
-    get_provider_metadata(provider_type).requires_api_key
+pub fn provider_requires_api_key(provider_type: &str) -> bool {
+    if let Ok(backend) = LLMBackend::from_str(provider_type) {
+        requires_api_key(&backend)
+    } else {
+        true // Default to requiring API key for unknown providers
+    }
+}
+
+/// Helper function: check if `LLMBackend` requires API key
+fn requires_api_key(backend: &LLMBackend) -> bool {
+    !matches!(backend, LLMBackend::Ollama | LLMBackend::Phind)
 }
 
 /// Validates the provider configuration
-pub fn validate_provider_config(config: &Config, provider_type: &LLMProviderType) -> Result<()> {
-    let metadata = get_provider_metadata(provider_type);
-
-    if metadata.requires_api_key {
+pub fn validate_provider_config(config: &Config, provider_name: &str) -> Result<()> {
+    if provider_requires_api_key(provider_name) {
         let provider_config = config
-            .get_provider_config(provider_type.as_ref())
-            .ok_or_else(|| anyhow!("Provider '{}' not found in configuration", provider_type))?;
+            .get_provider_config(provider_name)
+            .ok_or_else(|| anyhow!("Provider '{}' not found in configuration", provider_name))?;
 
         if provider_config.api_key.is_empty() {
-            return Err(anyhow!("API key required for provider: {}", provider_type));
+            return Err(anyhow!("API key required for provider: {}", provider_name));
         }
     }
 
@@ -156,45 +223,40 @@ pub fn validate_provider_config(config: &Config, provider_type: &LLMProviderType
 }
 
 /// Combines default, saved, and command-line configurations
-pub fn get_combined_config(
+pub fn get_combined_config<S: ::std::hash::BuildHasher>(
     config: &Config,
-    provider_type: &LLMProviderType,
-    command_line_args: &LLMProviderConfig,
-) -> LLMProviderConfig {
-    let default_config = LLMProviderConfig {
-        api_key: String::new(),
-        model: get_default_model_for_provider(provider_type).to_string(),
-        additional_params: HashMap::default(),
-    };
+    provider_name: &str,
+    command_line_args: &HashMap<String, String, S>,
+) -> HashMap<String, String> {
+    let mut combined_params = HashMap::default();
 
-    let saved_config = config
-        .get_provider_config(provider_type.as_ref())
-        .cloned()
-        .unwrap_or_default();
+    // Add default values
+    combined_params.insert(
+        "model".to_string(),
+        get_default_model_for_provider(provider_name).to_string(),
+    );
 
-    LLMProviderConfig {
-        api_key: if !command_line_args.api_key.is_empty() {
-            command_line_args.api_key.clone()
-        } else if !saved_config.api_key.is_empty() {
-            saved_config.api_key
-        } else {
-            default_config.api_key
-        },
-        model: if !command_line_args.model.is_empty() {
-            command_line_args.model.clone()
-        } else if !saved_config.model.is_empty() {
-            saved_config.model
-        } else {
-            default_config.model
-        },
-        additional_params: if !command_line_args.additional_params.is_empty() {
-            command_line_args.additional_params.clone()
-        } else if !saved_config.additional_params.is_empty() {
-            saved_config.additional_params
-        } else {
-            default_config.additional_params
-        },
+    // Add saved config values if available
+    if let Some(provider_config) = config.get_provider_config(provider_name) {
+        if !provider_config.api_key.is_empty() {
+            combined_params.insert("api_key".to_string(), provider_config.api_key.clone());
+        }
+        if !provider_config.model.is_empty() {
+            combined_params.insert("model".to_string(), provider_config.model.clone());
+        }
+        for (key, value) in &provider_config.additional_params {
+            combined_params.insert(key.clone(), value.clone());
+        }
     }
+
+    // Add command line args (these take precedence)
+    for (key, value) in command_line_args {
+        if !value.is_empty() {
+            combined_params.insert(key.clone(), value.clone());
+        }
+    }
+
+    combined_params
 }
 
 fn clean_json_from_llm(json_str: &str) -> String {

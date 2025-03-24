@@ -2,12 +2,10 @@ use super::service::IrisCommitService;
 use crate::common::CommonParams;
 use crate::config::Config;
 use crate::instruction_presets::PresetType;
-use crate::llm_providers::LLMProviderType;
 use crate::messages;
 use crate::ui;
 use anyhow::{Context, Result};
 use colored::Colorize;
-use std::str::FromStr;
 use std::sync::Arc;
 
 /// Handles the review command which generates an AI code review of staged changes
@@ -24,13 +22,13 @@ pub async fn handle_review_command(common: CommonParams, print: bool) -> Result<
     common.apply_to_config(&mut config)?;
     let current_dir = std::env::current_dir()?;
 
-    let provider_type = LLMProviderType::from_str(&config.default_provider)?;
+    let provider_name = &config.default_provider;
 
     let service = Arc::new(
         IrisCommitService::new(
             config.clone(),
             &current_dir.clone(),
-            provider_type,
+            provider_name,
             false, // gitmoji not needed for review
             false, // verification not needed for review
         )

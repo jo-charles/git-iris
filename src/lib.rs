@@ -10,7 +10,6 @@ pub mod git;
 pub mod gitmoji;
 pub mod instruction_presets;
 pub mod llm;
-pub mod llm_providers;
 pub mod logger;
 pub mod messages;
 pub mod token_optimizer;
@@ -20,4 +19,5 @@ pub mod ui;
 // Re-export important structs and functions for easier testing
 pub use config::Config;
 pub use config::ProviderConfig;
-pub use llm_providers::LLMProvider;
+// Re-export the LLMProvider trait from the external llm crate
+pub use ::llm::LLMProvider;

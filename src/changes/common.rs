@@ -5,7 +5,6 @@ use crate::common::DetailLevel;
 use crate::config::Config;
 use crate::git::GitRepo;
 use crate::llm;
-use crate::llm_providers::LLMProviderType;
 use anyhow::{Context, Result};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -38,8 +37,8 @@ where
     let total_metrics = analyzer.calculate_total_metrics(&analyzed_changes);
 
     // Get README summary for context
-    let provider_type: LLMProviderType = config.default_provider.parse()?;
-    let readme_summary = get_readme_summary(git_repo, to, config, &provider_type)
+    let provider_name = &config.default_provider;
+    let readme_summary = get_readme_summary(git_repo, to, config, provider_name)
         .await
         .context("Failed to get README summary")?;
 
@@ -55,7 +54,7 @@ where
     );
 
     // Generate content using LLM
-    llm::get_refined_message::<T>(config, &provider_type, &system_prompt, &user_prompt)
+    llm::get_refined_message::<T>(config, provider_name, &system_prompt, &user_prompt)
         .await
         .context("Failed to generate content")
 }
