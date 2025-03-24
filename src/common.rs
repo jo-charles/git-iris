@@ -109,19 +109,19 @@ pub fn available_providers_parser(s: &str) -> Result<String, String> {
 pub fn get_combined_instructions(config: &Config) -> String {
     let mut prompt = String::from("\n\n");
 
-    let preset_library = get_instruction_preset_library();
-    if let Some(preset_instructions) = preset_library.get_preset(config.instruction_preset.as_str())
-    {
-        prompt.push_str(&format!(
-            "\n\nUse this style for your output:\n{}\n\n",
-            preset_instructions.instructions
-        ));
-    }
-
     if !config.instructions.is_empty() {
         prompt.push_str(&format!(
             "\n\nAdditional instructions for the request:\n{}\n\n",
             config.instructions
+        ));
+    }
+
+    let preset_library = get_instruction_preset_library();
+    if let Some(preset_instructions) = preset_library.get_preset(config.instruction_preset.as_str())
+    {
+        prompt.push_str(&format!(
+            "\n\nIMPORTANT: Use this style for your output:\n{}\n\n",
+            preset_instructions.instructions
         ));
     }
 
