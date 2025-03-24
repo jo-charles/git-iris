@@ -35,7 +35,7 @@ Git-Iris offers a suite of AI-powered tools to enhance your Git workflow:
 - 🔍 **AI-Powered Code Reviews**: Get detailed feedback on your changes before committing
 - 📜 **Dynamic Changelog Generation**: Create structured, detailed changelogs between any two Git references
 - 📋 **Comprehensive Release Notes**: Automatically generate release notes with summaries and key changes
-- 🔄 **Multi-Provider AI Support**: Leverage OpenAI GPT-4o, Anthropic Claude, Gemini, or Ollama for AI capabilities
+- 🔄 **Multi-Provider AI Support**: Supports OpenAI, Anthropic, Google, Groq, XAI, DeepSeek, Phind, and Ollama via the [llm crate](https://crates.io/crates/llm)
 - 🎨 **Gitmoji Integration**: Add expressive emojis to your commits, changelogs, and release notes
 - 🖥️ **Interactive CLI**: Refine AI-generated content through an intuitive command-line interface
 - 🔧 **Customizable Workflows**: Tailor AI behavior with custom instructions and presets
@@ -82,15 +82,34 @@ Git-Iris uses a configuration file located at `~/.config/git-iris/config.toml`. 
 # For OpenAI
 git-iris config --provider openai --api-key YOUR_OPENAI_API_KEY
 
-# For Anthropic Claude
-git-iris config --provider claude --api-key YOUR_CLAUDE_API_KEY
+# For Anthropic
+git-iris config --provider anthropic --api-key YOUR_ANTHROPIC_API_KEY
+# Note: "claude" is still supported for backward compatibility
 
-# For Google Gemini
-git-iris config --provider gemini --api-key YOUR_GEMINI_API_KEY
+# For Google
+git-iris config --provider google --api-key YOUR_GOOGLE_API_KEY
 
 # For Ollama (no API key required)
 git-iris config --provider ollama
+
+# For other supported providers (Groq, XAI, DeepSeek, Phind)
+git-iris config --provider <provider> --api-key YOUR_API_KEY
 ```
+
+### Supported LLM Providers
+
+Git-Iris supports the following LLM providers:
+
+| Provider  | Default Model              | Token Limit | API Key Required |
+| --------- | -------------------------- | ----------- | ---------------- |
+| anthropic | claude-3-7-sonnet-20250219 | 200,000     | Yes              |
+| deepseek  | deepseek-chat              | 64,000      | Yes              |
+| google    | gemini-2.0-flash           | 1,000,000   | Yes              |
+| groq      | llama-3.1-70b-versatile    | 128,000     | Yes              |
+| ollama    | llama3                     | 128,000     | No               |
+| openai    | gpt-4o                     | 128,000     | Yes              |
+| phind     | phind-v2                   | 32,000      | No               |
+| xai       | grok-2-beta                | 128,000     | Yes              |
 
 Additional configuration options:
 
@@ -131,7 +150,7 @@ Options:
 
 - `-a`, `--auto-commit`: Automatically commit with the generated message
 - `-i`, `--instructions`: Provide custom instructions for this commit
-- `--provider`: Specify an LLM provider (openai, claude, ollama)
+- `--provider`: Specify an LLM provider (supports multiple providers through the llm crate)
 - `--preset`: Use a specific instruction preset
 - `--no-gitmoji`: Disable Gitmoji for this commit
 - `-l`, `--log`: Enable logging to file
@@ -141,7 +160,7 @@ Options:
 Example:
 
 ```bash
-git-iris gen -a -i "Focus on performance improvements" --provider claude --preset detailed
+git-iris gen -a -i "Focus on performance improvements" --provider anthropic --preset detailed
 ```
 
 To generate a commit message and print it to stdout without starting the interactive process:
@@ -183,14 +202,14 @@ The review includes:
 Options:
 
 - `-i`, `--instructions`: Provide custom instructions for this review
-- `--provider`: Specify an LLM provider (openai, claude, ollama)
+- `--provider`: Specify an LLM provider (supports multiple providers through the llm crate)
 - `--preset`: Use a specific instruction preset
 - `-p`, `--print`: Print the generated review to stdout and exit
 
 Example:
 
 ```bash
-git-iris review -i "Pay special attention to error handling" --provider claude
+git-iris review -i "Pay special attention to error handling" --provider anthropic
 ```
 
 This allows you to get valuable feedback on your code before committing it, improving code quality and catching potential issues early.

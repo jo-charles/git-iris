@@ -100,10 +100,10 @@ Both commands support several options:
   git-iris changelog --from v1.0.0 --instructions "Focus on user-facing changes"
   ```
 
-- `--provider`: Specify an LLM provider (openai, claude, ollama)
+- `--provider`: Specify an LLM provider
 
   ```bash
-  git-iris changelog --from v1.0.0 --provider claude
+  git-iris changelog --from v1.0.0 --provider anthropic
   ```
 
 - `--preset`: Use a specific instruction preset

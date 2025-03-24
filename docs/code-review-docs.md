@@ -60,10 +60,10 @@ The review command supports several options:
   git-iris review -i "Focus on security best practices and error handling"
   ```
 
-- `--provider`: Specify an LLM provider (openai, claude, ollama)
+- `--provider`: Specify an LLM provider
 
   ```bash
-  git-iris review --provider claude
+  git-iris review --provider anthropic
   ```
 
 - `--preset`: Use a specific instruction preset

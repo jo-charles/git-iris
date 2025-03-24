@@ -7,61 +7,75 @@ Git-Iris is a Rust-based command-line tool that leverages AI to generate meaning
 ## 2. Core Components
 
 ### 2.1 CLI Interface
+
 - Handles user input and output
 - Parses command-line arguments using `clap`
 - Implements the interactive commit process
 
 ### 2.2 Git Integration
+
 - Interfaces with Git repositories using the `git2` library
 - Retrieves relevant Git information (diff, branch name, recent commits)
 - Applies the final commit message
 
 ### 2.3 LLM Provider System
-- Manages communication with various LLM APIs (OpenAI, Claude, Ollama)
-- Handles API authentication and rate limiting
-- Implements a plugin-like system for easy addition of new providers
+
+- Leverages the [llm crate](https://crates.io/crates/llm) for multiple AI provider support
+- Handles API authentication, rate limiting, and token optimization
+- Implements backward compatibility for legacy provider names
+- Manages provider-specific configurations
 
 ### 2.4 Context Extraction
+
 - Analyzes Git diffs and repository structure
 - Extracts relevant information for commit message generation
 - Implements language-specific analyzers for improved context
 
 ### 2.5 Prompt Management
+
 - Constructs prompts for LLMs based on extracted context and user preferences
 - Manages system prompts and user-defined custom instructions
 
 ### 2.6 Token Optimization
+
 - Ensures prompts fit within token limits of LLM providers
 - Implements intelligent truncation strategies to maximize relevant information
 
 ### 2.7 Configuration Management
+
 - Handles user configuration (API keys, preferences, custom instructions)
 - Manages provider-specific settings
 - Uses `~/.config/git-iris/config.toml` as the configuration file location
 
 ### 2.8 Gitmoji Integration
+
 - Provides optional Gitmoji support for commit messages
 - Manages Gitmoji mappings and integration logic
 
 ### 2.9 File Analyzers
+
 - Implements language-specific analyzers for various file types
 - Extracts relevant information from changed files to provide better context
 
 ### 2.10 Relevance Scoring
+
 - Implements a scoring system to determine the relevance of changes
 - Helps prioritize information for inclusion in the commit message
 
 ### 2.11 Changelog Generator
+
 - Analyzes commit history between specified Git references
 - Generates structured changelogs based on commit messages and code changes
 - Supports different detail levels and customization options
 
 ### 2.12 Release Notes Generator
+
 - Builds upon the Changelog Generator to create comprehensive release notes
 - Incorporates additional context and summaries for release documentation
 - Supports customization through presets and user instructions
 
 ### 2.13 Instruction Preset System
+
 - Manages predefined sets of instructions for different commit styles and documentation formats
 - Allows users to quickly switch between different documentation styles
 - Supports custom presets for project-specific needs
@@ -85,22 +99,27 @@ Git-Iris is a Rust-based command-line tool that leverages AI to generate meaning
 ## 4. Key Design Patterns and Principles
 
 ### 4.1 Plugin Architecture for LLM Providers
+
 - Allows easy addition of new LLM providers
 - Uses trait-based polymorphism for provider implementations
 
 ### 4.2 Command Pattern for CLI Operations
+
 - Encapsulates each major operation (generate, config) as a command object
 - Facilitates easy addition of new CLI commands
 
 ### 4.3 Strategy Pattern for File Analyzers
+
 - Enables language-specific analysis of changed files
 - Allows for easy extension to support new file types
 
 ### 4.4 Factory Method for Provider Creation
+
 - Centralizes provider instance creation
 - Simplifies the process of adding new providers
 
 ### 4.5 Dependency Injection
+
 - Uses dependency injection for better testability and flexibility
 - Allows easy swapping of components (e.g., for testing)
 
@@ -174,12 +193,12 @@ graph TD
 
 ## 13. LLM Provider System
 
-The LLM Provider System is designed to be extensible and support multiple AI providers:
+The LLM Provider System integrates with the external [llm crate](https://crates.io/crates/llm) to support multiple AI providers:
 
-- Implements a common `LLMProvider` trait for all providers
-- Currently supports OpenAI, Claude, and Ollama
-- Each provider has its own implementation of API communication
-- Providers can have custom configuration options
+- Provides a unified interface to various LLM providers
+- Manages provider-specific configurations (API keys, models, token limits)
+- Implements backward compatibility (e.g., "claude" → "anthropic")
+- Handles error recovery and request optimization
 
 ## 14. File Analyzer System
 

@@ -49,11 +49,18 @@ Git-Iris uses a configuration file located at `~/.config/git-iris/config.toml`. 
 # Set up OpenAI as the provider
 git-iris config --provider openai --api-key YOUR_OPENAI_API_KEY
 
-# Set up Claude as the provider
-git-iris config --provider claude --api-key YOUR_CLAUDE_API_KEY
+# Set up Anthropic as the provider
+git-iris config --provider anthropic --api-key YOUR_ANTHROPIC_API_KEY
+# Note: "claude" is still supported for backward compatibility
 
-# Set up Gemini as the provider
-git-iris config --provider gemini --api-key YOUR_GEMINI_API_KEY
+# Set up Google as the provider
+git-iris config --provider google --api-key YOUR_GOOGLE_API_KEY
+
+# Set up Ollama as the provider (no API key required)
+git-iris config --provider ollama
+
+# For other supported providers (Groq, XAI, DeepSeek, Phind)
+git-iris config --provider <provider> --api-key YOUR_API_KEY
 
 # Enable Gitmoji
 git-iris config --gitmoji true
@@ -62,7 +69,20 @@ git-iris config --gitmoji true
 git-iris config --custom-instructions "Always mention the ticket number in the commit message"
 ```
 
-For more detailed configuration options, refer to the [Configuration Guide](CONFIG.md).
+### Supported LLM Providers
+
+Git-Iris uses the [llm crate](https://crates.io/crates/llm) to support multiple LLM providers:
+
+| Provider  | Default Model              | Token Limit | API Key Required |
+| --------- | -------------------------- | ----------- | ---------------- |
+| anthropic | claude-3-7-sonnet-20250219 | 200,000     | Yes              |
+| deepseek  | deepseek-chat              | 64,000      | Yes              |
+| google    | gemini-2.0-flash           | 1,000,000   | Yes              |
+| groq      | llama-3.1-70b-versatile    | 128,000     | Yes              |
+| ollama    | llama3                     | 128,000     | No               |
+| openai    | gpt-4o                     | 128,000     | Yes              |
+| phind     | phind-v2                   | 32,000      | No               |
+| xai       | grok-2-beta                | 128,000     | Yes              |
 
 ## 4. Basic Usage <a name="basic-usage"></a>
 
@@ -115,7 +135,7 @@ Command-line options for code review:
 Example:
 
 ```bash
-git-iris review -i "Focus on security best practices" --provider claude
+git-iris review -i "Focus on security best practices" --provider anthropic
 ```
 
 ### Generating a Changelog
@@ -185,10 +205,10 @@ git-iris config --token-limit 8000
 
 ### Multiple LLM Providers
 
-Git-Iris supports multiple LLM providers. You can switch between them:
+Git-Iris supports multiple LLM providers through the [llm crate](https://crates.io/crates/llm). You can switch between them:
 
 ```bash
-git-iris gen --provider claude
+git-iris gen --provider anthropic
 ```
 
 ## 6. Best Practices <a name="best-practices"></a>
@@ -248,3 +268,6 @@ A: Code reviews analyze your staged changes and provide feedback on code quality
 
 **Q: Can I use Git-Iris in offline environments?**
 A: You can use Git-Iris with locally hosted models via Ollama when internet access is restricted.
+
+**Q: Is "claude" still supported as a provider name?**
+A: Yes, for backward compatibility, you can still use "claude" as a provider name, but it will be automatically redirected to the "anthropic" provider. We recommend using "anthropic" in new configurations.
