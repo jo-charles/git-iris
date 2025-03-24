@@ -110,37 +110,116 @@ pub fn handle_config_command(
     if changes_made {
         config.save()?;
         ui::print_success("Configuration updated successfully.");
+        println!();
     }
 
-    ui::print_info(&format!(
-        "Current configuration:\nDefault Provider: {}\nUse Gitmoji: {}\nInstructions: {}\nInstruction Preset: {}",
-        config.default_provider,
-        config.use_gitmoji,
-        if config.instructions.is_empty() {
-            "None".to_string()
-        } else {
-            config.instructions.replace('\n', ", ")
-        },
-        config.instruction_preset
-    ));
-    for (provider, provider_config) in &config.providers {
-        ui::print_info(&format!(
-            "\nProvider: {}\nAPI Key: {}\nModel: {}\nToken Limit: {}\nAdditional Parameters: {:?}",
-            provider,
-            if provider_config.api_key.is_empty() {
-                "Not set"
-            } else {
-                "Set"
-            },
-            provider_config.model,
-            provider_config
-                .token_limit
-                .map_or("Default".to_string(), |limit| limit.to_string()),
-            provider_config.additional_params
-        ));
-    }
+    // Print the configuration with beautiful styling
+    print_configuration(&config);
 
     Ok(())
+}
+
+/// Display the configuration with beautiful styling and colors
+fn print_configuration(config: &Config) {
+    // Create a title with gradient
+    println!(
+        "\n{}",
+        ui::create_gradient_text("🔮 Git-Iris Configuration 🔮").bold()
+    );
+    println!();
+
+    // Global settings section
+    println!("{}", "Global Settings".bright_magenta().bold().underline());
+    println!();
+
+    let provider_label = "Default Provider:".bright_cyan().bold();
+    let provider_value = config.default_provider.bright_white();
+    println!("  {} {} {}", "🔹".cyan(), provider_label, provider_value);
+
+    let gitmoji_label = "Use Gitmoji:".bright_cyan().bold();
+    let gitmoji_value = if config.use_gitmoji {
+        "Yes".bright_green()
+    } else {
+        "No".bright_red()
+    };
+    println!("  {} {} {}", "🔹".cyan(), gitmoji_label, gitmoji_value);
+
+    let preset_label = "Instruction Preset:".bright_cyan().bold();
+    let preset_value = config.instruction_preset.bright_yellow();
+    println!("  {} {} {}", "🔹".cyan(), preset_label, preset_value);
+
+    println!();
+
+    // Instructions section (if any)
+    if !config.instructions.is_empty() {
+        println!("{}", "Custom Instructions".bright_blue().bold().underline());
+        println!();
+
+        // Split instructions into multiple lines if needed for display
+        let formatted_instructions = config.instructions.replace('\n', " ");
+
+        // If instructions are long, truncate with ellipsis
+        if formatted_instructions.len() > 150 {
+            let truncated = formatted_instructions.chars().take(147).collect::<String>();
+            println!("  {}...", truncated.bright_white().italic());
+        } else {
+            println!("  {}", formatted_instructions.bright_white().italic());
+        }
+
+        println!();
+    }
+
+    // Provider configurations
+    for (provider, provider_config) in &config.providers {
+        println!(
+            "{}",
+            format!("Provider: {provider}")
+                .bright_green()
+                .bold()
+                .underline()
+        );
+        println!();
+
+        // API Key status with lock emoji
+        let api_key_label = "API Key:".yellow().bold();
+        let api_key_value = if provider_config.api_key.is_empty() {
+            "Not set".bright_red().italic()
+        } else {
+            "Set ✓".bright_green()
+        };
+        println!("  {} {} {}", "🔒".yellow(), api_key_label, api_key_value);
+
+        // Model with sparkle emoji
+        let model_label = "Model:".yellow().bold();
+        let model_value = provider_config.model.bright_cyan();
+        println!("  {} {} {}", "✨".yellow(), model_label, model_value);
+
+        // Token limit with gauge emoji
+        let token_limit_label = "Token Limit:".yellow().bold();
+        let token_limit_value = provider_config
+            .token_limit
+            .map_or("Default".bright_yellow(), |limit| {
+                limit.to_string().bright_white()
+            });
+        println!(
+            "  {} {} {}",
+            "🔢".yellow(),
+            token_limit_label,
+            token_limit_value
+        );
+
+        // Additional parameters if any
+        if !provider_config.additional_params.is_empty() {
+            let params_label = "Additional Parameters:".yellow().bold();
+            println!("  {} {}", "🔧".yellow(), params_label);
+
+            for (key, value) in &provider_config.additional_params {
+                println!("    - {}: {}", key.bright_blue(), value.bright_white());
+            }
+        }
+
+        println!();
+    }
 }
 
 /// Parse additional parameters from the command line
