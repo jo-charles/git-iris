@@ -1,9 +1,9 @@
-use git2::Repository;
 use git_iris::commit::prompt::{create_system_prompt, create_user_prompt};
 use git_iris::config::Config;
 use git_iris::context::ChangeType;
 use git_iris::git::GitRepo;
 use git_iris::token_optimizer::TokenOptimizer;
+use git2::Repository;
 use std::fs;
 use std::path::Path;
 use std::time::{Duration, Instant};
@@ -133,9 +133,11 @@ async fn test_commit() {
         .await
         .expect("Failed to get git info after commit");
     assert_eq!(context.recent_commits.len(), 2);
-    assert!(context.recent_commits[0]
-        .message
-        .contains("Test commit message"));
+    assert!(
+        context.recent_commits[0]
+            .message
+            .contains("Test commit message")
+    );
 }
 
 #[tokio::test]
@@ -162,10 +164,12 @@ async fn test_multiple_staged_files() {
         .expect("Failed to get git info");
     assert_eq!(context.staged_files.len(), 3);
     for i in 1..=3 {
-        assert!(context
-            .staged_files
-            .iter()
-            .any(|file| file.path == format!("file{i}.txt")));
+        assert!(
+            context
+                .staged_files
+                .iter()
+                .any(|file| file.path == format!("file{i}.txt"))
+        );
     }
 }
 
@@ -218,10 +222,13 @@ async fn test_deleted_file() {
         .await
         .expect("Failed to get git info");
     assert_eq!(context.staged_files.len(), 1);
-    assert!(context
-        .staged_files
-        .iter()
-        .any(|file| file.path == "initial.txt" && matches!(file.change_type, ChangeType::Deleted)));
+    assert!(
+        context
+            .staged_files
+            .iter()
+            .any(|file| file.path == "initial.txt"
+                && matches!(file.change_type, ChangeType::Deleted))
+    );
 }
 
 #[tokio::test]
@@ -254,10 +261,12 @@ async fn test_binary_file() {
         .expect("Failed to get git info");
 
     // Check if the binary file is in staged files
-    assert!(context
-        .staged_files
-        .iter()
-        .any(|file| file.path == "image.png"));
+    assert!(
+        context
+            .staged_files
+            .iter()
+            .any(|file| file.path == "image.png")
+    );
 
     // Check if the diff for the binary file is "[Binary file changed]"
     let binary_file = context
@@ -322,9 +331,11 @@ async fn test_get_git_info_with_excluded_files() {
     assert!(!excluded_files.is_empty(), "Should have excluded files");
 
     println!("{excluded_files:?}");
-    assert!(excluded_files
-        .iter()
-        .any(|file| file.path == "package-lock.json"));
+    assert!(
+        excluded_files
+            .iter()
+            .any(|file| file.path == "package-lock.json")
+    );
 
     for file in &excluded_files {
         assert_eq!(file.diff, "[Content excluded]");

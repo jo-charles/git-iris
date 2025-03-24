@@ -1,11 +1,11 @@
 use crate::git::GitRepo;
 use crate::instruction_presets::get_instruction_preset_library;
 use crate::llm_providers::{
-    get_available_providers, get_provider_metadata, LLMProviderConfig, LLMProviderType,
+    LLMProviderConfig, LLMProviderType, get_available_providers, get_provider_metadata,
 };
 use crate::log_debug;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use dirs::config_dir;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

@@ -6,8 +6,8 @@ pub mod prompt;
 pub mod service;
 
 pub use cli::handle_gen_command;
-pub use review::handle_review_command;
 use git2::FileMode;
+pub use review::handle_review_command;
 pub use service::IrisCommitService;
 
 use crate::git::CommitResult;

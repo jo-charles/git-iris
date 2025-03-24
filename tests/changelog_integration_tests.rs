@@ -4,13 +4,13 @@
 
 use anyhow::Result;
 use dotenv::dotenv;
-use git2::Repository;
 use git_iris::changes::models::{ChangelogResponse, ReleaseNotesResponse};
 use git_iris::changes::{ChangelogGenerator, ReleaseNotesGenerator};
 use git_iris::common::DetailLevel;
 use git_iris::config::Config;
 use git_iris::llm_providers::LLMProviderType;
 use git_iris::logger;
+use git2::Repository;
 use std::env;
 use std::path::Path;
 use tempfile::TempDir;

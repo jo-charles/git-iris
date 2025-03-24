@@ -1,12 +1,12 @@
+use crate::ProviderConfig;
 use crate::common::CommonParams;
 use crate::config::Config;
 use crate::instruction_presets::get_instruction_preset_library;
 use crate::llm_providers::get_available_providers;
 use crate::log_debug;
 use crate::ui;
-use crate::ProviderConfig;
 use anyhow::Context;
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use colored::Colorize;
 use std::collections::HashMap;
 
@@ -21,8 +21,14 @@ pub fn handle_config_command(
     token_limit: Option<usize>,
     param: Option<Vec<String>>,
 ) -> anyhow::Result<()> {
-    log_debug!("Starting 'config' command with common: {:?}, api_key: {:?}, model: {:?}, token_limit: {:?}, param: {:?}",
-               common, api_key, model, token_limit, param);
+    log_debug!(
+        "Starting 'config' command with common: {:?}, api_key: {:?}, model: {:?}, token_limit: {:?}, param: {:?}",
+        common,
+        api_key,
+        model,
+        token_limit,
+        param
+    );
 
     let mut config = Config::load()?;
     common.apply_to_config(&mut config)?;

@@ -1,4 +1,4 @@
-use crate::context::{format_commit_message, GeneratedMessage};
+use crate::context::{GeneratedMessage, format_commit_message};
 use crate::gitmoji::get_gitmoji_list;
 use crate::instruction_presets::{get_instruction_preset_library, list_presets_formatted};
 use crate::messages::get_user_message;

@@ -7,8 +7,8 @@ use crate::git::GitRepo;
 use crate::llm;
 use crate::llm_providers::LLMProviderType;
 use anyhow::{Context, Result};
-use serde::de::DeserializeOwned;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 use std::fmt::Debug;
 use std::sync::Arc;
 

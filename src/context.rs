@@ -1,9 +1,9 @@
 use crate::token_optimizer::TokenOptimizer;
+use colored::Colorize;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use textwrap::wrap;
-use colored::Colorize;
 
 #[derive(Serialize, Debug, Clone)]
 pub struct CommitContext {
@@ -195,13 +195,17 @@ impl GeneratedReview {
     pub fn format(&self) -> String {
         let mut formatted = String::new();
 
-        formatted.push_str(&format!("{}\n\n{}\n\n",
+        formatted.push_str(&format!(
+            "{}\n\n{}\n\n",
             "✨ Code Review Summary ✨".bright_magenta().bold(),
-            self.summary.bright_white()));
+            self.summary.bright_white()
+        ));
 
-        formatted.push_str(&format!("{}\n\n{}\n\n",
+        formatted.push_str(&format!(
+            "{}\n\n{}\n\n",
             "🔍 Code Quality Assessment".bright_cyan().bold(),
-            self.code_quality.bright_white()));
+            self.code_quality.bright_white()
+        ));
 
         if !self.positive_aspects.is_empty() {
             formatted.push_str(&format!("{}\n\n", "✅ Positive Aspects".green().bold()));
@@ -220,7 +224,10 @@ impl GeneratedReview {
         }
 
         if !self.suggestions.is_empty() {
-            formatted.push_str(&format!("{}\n\n", "💡 Suggestions for Improvement".bright_blue().bold()));
+            formatted.push_str(&format!(
+                "{}\n\n",
+                "💡 Suggestions for Improvement".bright_blue().bold()
+            ));
             for (i, suggestion) in self.suggestions.iter().enumerate() {
                 formatted.push_str(&format!("{}. {}\n", i + 1, suggestion.bright_blue()));
             }

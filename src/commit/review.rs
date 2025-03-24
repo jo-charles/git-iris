@@ -5,15 +5,12 @@ use crate::llm_providers::LLMProviderType;
 use crate::messages;
 use crate::ui;
 use anyhow::{Context, Result};
+use colored::Colorize;
 use std::str::FromStr;
 use std::sync::Arc;
-use colored::Colorize;
 
 /// Handles the review command which generates an AI code review of staged changes
-pub async fn handle_review_command(
-    common: CommonParams,
-    print: bool,
-) -> Result<()> {
+pub async fn handle_review_command(common: CommonParams, print: bool) -> Result<()> {
     let mut config = Config::load()?;
     common.apply_to_config(&mut config)?;
     let current_dir = std::env::current_dir()?;
@@ -75,7 +72,11 @@ pub async fn handle_review_command(
         println!("\n{}", review.format());
     } else {
         // Add a fancy version header
-        println!("\n{} {}\n", "🔮".cyan(), "Git-Iris Code Review".bright_magenta().bold());
+        println!(
+            "\n{} {}\n",
+            "🔮".cyan(),
+            "Git-Iris Code Review".bright_magenta().bold()
+        );
         println!("{}", review.format());
     }
 

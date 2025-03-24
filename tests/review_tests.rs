@@ -12,7 +12,7 @@ fn test_review_format() {
     };
 
     let formatted = review.format();
-    
+
     // Check that the formatted output contains all the important parts
     // We can't match exact strings because of color codes, so we'll check for key substrings
     assert!(formatted.contains("Code Review Summary"));
@@ -40,4 +40,4 @@ fn test_review_format() {
 // - Mock the LLM response
 // - Capture stdout to verify output
 //
-// These would be better suited for integration tests with a more sophisticated test harness. 
+// These would be better suited for integration tests with a more sophisticated test harness.

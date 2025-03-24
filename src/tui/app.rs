@@ -1,20 +1,20 @@
-use crate::commit::{format_commit_result, IrisCommitService};
+use crate::commit::{IrisCommitService, format_commit_result};
 use crate::context::GeneratedMessage;
 use crate::log_debug;
 use anyhow::{Error, Result};
 use crossterm::event::KeyEventKind;
+use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use ratatui::crossterm::{
     event::{self, Event},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
-use ratatui::Terminal;
 use std::io;
 use std::sync::Arc;
 use std::time::Duration;
 
-use super::input_handler::{handle_input, InputResult};
+use super::input_handler::{InputResult, handle_input};
 use super::spinner::SpinnerState;
 use super::state::{EmojiMode, Mode, TuiState};
 use super::ui::draw_ui;

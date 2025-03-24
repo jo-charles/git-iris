@@ -1,9 +1,9 @@
 use anyhow::Result;
-use git2::Repository;
 use git_iris::changes::models::{
     ChangeEntry, ChangeMetrics, ChangelogResponse, ChangelogType, ReleaseNotesResponse,
 };
 use git_iris::common::DetailLevel;
+use git2::Repository;
 
 use std::path::Path;
 use std::str::FromStr;
@@ -108,9 +108,11 @@ fn test_changelog_response_structure() {
     assert!(changelog_response.version.is_some());
     assert!(changelog_response.release_date.is_some());
     assert!(!changelog_response.sections.is_empty());
-    assert!(changelog_response
-        .sections
-        .contains_key(&ChangelogType::Added));
+    assert!(
+        changelog_response
+            .sections
+            .contains_key(&ChangelogType::Added)
+    );
     assert!(changelog_response.metrics.total_commits > 0);
     assert!(changelog_response.metrics.files_changed > 0);
 }

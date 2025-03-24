@@ -1,8 +1,8 @@
 use crate::config::Config;
 use crate::context::{ChangeType, CommitContext, ProjectMetadata, RecentCommit, StagedFile};
-use crate::file_analyzers::{self, should_exclude_file, FileAnalyzer};
+use crate::file_analyzers::{self, FileAnalyzer, should_exclude_file};
 use crate::log_debug;
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use futures::future::join_all;
 use git2::{DiffOptions, FileMode, Repository, Status, StatusOptions, Tree};
 use std::env;

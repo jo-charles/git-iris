@@ -1,14 +1,14 @@
 use anyhow::Result;
 use std::path::Path;
 use std::sync::Arc;
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::{RwLock, mpsc};
 
 use super::prompt::{create_system_prompt, create_user_prompt, process_commit_message};
 use crate::config::Config;
 use crate::context::{CommitContext, GeneratedMessage, GeneratedReview};
 use crate::git::{CommitResult, GitRepo};
 use crate::llm;
-use crate::llm_providers::{get_provider_metadata, LLMProviderType};
+use crate::llm_providers::{LLMProviderType, get_provider_metadata};
 use crate::log_debug;
 use crate::token_optimizer::TokenOptimizer;
 
@@ -175,17 +175,13 @@ impl IrisCommitService {
         config_clone.instructions = instructions.to_string();
 
         let context = self.get_git_info().await?;
-        
+
         // Create system prompt
         let system_prompt = create_system_prompt(&config_clone)?;
-        
+
         // Use the shared optimization logic
-        let (_, final_user_prompt) = self.optimize_prompt(
-            &config_clone,
-            &system_prompt,
-            context,
-            create_user_prompt,
-        );
+        let (_, final_user_prompt) =
+            self.optimize_prompt(&config_clone, &system_prompt, context, create_user_prompt);
 
         let mut generated_message = llm::get_refined_message::<GeneratedMessage>(
             &config_clone,
@@ -223,10 +219,10 @@ impl IrisCommitService {
         config_clone.instructions = instructions.to_string();
 
         let context = self.get_git_info().await?;
-        
+
         // Create system prompt
         let system_prompt = super::prompt::create_review_system_prompt(&config_clone)?;
-        
+
         // Use the shared optimization logic
         let (_, final_user_prompt) = self.optimize_prompt(
             &config_clone,

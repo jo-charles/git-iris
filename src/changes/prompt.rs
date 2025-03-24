@@ -2,7 +2,7 @@ use super::{
     change_analyzer::AnalyzedChange,
     models::{ChangeMetrics, ChangelogResponse, ReleaseNotesResponse},
 };
-use crate::common::{get_combined_instructions, DetailLevel};
+use crate::common::{DetailLevel, get_combined_instructions};
 use crate::config::Config;
 use crate::gitmoji::get_gitmoji_list;
 use crate::log_debug;

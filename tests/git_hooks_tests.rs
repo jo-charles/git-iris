@@ -1,8 +1,8 @@
 // only run this test on Linux
 #![cfg(target_os = "linux")]
 use anyhow::Result;
-use git2::Repository;
 use git_iris::git::GitRepo;
+use git2::Repository;
 use std::fs::{self, File};
 use std::io::Write;
 use std::os::unix::fs::PermissionsExt;

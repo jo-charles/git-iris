@@ -9,5 +9,5 @@ mod spinner;
 mod state;
 mod ui;
 
-pub use app::run_tui_commit;
 pub use app::TuiCommit;
+pub use app::run_tui_commit;

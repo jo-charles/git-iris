@@ -168,9 +168,11 @@ fn test_json_analyzer() {
     let analysis = analyzer.analyze("test.json", &change);
     println!("JSON Test Debug: Analysis results: {analysis:?}");
 
-    assert!(analysis
-        .iter()
-        .any(|s| s.starts_with("Modified top-level keys:")));
+    assert!(
+        analysis
+            .iter()
+            .any(|s| s.starts_with("Modified top-level keys:"))
+    );
     assert!(analysis.contains(&"Array structures have been modified".to_string()));
     assert!(analysis.contains(&"Nested objects have been modified".to_string()));
 
@@ -398,9 +400,11 @@ fn test_c_analyzer() {
     let analysis = analyzer.analyze("test.c", &change);
     println!("C Test Debug: Analysis results: {analysis:?}");
     assert!(analysis.contains(&"Modified functions: new_function".to_string()));
-    assert!(analysis
-        .iter()
-        .any(|s| s.contains("OldStruct") && s.contains("NewStruct")));
+    assert!(
+        analysis
+            .iter()
+            .any(|s| s.contains("OldStruct") && s.contains("NewStruct"))
+    );
     assert!(analysis.contains(&"Include statements have been modified".to_string()));
 }
 
@@ -447,9 +451,11 @@ fn test_cpp_analyzer() {
     let analysis = analyzer.analyze("test.cpp", &change);
     println!("C++ Test Debug: Analysis results: {analysis:?}");
     assert!(analysis.contains(&"Modified functions: newFunction".to_string()));
-    assert!(analysis
-        .iter()
-        .any(|s| s.contains("OldClass") && s.contains("NewClass")));
+    assert!(
+        analysis
+            .iter()
+            .any(|s| s.contains("OldClass") && s.contains("NewClass"))
+    );
     assert!(analysis.contains(&"Include statements have been modified".to_string()));
 }
 

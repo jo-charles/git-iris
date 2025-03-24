@@ -1,9 +1,9 @@
 use super::{LLMProvider, LLMProviderConfig, ProviderMetadata};
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use std::sync::{
-    atomic::{AtomicU64, AtomicUsize, Ordering},
     Arc,
+    atomic::{AtomicU64, AtomicUsize, Ordering},
 };
 use std::time::Duration;
 use tokio::time::sleep;
