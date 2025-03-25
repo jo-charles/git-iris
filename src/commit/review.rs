@@ -5,11 +5,10 @@ use crate::instruction_presets::PresetType;
 use crate::messages;
 use crate::ui;
 use anyhow::{Context, Result};
-use colored::Colorize;
 use std::sync::Arc;
 
 /// Handles the review command which generates an AI code review of staged changes
-pub async fn handle_review_command(common: CommonParams, print: bool) -> Result<()> {
+pub async fn handle_review_command(common: CommonParams, _print: bool) -> Result<()> {
     // Check if the preset is appropriate for code reviews
     if !common.is_valid_preset_for_type(PresetType::Review) {
         ui::print_warning(
@@ -63,7 +62,7 @@ pub async fn handle_review_command(common: CommonParams, print: bool) -> Result<
     // Create and start the spinner
     let spinner = ui::create_spinner("");
     let random_message = messages::get_waiting_message();
-    spinner.set_message(format!("{} {}", "🔮".cyan(), random_message.text));
+    spinner.set_message(random_message.text);
 
     // Generate the code review
     let review = service
@@ -74,18 +73,7 @@ pub async fn handle_review_command(common: CommonParams, print: bool) -> Result<
     spinner.finish_and_clear();
 
     // Print the review to stdout or save to file if requested
-    if print {
-        // Just print to stdout
-        println!("\n{}", review.format());
-    } else {
-        // Add a fancy version header
-        println!(
-            "\n{} {}\n",
-            "🔮".cyan(),
-            "Git-Iris Code Review".bright_magenta().bold()
-        );
-        println!("{}", review.format());
-    }
+    println!("{}", review.format());
 
     Ok(())
 }

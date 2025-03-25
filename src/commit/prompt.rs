@@ -240,14 +240,16 @@ fn format_detailed_changes(
                 let change_indicator = match file.change_type {
                     ChangeType::Added => "➕",
                     ChangeType::Modified => "✏️",
-                    _ => "",
+                    ChangeType::Deleted => "",
                 };
 
                 format!(
                     "{} File: {}\nFull File Content:\n{}\n\n--- End of File ---",
                     change_indicator,
                     file.path,
-                    file.content.as_ref().unwrap()
+                    file.content
+                        .as_ref()
+                        .expect("File content should be present for added/modified files")
                 )
             })
             .collect::<Vec<_>>()
