@@ -54,7 +54,7 @@ where
     );
 
     // Generate content using LLM
-    llm::get_refined_message::<T>(config, provider_name, &system_prompt, &user_prompt)
+    llm::get_message::<T>(config, provider_name, &system_prompt, &user_prompt)
         .await
         .context("Failed to generate content")
 }

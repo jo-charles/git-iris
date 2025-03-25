@@ -209,7 +209,7 @@ impl IrisCommitService {
         let (_, final_user_prompt) =
             self.optimize_prompt(&config_clone, &system_prompt, context, create_user_prompt);
 
-        let mut generated_message = llm::get_refined_message::<GeneratedMessage>(
+        let mut generated_message = llm::get_message::<GeneratedMessage>(
             &config_clone,
             &self.provider_name,
             &system_prompt,
@@ -276,7 +276,7 @@ impl IrisCommitService {
             super::prompt::create_review_user_prompt,
         );
 
-        llm::get_refined_message::<GeneratedReview>(
+        llm::get_message::<GeneratedReview>(
             &config_clone,
             &self.provider_name,
             &system_prompt,

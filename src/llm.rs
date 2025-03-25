@@ -15,7 +15,7 @@ use tokio_retry::Retry;
 use tokio_retry::strategy::ExponentialBackoff;
 
 /// Generates a message using the given configuration
-pub async fn get_refined_message<T>(
+pub async fn get_message<T>(
     config: &Config,
     provider_name: &str,
     system_prompt: &str,
@@ -26,7 +26,7 @@ where
     String: Into<T>,
 {
     log_debug!(
-        "Generating refined message using provider: {}",
+        "Generating message using provider: {}",
         provider_name
     );
     log_debug!("System prompt: {}", system_prompt);
@@ -86,13 +86,13 @@ where
         .map_err(|e| anyhow!("Failed to build provider: {}", e))?;
 
     // Generate the message
-    let result = get_refined_message_with_provider::<T>(provider, user_prompt).await?;
+    let result = get_message_with_provider::<T>(provider, user_prompt).await?;
 
     Ok(result)
 }
 
 /// Generates a message using the given provider (mainly for testing purposes)
-pub async fn get_refined_message_with_provider<T>(
+pub async fn get_message_with_provider<T>(
     provider: Box<dyn LLMProvider + Send + Sync>,
     user_prompt: &str,
 ) -> Result<T>
@@ -100,7 +100,7 @@ where
     T: Serialize + DeserializeOwned + std::fmt::Debug,
     String: Into<T>,
 {
-    log_debug!("Entering get_refined_message_with_provider");
+    log_debug!("Entering get_message_with_provider");
 
     let retry_strategy = ExponentialBackoff::from_millis(10).factor(2).take(2); // 2 attempts total: initial + 1 retry
 
