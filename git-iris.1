@@ -1,13 +1,13 @@
 .TH GIT-IRIS 1 "August 2024" "git-iris 0.1.0" "User Commands"
 .SH NAME
-git-iris \- AI-assisted Git commit message generator
+git-iris \- AI-powered Git workflow assistant
 .SH SYNOPSIS
 .B git-iris
 [\fIGLOBAL OPTIONS\fR]
 \fICOMMAND \fR[\fICOMMAND OPTIONS\fR]
 .SH DESCRIPTION
 .B git-iris
-is an AI-powered tool designed to generate meaningful and context-aware Git commit messages. It analyzes your code changes and project context to provide high-quality commit messages that accurately describe your work.
+is a comprehensive AI-powered Git workflow assistant that enhances your development process. It offers intelligent support for crafting meaningful commit messages, generating changelogs, creating release notes, and providing code reviews. By leveraging advanced AI models, Git-Iris boosts your productivity and improves the quality of your project documentation.
 .SH GLOBAL OPTIONS
 .TP
 .BR \-l ", " \-\-log
@@ -20,8 +20,20 @@ Display the version
 .B gen
 Generate a commit message using AI
 .TP
+.B review
+Get an AI-powered code review for your staged changes
+.TP
+.B changelog
+Generate a changelog between two Git references
+.TP
+.B release-notes
+Generate comprehensive release notes
+.TP
 .B config
-Configure the AI-assisted Git commit message generator
+Configure the AI-assisted Git workflow assistant
+.TP
+.B list-presets
+List available instruction presets
 .SH "GEN COMMAND OPTIONS"
 .TP
 .BR \-a ", " \-\-auto-commit
@@ -33,8 +45,68 @@ Custom instructions for this commit
 .BR \-\-provider =\fIPROVIDER\fR
 Override default LLM provider
 .TP
+.BR \-\-preset =\fIPRESET\fR
+Use a specific instruction preset
+.TP
 .BR \-\-no-gitmoji
 Disable Gitmoji for this commit
+.TP
+.BR \-p ", " \-\-print
+Print the generated message to stdout and exit
+.TP
+.BR \-\-no-verify
+Skip verification steps (pre/post commit hooks)
+.SH "REVIEW COMMAND OPTIONS"
+.TP
+.BR \-i ", " \-\-instructions =\fIINSTR\fR
+Custom instructions for this review
+.TP
+.BR \-\-provider =\fIPROVIDER\fR
+Override default LLM provider
+.TP
+.BR \-\-preset =\fIPRESET\fR
+Use a specific instruction preset
+.TP
+.BR \-p ", " \-\-print
+Print the generated review to stdout and exit
+.SH "CHANGELOG COMMAND OPTIONS"
+.TP
+.BR \-\-from =\fIREF\fR
+Starting Git reference (commit hash, tag, or branch name)
+.TP
+.BR \-\-to =\fIREF\fR
+Ending Git reference (defaults to HEAD if not specified)
+.TP
+.BR \-i ", " \-\-instructions =\fIINSTR\fR
+Custom instructions for changelog generation
+.TP
+.BR \-\-preset =\fIPRESET\fR
+Select an instruction preset for changelog generation
+.TP
+.BR \-\-detail-level =\fILEVEL\fR
+Set the detail level (minimal, standard, detailed)
+.TP
+.BR \-\-gitmoji =\fIBOOL\fR
+Enable or disable Gitmoji in the changelog
+.SH "RELEASE-NOTES COMMAND OPTIONS"
+.TP
+.BR \-\-from =\fIREF\fR
+Starting Git reference (commit hash, tag, or branch name)
+.TP
+.BR \-\-to =\fIREF\fR
+Ending Git reference (defaults to HEAD if not specified)
+.TP
+.BR \-i ", " \-\-instructions =\fIINSTR\fR
+Custom instructions for release notes generation
+.TP
+.BR \-\-preset =\fIPRESET\fR
+Select an instruction preset for release notes generation
+.TP
+.BR \-\-detail-level =\fILEVEL\fR
+Set the detail level (minimal, standard, detailed)
+.TP
+.BR \-\-gitmoji =\fIBOOL\fR
+Enable or disable Gitmoji in the release notes
 .SH "CONFIG COMMAND OPTIONS"
 .TP
 .BR \-\-provider =\fIPROVIDER\fR
@@ -57,6 +129,38 @@ Enable or disable Gitmoji
 .TP
 .BR \-i ", " \-\-instructions =\fIINSTR\fR
 Set instructions for the commit message generation
+.TP
+.BR \-\-preset =\fIPRESET\fR
+Set default instruction preset
+.TP
+.BR \-\-default-provider =\fIPROVIDER\fR
+Set the default LLM provider
+.SH "SUPPORTED LLM PROVIDERS"
+Git-Iris supports multiple LLM providers:
+.TP
+.B anthropic
+Claude AI models by Anthropic (API key required)
+.TP
+.B deepseek
+DeepSeek AI models (API key required)
+.TP
+.B google
+Gemini AI models by Google (API key required)
+.TP
+.B groq
+Models hosted on Groq (API key required)
+.TP
+.B ollama
+Local models via Ollama (no API key required)
+.TP
+.B openai
+GPT models by OpenAI (API key required)
+.TP
+.B phind
+Phind AI models (API key required)
+.TP
+.B xai
+Grok models by xAI (API key required)
 .SH EXAMPLES
 Generate a commit message:
 .PP
@@ -74,11 +178,67 @@ git-iris gen -i "Focus on performance improvements"
 .RE
 .fi
 .PP
+Generate a commit message using a specific preset:
+.PP
+.nf
+.RS
+git-iris gen --preset conventional
+.RE
+.fi
+.PP
+Get an AI code review:
+.PP
+.nf
+.RS
+git-iris review
+.RE
+.fi
+.PP
+Generate a changelog between two versions:
+.PP
+.nf
+.RS
+git-iris changelog --from v1.0.0 --to v1.1.0
+.RE
+.fi
+.PP
+Generate release notes:
+.PP
+.nf
+.RS
+git-iris release-notes --from v1.0.0 --to v1.1.0 --preset conventional
+.RE
+.fi
+.PP
 Configure the OpenAI provider:
 .PP
 .nf
 .RS
 git-iris config --provider openai --api-key YOUR_API_KEY
+.RE
+.fi
+.PP
+Configure the Anthropic provider:
+.PP
+.nf
+.RS
+git-iris config --provider anthropic --api-key YOUR_API_KEY
+.RE
+.fi
+.PP
+Set a default preset:
+.PP
+.nf
+.RS
+git-iris config --preset conventional
+.RE
+.fi
+.PP
+List all available presets:
+.PP
+.nf
+.RS
+git-iris list-presets
 .RE
 .fi
 .SH FILES
