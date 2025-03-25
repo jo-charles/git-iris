@@ -111,7 +111,25 @@ pub fn create_user_prompt(context: &CommitContext) -> String {
         detailed_changes
     );
 
-    log_debug!("Detailed changes:\n{}", detailed_changes);
+    log_debug!(
+        "Generated commit prompt for {} files ({} added, {} modified, {} deleted)",
+        context.staged_files.len(),
+        context
+            .staged_files
+            .iter()
+            .filter(|f| matches!(f.change_type, ChangeType::Added))
+            .count(),
+        context
+            .staged_files
+            .iter()
+            .filter(|f| matches!(f.change_type, ChangeType::Modified))
+            .count(),
+        context
+            .staged_files
+            .iter()
+            .filter(|f| matches!(f.change_type, ChangeType::Deleted))
+            .count()
+    );
 
     prompt
 }
@@ -153,30 +171,96 @@ fn format_detailed_changes(
     files: &[StagedFile],
     relevance_scores: &HashMap<String, f32>,
 ) -> String {
-    files
+    let mut all_sections = Vec::new();
+
+    // Add a statistical summary at the top
+    let added_count = files
+        .iter()
+        .filter(|f| matches!(f.change_type, ChangeType::Added))
+        .count();
+    let modified_count = files
+        .iter()
+        .filter(|f| matches!(f.change_type, ChangeType::Modified))
+        .count();
+    let deleted_count = files
+        .iter()
+        .filter(|f| matches!(f.change_type, ChangeType::Deleted))
+        .count();
+
+    let summary = format!(
+        "CHANGE SUMMARY:\n- {} file(s) added\n- {} file(s) modified\n- {} file(s) deleted\n- {} total file(s) changed",
+        added_count,
+        modified_count,
+        deleted_count,
+        files.len()
+    );
+    all_sections.push(summary);
+
+    // First section: File summaries with diffs
+    let diff_section = files
         .iter()
         .map(|file| {
             let relevance = relevance_scores.get(&file.path).unwrap_or(&0.0);
-            let mut file_info = format!(
-                "File: {} (Relevance: {:.2})\nChange Type: {}\nAnalysis:\n{}\n\nDiff:\n{}",
+            // Add emoji indicators for change types
+            let change_indicator = match file.change_type {
+                ChangeType::Added => "➕",
+                ChangeType::Modified => "✏️",
+                ChangeType::Deleted => "🗑️",
+            };
+
+            format!(
+                "{} File: {} (Relevance: {:.2})\nChange Type: {}\nAnalysis:\n{}\n\nDiff:\n{}",
+                change_indicator,
                 file.path,
                 relevance,
                 format_change_type(&file.change_type),
                 file.analysis.join("\n"),
                 file.diff
-            );
-
-            // Add full file content if available
-            if let Some(content) = &file.content {
-                file_info.push_str("\n\n---\n\nFull File Content:\n");
-                file_info.push_str(content);
-                file_info.push_str("\n\n--- End of File ---\n");
-            }
-
-            file_info
+            )
         })
         .collect::<Vec<_>>()
-        .join("\n\n---\n\n")
+        .join("\n\n---\n\n");
+
+    all_sections.push(format!(
+        "=== DIFFS ({} files) ===\n\n{}",
+        files.len(),
+        diff_section
+    ));
+
+    // Second section: Full file contents (only for added/modified files)
+    let content_files: Vec<_> = files
+        .iter()
+        .filter(|file| file.change_type != ChangeType::Deleted && file.content.is_some())
+        .collect();
+
+    if !content_files.is_empty() {
+        let content_section = content_files
+            .iter()
+            .map(|file| {
+                let change_indicator = match file.change_type {
+                    ChangeType::Added => "➕",
+                    ChangeType::Modified => "✏️",
+                    _ => "",
+                };
+
+                format!(
+                    "{} File: {}\nFull File Content:\n{}\n\n--- End of File ---",
+                    change_indicator,
+                    file.path,
+                    file.content.as_ref().unwrap()
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n\n---\n\n");
+
+        all_sections.push(format!(
+            "=== FULL FILE CONTENTS ({} files) ===\n\n{}",
+            content_files.len(),
+            content_section
+        ));
+    }
+
+    all_sections.join("\n\n====================\n\n")
 }
 
 fn format_change_type(change_type: &ChangeType) -> &'static str {
@@ -295,7 +379,25 @@ pub fn create_review_user_prompt(context: &CommitContext) -> String {
         detailed_changes
     );
 
-    log_debug!("Review context details:\n{}", detailed_changes);
+    log_debug!(
+        "Generated review prompt for {} files ({} added, {} modified, {} deleted)",
+        context.staged_files.len(),
+        context
+            .staged_files
+            .iter()
+            .filter(|f| matches!(f.change_type, ChangeType::Added))
+            .count(),
+        context
+            .staged_files
+            .iter()
+            .filter(|f| matches!(f.change_type, ChangeType::Modified))
+            .count(),
+        context
+            .staged_files
+            .iter()
+            .filter(|f| matches!(f.change_type, ChangeType::Deleted))
+            .count()
+    );
 
     prompt
 }

@@ -25,10 +25,7 @@ where
     T: Serialize + DeserializeOwned + std::fmt::Debug,
     String: Into<T>,
 {
-    log_debug!(
-        "Generating message using provider: {}",
-        provider_name
-    );
+    log_debug!("Generating message using provider: {}", provider_name);
     log_debug!("System prompt: {}", system_prompt);
     log_debug!("User prompt: {}", user_prompt);
 
