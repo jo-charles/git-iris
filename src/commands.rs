@@ -155,16 +155,10 @@ fn print_configuration(config: &Config) {
         println!("{}", "Custom Instructions".bright_blue().bold().underline());
         println!();
 
-        // Split instructions into multiple lines if needed for display
-        let formatted_instructions = config.instructions.replace('\n', " ");
-
-        // If instructions are long, truncate with ellipsis
-        if formatted_instructions.len() > 150 {
-            let truncated = formatted_instructions.chars().take(147).collect::<String>();
-            println!("  {}...", truncated.bright_white().italic());
-        } else {
-            println!("  {}", formatted_instructions.bright_white().italic());
-        }
+        // Display full instructions, preserving newlines
+        config.instructions.lines().for_each(|line| {
+            println!("  {}", line.bright_white().italic());
+        });
 
         println!();
     }
