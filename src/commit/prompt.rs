@@ -332,7 +332,7 @@ pub fn create_review_system_prompt(config: &Config) -> anyhow::Result<String> {
 
         Follow these steps to generate the code review:
 
-        1. Analyze the provided context, including staged changes, recent commits, and project metadata.
+        1. Analyze the provided context, including staged changes and project metadata.
         2. Evaluate the code quality, looking for potential issues, improvements, and good practices.
         3. Create a concise summary of the changes and their quality.
         4. List specific issues found in the code.
