@@ -44,6 +44,30 @@ pub struct GeneratedMessage {
     pub message: String,
 }
 
+/// Represents a specific issue found during code review
+#[derive(Serialize, Deserialize, Debug, Clone, JsonSchema)]
+pub struct CodeIssue {
+    /// Brief description of the issue
+    pub description: String,
+    /// Severity level of the issue (Critical, High, Medium, Low)
+    pub severity: String,
+    /// Line numbers or location references for the issue
+    pub location: String,
+    /// Detailed explanation of why this is problematic
+    pub explanation: String,
+    /// Specific suggestion to address the issue
+    pub recommendation: String,
+}
+
+/// Represents analysis for a specific code quality dimension
+#[derive(Serialize, Deserialize, Debug, Clone, JsonSchema)]
+pub struct DimensionAnalysis {
+    /// Whether issues were found in this dimension
+    pub issues_found: bool,
+    /// List of specific issues identified in this dimension
+    pub issues: Vec<CodeIssue>,
+}
+
 /// Model for code review generation results
 #[derive(Serialize, Deserialize, Debug, Clone, JsonSchema)]
 pub struct GeneratedReview {
@@ -57,6 +81,26 @@ pub struct GeneratedReview {
     pub issues: Vec<String>,
     /// List of positive aspects or good practices in the code
     pub positive_aspects: Vec<String>,
+    /// Analysis of unnecessary complexity issues
+    pub complexity: Option<DimensionAnalysis>,
+    /// Analysis of abstraction quality issues
+    pub abstraction: Option<DimensionAnalysis>,
+    /// Analysis of unintended code deletion
+    pub deletion: Option<DimensionAnalysis>,
+    /// Analysis of hallucinated components that don't exist
+    pub hallucination: Option<DimensionAnalysis>,
+    /// Analysis of style inconsistencies
+    pub style: Option<DimensionAnalysis>,
+    /// Analysis of security vulnerabilities
+    pub security: Option<DimensionAnalysis>,
+    /// Analysis of performance issues
+    pub performance: Option<DimensionAnalysis>,
+    /// Analysis of code duplication
+    pub duplication: Option<DimensionAnalysis>,
+    /// Analysis of error handling completeness
+    pub error_handling: Option<DimensionAnalysis>,
+    /// Analysis of test coverage gaps
+    pub testing: Option<DimensionAnalysis>,
 }
 
 impl From<String> for GeneratedMessage {
@@ -89,6 +133,16 @@ impl From<String> for GeneratedReview {
                     suggestions: vec!["Please try again.".to_string()],
                     issues: vec![],
                     positive_aspects: vec![],
+                    complexity: None,
+                    abstraction: None,
+                    deletion: None,
+                    hallucination: None,
+                    style: None,
+                    security: None,
+                    performance: None,
+                    duplication: None,
+                    error_handling: None,
+                    testing: None,
                 }
             }
         }
@@ -223,6 +277,22 @@ impl GeneratedReview {
             formatted.push('\n');
         }
 
+        // Format the dimension-specific analyses if they exist
+        self.format_dimension_analysis(&mut formatted, "Complexity", &self.complexity);
+        self.format_dimension_analysis(&mut formatted, "Abstraction", &self.abstraction);
+        self.format_dimension_analysis(&mut formatted, "Unintended Deletion", &self.deletion);
+        self.format_dimension_analysis(
+            &mut formatted,
+            "Hallucinated Components",
+            &self.hallucination,
+        );
+        self.format_dimension_analysis(&mut formatted, "Style Inconsistencies", &self.style);
+        self.format_dimension_analysis(&mut formatted, "Security Vulnerabilities", &self.security);
+        self.format_dimension_analysis(&mut formatted, "Performance Issues", &self.performance);
+        self.format_dimension_analysis(&mut formatted, "Code Duplication", &self.duplication);
+        self.format_dimension_analysis(&mut formatted, "Error Handling", &self.error_handling);
+        self.format_dimension_analysis(&mut formatted, "Test Coverage", &self.testing);
+
         if !self.suggestions.is_empty() {
             formatted.push_str(&format!(
                 "{}\n\n",
@@ -234,5 +304,43 @@ impl GeneratedReview {
         }
 
         formatted
+    }
+
+    /// Helper method to format a single dimension analysis
+    fn format_dimension_analysis(
+        &self,
+        formatted: &mut String,
+        title: &str,
+        analysis: &Option<DimensionAnalysis>,
+    ) {
+        if let Some(dim) = analysis {
+            if dim.issues_found && !dim.issues.is_empty() {
+                formatted.push_str(&format!("{}\n\n", format!("🔎 {title}").yellow().bold()));
+
+                for (i, issue) in dim.issues.iter().enumerate() {
+                    let severity_color = match issue.severity.as_str() {
+                        "Critical" => issue.description.bright_red(),
+                        "High" => issue.description.red(),
+                        "Medium" => issue.description.yellow(),
+                        "Low" => issue.description.bright_yellow(),
+                        _ => issue.description.normal(),
+                    };
+
+                    formatted.push_str(&format!(
+                        "{}. {} ({})\n",
+                        i + 1,
+                        severity_color,
+                        issue.severity
+                    ));
+                    formatted
+                        .push_str(&format!("   Location: {}\n", issue.location.bright_white()));
+                    formatted.push_str(&format!("   {}\n", issue.explanation));
+                    formatted.push_str(&format!(
+                        "   Recommendation: {}\n\n",
+                        issue.recommendation.bright_green()
+                    ));
+                }
+            }
+        }
     }
 }

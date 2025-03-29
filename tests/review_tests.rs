@@ -1,4 +1,4 @@
-use git_iris::context::GeneratedReview;
+use git_iris::context::{CodeIssue, DimensionAnalysis, GeneratedReview};
 
 #[test]
 fn test_review_format() {
@@ -9,6 +9,25 @@ fn test_review_format() {
         suggestions: vec!["Suggestion 1".to_string(), "Suggestion 2".to_string()],
         issues: vec!["Issue 1".to_string()],
         positive_aspects: vec!["Positive 1".to_string(), "Positive 2".to_string()],
+        complexity: Some(DimensionAnalysis {
+            issues_found: true,
+            issues: vec![CodeIssue {
+                description: "Complex function".to_string(),
+                severity: "Medium".to_string(),
+                location: "src/main.rs:42".to_string(),
+                explanation: "This function has too many nested conditionals".to_string(),
+                recommendation: "Extract nested logic into separate functions".to_string(),
+            }],
+        }),
+        abstraction: None,
+        deletion: None,
+        hallucination: None,
+        style: None,
+        security: None,
+        performance: None,
+        duplication: None,
+        error_handling: None,
+        testing: None,
     };
 
     let formatted = review.format();
@@ -27,6 +46,14 @@ fn test_review_format() {
     assert!(formatted.contains("Suggestions for Improvement"));
     assert!(formatted.contains("Suggestion 1"));
     assert!(formatted.contains("Suggestion 2"));
+
+    // Check the complexity dimension was formatted
+    assert!(formatted.contains("Complexity"));
+    assert!(formatted.contains("Complex function"));
+    assert!(formatted.contains("Medium"));
+    assert!(formatted.contains("src/main.rs:42"));
+    assert!(formatted.contains("This function has too many nested conditionals"));
+    assert!(formatted.contains("Extract nested logic into separate functions"));
 }
 
 // Note: We don't include a test for handle_review_command here because:

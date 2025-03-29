@@ -82,7 +82,7 @@ pub enum Commands {
     /// Review staged changes and provide feedback
     #[command(
         about = "Review staged changes using AI",
-        long_about = "Generate a detailed code review of staged changes using AI based on the current Git context."
+        long_about = "Generate a comprehensive multi-dimensional code review of staged changes using AI. Analyzes code across 10 dimensions including complexity, security, performance, and more."
     )]
     Review {
         #[command(flatten)]

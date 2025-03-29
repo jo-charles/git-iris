@@ -8,6 +8,7 @@ use anyhow::{Context, Result};
 use std::sync::Arc;
 
 /// Handles the review command which generates an AI code review of staged changes
+/// with comprehensive analysis across multiple dimensions of code quality
 pub async fn handle_review_command(common: CommonParams, _print: bool) -> Result<()> {
     // Check if the preset is appropriate for code reviews
     if !common.is_valid_preset_for_type(PresetType::Review) {
@@ -62,7 +63,10 @@ pub async fn handle_review_command(common: CommonParams, _print: bool) -> Result
     // Create and start the spinner
     let spinner = ui::create_spinner("");
     let random_message = messages::get_waiting_message();
-    spinner.set_message(random_message.text);
+    spinner.set_message(format!(
+        "{} Analyzing code across multiple dimensions...",
+        random_message.text
+    ));
 
     // Generate the code review
     let review = service
@@ -71,6 +75,20 @@ pub async fn handle_review_command(common: CommonParams, _print: bool) -> Result
 
     // Stop the spinner
     spinner.finish_and_clear();
+
+    // Print information about the enhanced review
+    ui::print_info("\n✨ Enhanced Code Review ✨");
+    ui::print_info("This review analyzes your code across multiple dimensions:");
+    ui::print_info(" • Unnecessary Complexity");
+    ui::print_info(" • Poor Abstractions");
+    ui::print_info(" • Unintended Code Deletion");
+    ui::print_info(" • Hallucinated Components");
+    ui::print_info(" • Style Inconsistencies");
+    ui::print_info(" • Security Vulnerabilities");
+    ui::print_info(" • Performance Issues");
+    ui::print_info(" • Code Duplication");
+    ui::print_info(" • Incomplete Error Handling");
+    ui::print_info(" • Test Coverage Gaps\n");
 
     // Print the review to stdout or save to file if requested
     println!("{}", review.format());

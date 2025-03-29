@@ -316,6 +316,84 @@ pub fn create_review_system_prompt(config: &Config) -> anyhow::Result<String> {
            - Focus on the code, not the developer
            - Acknowledge good practices and improvements
 
+        5. Analyze the following specific dimensions of code quality:
+
+           **Unnecessary Complexity**
+           - Overly complex algorithms or functions
+           - Unnecessary abstraction layers
+           - Convoluted control flow
+           - Functions/methods that are too long or have too many parameters
+           - Nesting levels that are too deep
+
+           **Poor Abstractions**
+           - Inappropriate use of design patterns
+           - Missing abstractions where needed
+           - Leaky abstractions that expose implementation details
+           - Overly generic abstractions that add complexity
+           - Unclear separation of concerns
+
+           **Unintended Code Deletion**
+           - Critical functionality removed without replacement
+           - Incomplete removal of deprecated code
+           - Breaking changes to public APIs
+           - Removed error handling or validation
+           - Missing edge case handling present in original code
+
+           **Hallucinated Components**
+           - References to non-existent functions, classes, or modules
+           - Assumptions about available libraries or APIs
+           - Inconsistent or impossible behavior expectations
+           - References to frameworks or patterns not used in the project
+           - Creation of interfaces that don't align with the codebase
+
+           **Style Inconsistencies**
+           - Deviation from project coding standards
+           - Inconsistent naming conventions
+           - Inconsistent formatting or indentation
+           - Inconsistent comment styles or documentation
+           - Mixing of different programming paradigms
+
+           **Security Vulnerabilities**
+           - Injection vulnerabilities (SQL, Command, etc.)
+           - Insecure data handling or storage
+           - Authentication or authorization flaws
+           - Exposure of sensitive information
+           - Unsafe dependencies or API usage
+
+           **Performance Issues**
+           - Inefficient algorithms or data structures
+           - Unnecessary computations or operations
+           - Resource leaks (memory, file handles, etc.)
+           - Excessive network or disk operations
+           - Blocking operations in asynchronous code
+
+           **Code Duplication**
+           - Repeated logic or functionality
+           - Copy-pasted code with minor variations
+           - Duplicate functionality across different modules
+           - Redundant validation or error handling
+           - Parallel hierarchies or structures
+
+           **Incomplete Error Handling**
+           - Missing try-catch blocks for risky operations
+           - Overly broad exception handling
+           - Swallowed exceptions without proper logging
+           - Unclear error messages or codes
+           - Inconsistent error recovery strategies
+
+           **Test Coverage Gaps**
+           - Missing unit tests for critical functionality
+           - Uncovered edge cases or error paths
+           - Brittle tests that make inappropriate assumptions
+           - Missing integration or system tests
+           - Tests that don't verify actual requirements
+
+        For each dimension, identify specific issues with:
+        - A severity level (Critical, High, Medium, Low)
+        - Line number references or specific location in the code
+        - Explanation of why it's problematic
+        - Concrete recommendation for improvement
+
         Your review should be based entirely on the information provided in the context, without any speculation or assumptions.
       ");
 
@@ -329,7 +407,29 @@ pub fn create_review_system_prompt(config: &Config) -> anyhow::Result<String> {
           \"code_quality\": \"An assessment of the overall code quality\",
           \"suggestions\": [\"Suggestion 1\", \"Suggestion 2\", ...],
           \"issues\": [\"Issue 1\", \"Issue 2\", ...],
-          \"positive_aspects\": [\"Positive aspect 1\", \"Positive aspect 2\", ...]
+          \"positive_aspects\": [\"Positive aspect 1\", \"Positive aspect 2\", ...],
+          \"complexity\": {
+            \"issues_found\": true/false,
+            \"issues\": [
+              {
+                \"description\": \"Brief description\",
+                \"severity\": \"Critical/High/Medium/Low\",
+                \"location\": \"Line number or code location\",
+                \"explanation\": \"Detailed explanation of the issue\",
+                \"recommendation\": \"Specific suggestion for improvement\"
+              },
+              ...
+            ]
+          },
+          \"abstraction\": { ... similar structure ... },
+          \"deletion\": { ... similar structure ... },
+          \"hallucination\": { ... similar structure ... },
+          \"style\": { ... similar structure ... },
+          \"security\": { ... similar structure ... },
+          \"performance\": { ... similar structure ... },
+          \"duplication\": { ... similar structure ... },
+          \"error_handling\": { ... similar structure ... },
+          \"testing\": { ... similar structure ... }
         }
 
         Follow these steps to generate the code review:
@@ -337,19 +437,48 @@ pub fn create_review_system_prompt(config: &Config) -> anyhow::Result<String> {
         1. Analyze the provided context, including staged changes and project metadata.
         2. Evaluate the code quality, looking for potential issues, improvements, and good practices.
         3. Create a concise summary of the changes and their quality.
-        4. List specific issues found in the code.
-        5. Provide actionable suggestions for improvements.
-        6. Acknowledge positive aspects and good practices in the code.
-        7. Construct the final JSON object with all components.
+        4. Analyze each of the 10 code quality dimensions.
+        5. For each dimension with issues, list them with appropriate severity, location, explanation, and recommendation.
+        6. Provide overall suggestions for improvements.
+        7. Identify specific issues found across all dimensions.
+        8. Acknowledge positive aspects and good practices in the code.
+        9. Construct the final JSON object with all components.
 
-        Here's a minimal example of the expected output format:
+        Note: It's expected that not all dimensions will have issues. For dimensions without issues, set 'issues_found' to false and provide an empty issues array.
+
+        Here's a minimal example of the expected output format (showing only two dimensions for brevity):
 
         {
           \"summary\": \"The changes implement a new authentication system with good separation of concerns, but lacks proper error handling in several places.\",
           \"code_quality\": \"The code is generally well-structured with clear naming conventions. The architecture follows established patterns, but there are some inconsistencies in error handling approaches.\",
           \"suggestions\": [\"Consider implementing a consistent error handling strategy across all authentication operations\", \"Add unit tests for edge cases in the token validation logic\"],
           \"issues\": [\"Missing error handling in the user registration flow\", \"Potential race condition in token refresh mechanism\"],
-          \"positive_aspects\": [\"Good separation of concerns with clear service boundaries\", \"Consistent naming conventions throughout the added components\"]
+          \"positive_aspects\": [\"Good separation of concerns with clear service boundaries\", \"Consistent naming conventions throughout the added components\"],
+          \"complexity\": {
+            \"issues_found\": true,
+            \"issues\": [
+              {
+                \"description\": \"Complex authentication flow with excessive nesting\",
+                \"severity\": \"Medium\",
+                \"location\": \"auth_service.rs:45-67\",
+                \"explanation\": \"The authentication validation contains 5 levels of nesting, making it difficult to follow the logic flow.\",
+                \"recommendation\": \"Extract validation steps into separate functions and use early returns to reduce nesting\"
+              }
+            ]
+          },
+          \"error_handling\": {
+            \"issues_found\": true,
+            \"issues\": [
+              {
+                \"description\": \"Missing error handling in token refresh\",
+                \"severity\": \"High\",
+                \"location\": \"auth_service.rs:102-120\",
+                \"explanation\": \"The token refresh function doesn't properly handle network timeouts, potentially leaving users in an inconsistent state.\",
+                \"recommendation\": \"Add explicit error handling for network timeouts with appropriate user feedback\"
+              }
+            ]
+          },
+          ... (other dimensions would be included with empty issues arrays if no issues found)
         }
 
         Ensure that your response is a valid JSON object matching this structure.
