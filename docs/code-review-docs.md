@@ -23,7 +23,27 @@ The code review is structured into several sections:
 2. **Code Quality Assessment**: Detailed evaluation of the overall code quality
 3. **Positive Aspects**: Recognition of good practices and well-implemented features
 4. **Issues Identified**: Problems or concerns found in the code
-5. **Suggestions for Improvement**: Actionable recommendations to enhance the code
+5. **Dimension-Specific Analysis**: Detailed analysis across 11 quality dimensions:
+   - **Complexity**: Identifies unnecessary complexity in algorithms and control flow
+   - **Abstraction**: Assesses appropriateness of abstractions and design patterns
+   - **Unintended Deletion**: Detects critical functionality removed without replacement
+   - **Hallucinated Components**: Flags references to non-existent functions or APIs
+   - **Style Inconsistencies**: Highlights deviations from project coding standards
+   - **Security Vulnerabilities**: Identifies potential security issues
+   - **Performance Issues**: Spots inefficient algorithms or resource usage
+   - **Code Duplication**: Detects repeated logic or copy-pasted code
+   - **Error Handling**: Evaluates completeness of error recovery strategies
+   - **Test Coverage**: Analyzes test coverage gaps or brittle tests
+   - **Best Practices**: Checks adherence to language-specific conventions and design guidelines
+6. **Suggestions for Improvement**: Actionable recommendations to enhance the code
+
+Each dimension-specific analysis includes:
+
+- Issue description
+- Severity level (Critical, High, Medium, Low)
+- Location in code (file and line numbers)
+- Detailed explanation of the problem
+- Specific recommendation for improvement
 
 ### 3.2 Integration with Git-Iris
 
@@ -137,6 +157,20 @@ Detailed assessment of the overall code quality...
 2. Race condition in multi-threaded context
 ...
 
+🔎 Complexity
+1. Complex function (Medium)
+   Location: auth_service.rs:45-67
+   The authentication validation contains 5 levels of nesting, making it difficult to follow the logic flow.
+   Recommendation: Extract validation steps into separate functions and use early returns to reduce nesting
+
+🔎 Security Vulnerabilities
+1. Insecure data handling (High)
+   Location: user_controller.rs:102-120
+   User input is used directly in database query without proper sanitization.
+   Recommendation: Use parameterized queries or an ORM to prevent SQL injection
+
+... (other dimension analyses) ...
+
 💡 Suggestions for Improvement
 1. Consider using the `?` operator instead of manual match statements
 2. Extract duplicated logic into a separate function
@@ -182,7 +216,25 @@ git add *.rs
 git-iris review -i "Focus on Rust-specific best practices"
 ```
 
-### 7.3 Saving Reviews
+### 7.3 Best Practices Analysis
+
+The "Best Practices" dimension is a powerful feature that evaluates code against established language-specific and general software engineering guidelines, including:
+
+- Language-specific idioms and conventions
+- SOLID principles and clean code guidelines
+- Design patterns and anti-patterns
+- Identification of deprecated APIs and outdated practices
+- Compiler and linter warning analysis
+
+You can focus specifically on best practices analysis with:
+
+```bash
+git-iris review -i "Focus primarily on adherence to best practices and industry standards"
+```
+
+This analysis is especially valuable for team projects with established guidelines or when working with AI-generated code that may not follow idiomatic practices for the language or project.
+
+### 7.4 Saving Reviews
 
 You can save reviews for future reference:
 

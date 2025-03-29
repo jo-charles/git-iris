@@ -198,6 +198,18 @@ The review includes:
 - Suggestions for improvement
 - Identified issues
 - Positive aspects of your code
+- Analysis across 11 dimensions of code quality:
+  - Complexity - Identifies unnecessary complexity in algorithms and control flow
+  - Abstraction - Assesses appropriateness of abstractions and design patterns
+  - Unintended Deletion - Detects critical functionality removed without replacement
+  - Hallucinated Components - Flags references to non-existent functions or APIs
+  - Style Inconsistencies - Highlights deviations from project coding standards
+  - Security Vulnerabilities - Identifies potential security issues
+  - Performance Issues - Spots inefficient algorithms or resource usage
+  - Code Duplication - Detects repeated logic or copy-pasted code
+  - Error Handling - Evaluates completeness of error recovery strategies
+  - Test Coverage - Analyzes test coverage gaps or brittle tests
+  - Best Practices - Checks adherence to language-specific conventions and design guidelines
 
 Options:
 
