@@ -1,8 +1,8 @@
 use crate::common::get_combined_instructions;
 use crate::config::Config;
 use crate::context::{
-    ChangeType, CommitContext, GeneratedMessage, GeneratedReview, ProjectMetadata, RecentCommit,
-    StagedFile,
+    ChangeType, CommitContext, GeneratedMessage, GeneratedReview, ProjectMetadata,
+    QualityDimension, RecentCommit, StagedFile,
 };
 use crate::gitmoji::{apply_gitmoji, get_gitmoji_list};
 
@@ -282,6 +282,7 @@ pub fn process_commit_message(message: String, use_gitmoji: bool) -> String {
 }
 
 /// Creates a system prompt for code review generation
+#[allow(clippy::too_many_lines)]
 pub fn create_review_system_prompt(config: &Config) -> anyhow::Result<String> {
     let review_schema = schemars::schema_for!(GeneratedReview);
     let review_schema_str = serde_json::to_string_pretty(&review_schema)?;
@@ -317,77 +318,15 @@ pub fn create_review_system_prompt(config: &Config) -> anyhow::Result<String> {
            - Acknowledge good practices and improvements
 
         5. Analyze the following specific dimensions of code quality:
+        ");
 
-           **Unnecessary Complexity**
-           - Overly complex algorithms or functions
-           - Unnecessary abstraction layers
-           - Convoluted control flow
-           - Functions/methods that are too long or have too many parameters
-           - Nesting levels that are too deep
+    // Add each dimension's description
+    for dimension in QualityDimension::all() {
+        prompt.push_str(dimension.description());
+    }
 
-           **Poor Abstractions**
-           - Inappropriate use of design patterns
-           - Missing abstractions where needed
-           - Leaky abstractions that expose implementation details
-           - Overly generic abstractions that add complexity
-           - Unclear separation of concerns
-
-           **Unintended Code Deletion**
-           - Critical functionality removed without replacement
-           - Incomplete removal of deprecated code
-           - Breaking changes to public APIs
-           - Removed error handling or validation
-           - Missing edge case handling present in original code
-
-           **Hallucinated Components**
-           - References to non-existent functions, classes, or modules
-           - Assumptions about available libraries or APIs
-           - Inconsistent or impossible behavior expectations
-           - References to frameworks or patterns not used in the project
-           - Creation of interfaces that don't align with the codebase
-
-           **Style Inconsistencies**
-           - Deviation from project coding standards
-           - Inconsistent naming conventions
-           - Inconsistent formatting or indentation
-           - Inconsistent comment styles or documentation
-           - Mixing of different programming paradigms
-
-           **Security Vulnerabilities**
-           - Injection vulnerabilities (SQL, Command, etc.)
-           - Insecure data handling or storage
-           - Authentication or authorization flaws
-           - Exposure of sensitive information
-           - Unsafe dependencies or API usage
-
-           **Performance Issues**
-           - Inefficient algorithms or data structures
-           - Unnecessary computations or operations
-           - Resource leaks (memory, file handles, etc.)
-           - Excessive network or disk operations
-           - Blocking operations in asynchronous code
-
-           **Code Duplication**
-           - Repeated logic or functionality
-           - Copy-pasted code with minor variations
-           - Duplicate functionality across different modules
-           - Redundant validation or error handling
-           - Parallel hierarchies or structures
-
-           **Incomplete Error Handling**
-           - Missing try-catch blocks for risky operations
-           - Overly broad exception handling
-           - Swallowed exceptions without proper logging
-           - Unclear error messages or codes
-           - Inconsistent error recovery strategies
-
-           **Test Coverage Gaps**
-           - Missing unit tests for critical functionality
-           - Uncovered edge cases or error paths
-           - Brittle tests that make inappropriate assumptions
-           - Missing integration or system tests
-           - Tests that don't verify actual requirements
-
+    prompt.push_str(
+        "
         For each dimension, identify specific issues with:
         - A severity level (Critical, High, Medium, Low)
         - Line number references or specific location in the code
@@ -399,7 +338,8 @@ pub fn create_review_system_prompt(config: &Config) -> anyhow::Result<String> {
 
     prompt.push_str(get_combined_instructions(config).as_str());
 
-    prompt.push_str("
+    prompt.push_str(
+        "
         Your response must be a valid JSON object with the following structure:
 
         {
@@ -407,29 +347,53 @@ pub fn create_review_system_prompt(config: &Config) -> anyhow::Result<String> {
           \"code_quality\": \"An assessment of the overall code quality\",
           \"suggestions\": [\"Suggestion 1\", \"Suggestion 2\", ...],
           \"issues\": [\"Issue 1\", \"Issue 2\", ...],
-          \"positive_aspects\": [\"Positive aspect 1\", \"Positive aspect 2\", ...],
-          \"complexity\": {
+          \"positive_aspects\": [\"Positive aspect 1\", \"Positive aspect 2\", ...],",
+    );
+
+    // Add each dimension to the JSON schema
+    let mut is_first = true;
+    for dimension in QualityDimension::all() {
+        let dim_name = match dimension {
+            QualityDimension::Complexity => "complexity",
+            QualityDimension::Abstraction => "abstraction",
+            QualityDimension::Deletion => "deletion",
+            QualityDimension::Hallucination => "hallucination",
+            QualityDimension::Style => "style",
+            QualityDimension::Security => "security",
+            QualityDimension::Performance => "performance",
+            QualityDimension::Duplication => "duplication",
+            QualityDimension::ErrorHandling => "error_handling",
+            QualityDimension::Testing => "testing",
+            QualityDimension::BestPractices => "best_practices",
+        };
+
+        if is_first {
+            is_first = false;
+            prompt.push_str(&format!(
+                "
+          \"{dim_name}\": {{
             \"issues_found\": true/false,
             \"issues\": [
-              {
+              {{
                 \"description\": \"Brief description\",
                 \"severity\": \"Critical/High/Medium/Low\",
                 \"location\": \"Line number or code location\",
                 \"explanation\": \"Detailed explanation of the issue\",
                 \"recommendation\": \"Specific suggestion for improvement\"
-              },
+              }},
               ...
             ]
-          },
-          \"abstraction\": { ... similar structure ... },
-          \"deletion\": { ... similar structure ... },
-          \"hallucination\": { ... similar structure ... },
-          \"style\": { ... similar structure ... },
-          \"security\": { ... similar structure ... },
-          \"performance\": { ... similar structure ... },
-          \"duplication\": { ... similar structure ... },
-          \"error_handling\": { ... similar structure ... },
-          \"testing\": { ... similar structure ... }
+          }}"
+            ));
+        } else {
+            prompt.push_str(&format!(
+                ",
+          \"{dim_name}\": {{ ... similar structure ... }}"
+            ));
+        }
+    }
+
+    prompt.push_str("
         }
 
         Follow these steps to generate the code review:
@@ -437,7 +401,7 @@ pub fn create_review_system_prompt(config: &Config) -> anyhow::Result<String> {
         1. Analyze the provided context, including staged changes and project metadata.
         2. Evaluate the code quality, looking for potential issues, improvements, and good practices.
         3. Create a concise summary of the changes and their quality.
-        4. Analyze each of the 10 code quality dimensions.
+        4. Analyze each of the code quality dimensions.
         5. For each dimension with issues, list them with appropriate severity, location, explanation, and recommendation.
         6. Provide overall suggestions for improvements.
         7. Identify specific issues found across all dimensions.

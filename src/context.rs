@@ -68,6 +68,186 @@ pub struct DimensionAnalysis {
     pub issues: Vec<CodeIssue>,
 }
 
+/// Represents the different dimensions of code quality analysis
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+pub enum QualityDimension {
+    /// Unnecessary complexity in algorithms, abstractions, or control flow
+    Complexity,
+    /// Poor or inappropriate abstractions, design patterns or separation of concerns
+    Abstraction,
+    /// Unintended deletion of code or functionality without proper replacement
+    Deletion,
+    /// References to non-existent components, APIs, or behaviors
+    Hallucination,
+    /// Inconsistencies in code style, naming, or formatting
+    Style,
+    /// Security vulnerabilities or insecure coding practices
+    Security,
+    /// Inefficient algorithms, operations, or resource usage
+    Performance,
+    /// Repeated logic, functionality, or copy-pasted code
+    Duplication,
+    /// Insufficient or improper error handling and recovery
+    ErrorHandling,
+    /// Gaps in test coverage or tests that miss critical scenarios
+    Testing,
+    /// Violations of established best practices or coding standards
+    BestPractices,
+}
+
+impl QualityDimension {
+    /// Get all quality dimensions
+    pub fn all() -> &'static [QualityDimension] {
+        &[
+            QualityDimension::Complexity,
+            QualityDimension::Abstraction,
+            QualityDimension::Deletion,
+            QualityDimension::Hallucination,
+            QualityDimension::Style,
+            QualityDimension::Security,
+            QualityDimension::Performance,
+            QualityDimension::Duplication,
+            QualityDimension::ErrorHandling,
+            QualityDimension::Testing,
+            QualityDimension::BestPractices,
+        ]
+    }
+
+    /// Get the display name for a dimension
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            QualityDimension::Complexity => "Complexity",
+            QualityDimension::Abstraction => "Abstraction",
+            QualityDimension::Deletion => "Unintended Deletion",
+            QualityDimension::Hallucination => "Hallucinated Components",
+            QualityDimension::Style => "Style Inconsistencies",
+            QualityDimension::Security => "Security Vulnerabilities",
+            QualityDimension::Performance => "Performance Issues",
+            QualityDimension::Duplication => "Code Duplication",
+            QualityDimension::ErrorHandling => "Error Handling",
+            QualityDimension::Testing => "Test Coverage",
+            QualityDimension::BestPractices => "Best Practices",
+        }
+    }
+
+    /// Get the description for a dimension
+    #[allow(clippy::too_many_lines)]
+    pub fn description(&self) -> &'static str {
+        match self {
+            QualityDimension::Complexity => {
+                "
+            **Unnecessary Complexity**
+            - Overly complex algorithms or functions
+            - Unnecessary abstraction layers
+            - Convoluted control flow
+            - Functions/methods that are too long or have too many parameters
+            - Nesting levels that are too deep
+            "
+            }
+            QualityDimension::Abstraction => {
+                "
+            **Poor Abstractions**
+            - Inappropriate use of design patterns
+            - Missing abstractions where needed
+            - Leaky abstractions that expose implementation details
+            - Overly generic abstractions that add complexity
+            - Unclear separation of concerns
+            "
+            }
+            QualityDimension::Deletion => {
+                "
+            **Unintended Code Deletion**
+            - Critical functionality removed without replacement
+            - Incomplete removal of deprecated code
+            - Breaking changes to public APIs
+            - Removed error handling or validation
+            - Missing edge case handling present in original code
+            "
+            }
+            QualityDimension::Hallucination => {
+                "
+            **Hallucinated Components**
+            - References to non-existent functions, classes, or modules
+            - Assumptions about available libraries or APIs
+            - Inconsistent or impossible behavior expectations
+            - References to frameworks or patterns not used in the project
+            - Creation of interfaces that don't align with the codebase
+            "
+            }
+            QualityDimension::Style => {
+                "
+            **Style Inconsistencies**
+            - Deviation from project coding standards
+            - Inconsistent naming conventions
+            - Inconsistent formatting or indentation
+            - Inconsistent comment styles or documentation
+            - Mixing of different programming paradigms
+            "
+            }
+            QualityDimension::Security => {
+                "
+            **Security Vulnerabilities**
+            - Injection vulnerabilities (SQL, Command, etc.)
+            - Insecure data handling or storage
+            - Authentication or authorization flaws
+            - Exposure of sensitive information
+            - Unsafe dependencies or API usage
+            "
+            }
+            QualityDimension::Performance => {
+                "
+            **Performance Issues**
+            - Inefficient algorithms or data structures
+            - Unnecessary computations or operations
+            - Resource leaks (memory, file handles, etc.)
+            - Excessive network or disk operations
+            - Blocking operations in asynchronous code
+            "
+            }
+            QualityDimension::Duplication => {
+                "
+            **Code Duplication**
+            - Repeated logic or functionality
+            - Copy-pasted code with minor variations
+            - Duplicate functionality across different modules
+            - Redundant validation or error handling
+            - Parallel hierarchies or structures
+            "
+            }
+            QualityDimension::ErrorHandling => {
+                "
+            **Incomplete Error Handling**
+            - Missing try-catch blocks for risky operations
+            - Overly broad exception handling
+            - Swallowed exceptions without proper logging
+            - Unclear error messages or codes
+            - Inconsistent error recovery strategies
+            "
+            }
+            QualityDimension::Testing => {
+                "
+            **Test Coverage Gaps**
+            - Missing unit tests for critical functionality
+            - Uncovered edge cases or error paths
+            - Brittle tests that make inappropriate assumptions
+            - Missing integration or system tests
+            - Tests that don't verify actual requirements
+            "
+            }
+            QualityDimension::BestPractices => {
+                "
+            **Best Practices Violations**
+            - Not following language-specific idioms and conventions
+            - Violation of SOLID principles or other design guidelines
+            - Anti-patterns or known problematic implementation approaches
+            - Ignored compiler/linter warnings
+            - Outdated or deprecated APIs and practices
+            "
+            }
+        }
+    }
+}
+
 /// Model for code review generation results
 #[derive(Serialize, Deserialize, Debug, Clone, JsonSchema)]
 pub struct GeneratedReview {
@@ -101,6 +281,8 @@ pub struct GeneratedReview {
     pub error_handling: Option<DimensionAnalysis>,
     /// Analysis of test coverage gaps
     pub testing: Option<DimensionAnalysis>,
+    /// Analysis of best practices violations
+    pub best_practices: Option<DimensionAnalysis>,
 }
 
 impl From<String> for GeneratedMessage {
@@ -143,6 +325,7 @@ impl From<String> for GeneratedReview {
                     duplication: None,
                     error_handling: None,
                     testing: None,
+                    best_practices: None,
                 }
             }
         }
@@ -278,20 +461,61 @@ impl GeneratedReview {
         }
 
         // Format the dimension-specific analyses if they exist
-        self.format_dimension_analysis(&mut formatted, "Complexity", &self.complexity);
-        self.format_dimension_analysis(&mut formatted, "Abstraction", &self.abstraction);
-        self.format_dimension_analysis(&mut formatted, "Unintended Deletion", &self.deletion);
-        self.format_dimension_analysis(
+        Self::format_dimension_analysis(
             &mut formatted,
-            "Hallucinated Components",
-            &self.hallucination,
+            QualityDimension::Complexity.display_name(),
+            self.complexity.as_ref(),
         );
-        self.format_dimension_analysis(&mut formatted, "Style Inconsistencies", &self.style);
-        self.format_dimension_analysis(&mut formatted, "Security Vulnerabilities", &self.security);
-        self.format_dimension_analysis(&mut formatted, "Performance Issues", &self.performance);
-        self.format_dimension_analysis(&mut formatted, "Code Duplication", &self.duplication);
-        self.format_dimension_analysis(&mut formatted, "Error Handling", &self.error_handling);
-        self.format_dimension_analysis(&mut formatted, "Test Coverage", &self.testing);
+        Self::format_dimension_analysis(
+            &mut formatted,
+            QualityDimension::Abstraction.display_name(),
+            self.abstraction.as_ref(),
+        );
+        Self::format_dimension_analysis(
+            &mut formatted,
+            QualityDimension::Deletion.display_name(),
+            self.deletion.as_ref(),
+        );
+        Self::format_dimension_analysis(
+            &mut formatted,
+            QualityDimension::Hallucination.display_name(),
+            self.hallucination.as_ref(),
+        );
+        Self::format_dimension_analysis(
+            &mut formatted,
+            QualityDimension::Style.display_name(),
+            self.style.as_ref(),
+        );
+        Self::format_dimension_analysis(
+            &mut formatted,
+            QualityDimension::Security.display_name(),
+            self.security.as_ref(),
+        );
+        Self::format_dimension_analysis(
+            &mut formatted,
+            QualityDimension::Performance.display_name(),
+            self.performance.as_ref(),
+        );
+        Self::format_dimension_analysis(
+            &mut formatted,
+            QualityDimension::Duplication.display_name(),
+            self.duplication.as_ref(),
+        );
+        Self::format_dimension_analysis(
+            &mut formatted,
+            QualityDimension::ErrorHandling.display_name(),
+            self.error_handling.as_ref(),
+        );
+        Self::format_dimension_analysis(
+            &mut formatted,
+            QualityDimension::Testing.display_name(),
+            self.testing.as_ref(),
+        );
+        Self::format_dimension_analysis(
+            &mut formatted,
+            QualityDimension::BestPractices.display_name(),
+            self.best_practices.as_ref(),
+        );
 
         if !self.suggestions.is_empty() {
             formatted.push_str(&format!(
@@ -308,10 +532,9 @@ impl GeneratedReview {
 
     /// Helper method to format a single dimension analysis
     fn format_dimension_analysis(
-        &self,
         formatted: &mut String,
         title: &str,
-        analysis: &Option<DimensionAnalysis>,
+        analysis: Option<&DimensionAnalysis>,
     ) {
         if let Some(dim) = analysis {
             if dim.issues_found && !dim.issues.is_empty() {

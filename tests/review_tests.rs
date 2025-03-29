@@ -11,13 +11,15 @@ fn test_review_format() {
         positive_aspects: vec!["Positive 1".to_string(), "Positive 2".to_string()],
         complexity: Some(DimensionAnalysis {
             issues_found: true,
-            issues: vec![CodeIssue {
-                description: "Complex function".to_string(),
-                severity: "Medium".to_string(),
-                location: "src/main.rs:42".to_string(),
-                explanation: "This function has too many nested conditionals".to_string(),
-                recommendation: "Extract nested logic into separate functions".to_string(),
-            }],
+            issues: vec![
+                CodeIssue {
+                    description: "Complex function".to_string(),
+                    severity: "Medium".to_string(),
+                    location: "src/main.rs:42".to_string(),
+                    explanation: "This function has too many nested conditionals".to_string(),
+                    recommendation: "Extract nested logic into separate functions".to_string(),
+                }
+            ],
         }),
         abstraction: None,
         deletion: None,
@@ -28,6 +30,18 @@ fn test_review_format() {
         duplication: None,
         error_handling: None,
         testing: None,
+        best_practices: Some(DimensionAnalysis {
+            issues_found: true,
+            issues: vec![
+                CodeIssue {
+                    description: "SOLID principle violation".to_string(),
+                    severity: "High".to_string(),
+                    location: "src/user_service.rs:105-120".to_string(),
+                    explanation: "This class violates the Single Responsibility Principle by handling both authentication and user data management".to_string(),
+                    recommendation: "Split into separate UserService and AuthenticationService classes".to_string(),
+                }
+            ],
+        }),
     };
 
     let formatted = review.format();
@@ -54,6 +68,16 @@ fn test_review_format() {
     assert!(formatted.contains("src/main.rs:42"));
     assert!(formatted.contains("This function has too many nested conditionals"));
     assert!(formatted.contains("Extract nested logic into separate functions"));
+
+    // Check the best practices dimension was formatted
+    assert!(formatted.contains("Best Practices"));
+    assert!(formatted.contains("SOLID principle violation"));
+    assert!(formatted.contains("High"));
+    assert!(formatted.contains("src/user_service.rs:105-120"));
+    assert!(formatted.contains("This class violates the Single Responsibility Principle"));
+    assert!(
+        formatted.contains("Split into separate UserService and AuthenticationService classes")
+    );
 }
 
 // Note: We don't include a test for handle_review_command here because:

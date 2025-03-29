@@ -4,6 +4,7 @@ use git_iris::llm::{
     get_available_provider_names, get_default_model_for_provider,
     get_default_token_limit_for_provider, validate_provider_config,
 };
+use std::collections::HashMap;
 
 #[test]
 fn test_get_available_providers() {
@@ -55,26 +56,34 @@ fn test_get_default_token_limit_for_provider() -> Result<()> {
 }
 
 #[test]
-fn test_validate_provider_config() -> Result<()> {
+fn test_validate_provider_config() {
     // Create a config with valid provider configuration
-    let mut config = Config::default();
-    config.default_provider = "openai".to_string();
-
-    let mut provider_config = git_iris::config::ProviderConfig::default();
-    provider_config.api_key = "dummy-api-key".to_string();
-    provider_config.model = "gpt-4o".to_string();
-
-    config
-        .providers
-        .insert("openai".to_string(), provider_config);
+    let config = Config {
+        default_provider: "openai".to_string(),
+        providers: {
+            let mut providers = HashMap::new();
+            providers.insert(
+                "openai".to_string(),
+                git_iris::config::ProviderConfig {
+                    api_key: "dummy-api-key".to_string(),
+                    model: "gpt-4o".to_string(),
+                    ..Default::default()
+                },
+            );
+            providers
+        },
+        ..Default::default()
+    };
 
     // Validation should pass with API key set
     assert!(validate_provider_config(&config, "openai").is_ok());
 
     // Test with missing API key
     let mut invalid_config = config.clone();
-    invalid_config.providers.get_mut("openai").unwrap().api_key = String::new();
+    invalid_config
+        .providers
+        .get_mut("openai")
+        .expect("OpenAI provider should exist in config")
+        .api_key = String::new();
     assert!(validate_provider_config(&invalid_config, "openai").is_err());
-
-    Ok(())
 }

@@ -1,6 +1,7 @@
 use super::service::IrisCommitService;
 use crate::common::CommonParams;
 use crate::config::Config;
+use crate::context::QualityDimension;
 use crate::instruction_presets::PresetType;
 use crate::messages;
 use crate::ui;
@@ -79,16 +80,12 @@ pub async fn handle_review_command(common: CommonParams, _print: bool) -> Result
     // Print information about the enhanced review
     ui::print_info("\n✨ Enhanced Code Review ✨");
     ui::print_info("This review analyzes your code across multiple dimensions:");
-    ui::print_info(" • Unnecessary Complexity");
-    ui::print_info(" • Poor Abstractions");
-    ui::print_info(" • Unintended Code Deletion");
-    ui::print_info(" • Hallucinated Components");
-    ui::print_info(" • Style Inconsistencies");
-    ui::print_info(" • Security Vulnerabilities");
-    ui::print_info(" • Performance Issues");
-    ui::print_info(" • Code Duplication");
-    ui::print_info(" • Incomplete Error Handling");
-    ui::print_info(" • Test Coverage Gaps\n");
+
+    // Show all dimensions using the enum
+    for dimension in QualityDimension::all() {
+        ui::print_info(&format!(" • {}", dimension.display_name()));
+    }
+    println!();
 
     // Print the review to stdout or save to file if requested
     println!("{}", review.format());
