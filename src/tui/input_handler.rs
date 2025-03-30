@@ -1,8 +1,8 @@
 use super::app::TuiCommit;
 use super::spinner::SpinnerState;
 use super::state::{EmojiMode, Mode, UserInfoFocus};
-use crate::context::format_commit_message;
-use ratatui::crossterm::event::{KeyCode, KeyEvent};
+use crate::commit::types::format_commit_message;
+use crossterm::event::{KeyCode, KeyEvent};
 
 pub fn handle_input(app: &mut TuiCommit, key: KeyEvent) -> InputResult {
     match app.state.mode {

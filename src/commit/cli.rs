@@ -1,8 +1,8 @@
 use super::format_commit_result;
 use super::service::IrisCommitService;
+use super::types::format_commit_message;
 use crate::common::CommonParams;
 use crate::config::Config;
-use crate::context::format_commit_message;
 use crate::instruction_presets::PresetType;
 use crate::messages;
 use crate::tui::run_tui_commit;

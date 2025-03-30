@@ -1,9 +1,8 @@
+use super::review::{GeneratedReview, QualityDimension};
+use super::types::GeneratedMessage;
 use crate::common::get_combined_instructions;
 use crate::config::Config;
-use crate::context::{
-    ChangeType, CommitContext, GeneratedMessage, GeneratedReview, ProjectMetadata,
-    QualityDimension, RecentCommit, StagedFile,
-};
+use crate::context::{ChangeType, CommitContext, ProjectMetadata, RecentCommit, StagedFile};
 use crate::gitmoji::{apply_gitmoji, get_gitmoji_list};
 
 use super::relevance::RelevanceScorer;

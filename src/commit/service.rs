@@ -4,8 +4,10 @@ use std::sync::Arc;
 use tokio::sync::{RwLock, mpsc};
 
 use super::prompt::{create_system_prompt, create_user_prompt, process_commit_message};
+use super::review::GeneratedReview;
+use super::types::GeneratedMessage;
 use crate::config::Config;
-use crate::context::{CommitContext, GeneratedMessage, GeneratedReview};
+use crate::context::CommitContext;
 use crate::git::{CommitResult, GitRepo};
 use crate::instruction_presets::{PresetType, get_instruction_preset_library};
 use crate::llm;

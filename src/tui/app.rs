@@ -1,5 +1,5 @@
+use crate::commit::types::GeneratedMessage;
 use crate::commit::{IrisCommitService, format_commit_result};
-use crate::context::GeneratedMessage;
 use crate::log_debug;
 use anyhow::{Error, Result};
 use crossterm::event::KeyEventKind;

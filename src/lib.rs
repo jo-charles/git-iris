@@ -21,3 +21,7 @@ pub use config::Config;
 pub use config::ProviderConfig;
 // Re-export the LLMProvider trait from the external llm crate
 pub use ::llm::LLMProvider;
+
+// Re-exports from the new types organization
+pub use commit::review::{CodeIssue, DimensionAnalysis, GeneratedReview, QualityDimension};
+pub use commit::types::{GeneratedMessage, format_commit_message};

@@ -1,4 +1,4 @@
-use git_iris::context::{CodeIssue, DimensionAnalysis, GeneratedReview};
+use git_iris::commit::review::{CodeIssue, DimensionAnalysis, GeneratedReview};
 
 #[test]
 fn test_review_format() {
