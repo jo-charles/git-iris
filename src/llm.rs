@@ -6,7 +6,7 @@ use llm::{
     builder::{LLMBackend, LLMBuilder},
     chat::ChatMessage,
 };
-use serde::Serialize;
+use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
 use std::collections::HashMap;
 use std::str::FromStr;
@@ -22,8 +22,7 @@ pub async fn get_message<T>(
     user_prompt: &str,
 ) -> Result<T>
 where
-    T: Serialize + DeserializeOwned + std::fmt::Debug,
-    String: Into<T>,
+    T: DeserializeOwned + JsonSchema,
 {
     log_debug!("Generating message using provider: {}", provider_name);
     log_debug!("System prompt: {}", system_prompt);
@@ -83,19 +82,17 @@ where
         .map_err(|e| anyhow!("Failed to build provider: {}", e))?;
 
     // Generate the message
-    let result = get_message_with_provider::<T>(provider, user_prompt).await?;
-
-    Ok(result)
+    get_message_with_provider(provider, user_prompt, provider_name).await
 }
 
 /// Generates a message using the given provider (mainly for testing purposes)
 pub async fn get_message_with_provider<T>(
     provider: Box<dyn LLMProvider + Send + Sync>,
     user_prompt: &str,
+    provider_type: &str,
 ) -> Result<T>
 where
-    T: Serialize + DeserializeOwned + std::fmt::Debug,
-    String: Into<T>,
+    T: DeserializeOwned + JsonSchema,
 {
     log_debug!("Entering get_message_with_provider");
 
@@ -104,26 +101,61 @@ where
     let result = Retry::spawn(retry_strategy, || async {
         log_debug!("Attempting to generate message");
 
+        // Enhanced prompt that requests specifically formatted JSON output
+        let enhanced_prompt = if std::any::type_name::<T>() != std::any::type_name::<String>() {
+            format!("{}\n\nPlease respond with a valid JSON object and nothing else. No explanations or text outside the JSON.", user_prompt)
+        } else {
+            user_prompt.to_string()
+        };
+
         // Create chat message with user prompt
-        let messages = vec![ChatMessage::user().content(user_prompt.to_string()).build()];
+        let mut messages = vec![ChatMessage::user().content(enhanced_prompt).build()];
+
+        // Special handling for Anthropic - use the "prefill" technique with "{"
+        if provider_type.to_lowercase() == "anthropic" && std::any::type_name::<T>() != std::any::type_name::<String>() {
+            messages.push(ChatMessage::assistant().content("Here is the JSON:\n{").build());
+        }
 
         match tokio::time::timeout(Duration::from_secs(30), provider.chat(&messages)).await {
             Ok(Ok(response)) => {
                 log_debug!("Received response from provider");
                 let response_text = response.text().unwrap_or_default();
-                let cleaned_message = clean_json_from_llm(&response_text);
 
-                if std::any::type_name::<T>() == std::any::type_name::<String>() {
-                    // If T is String, return the raw string response
-                    Ok(cleaned_message.into())
-                } else {
-                    // Attempt to deserialize the response
-                    match serde_json::from_str::<T>(&cleaned_message) {
-                        Ok(message) => Ok(message),
-                        Err(e) => {
-                            log_debug!("Deserialization error: {} message: {}", e, cleaned_message);
-                            Err(anyhow!("Deserialization error: {}", e))
+                // Provider-specific response parsing
+                let result = match provider_type.to_lowercase().as_str() {
+                    // For Anthropic with brace prefixing
+                    "anthropic" => {
+                        if std::any::type_name::<T>() == std::any::type_name::<String>() {
+                            // For String type, we need to handle differently
+                            #[allow(clippy::unnecessary_to_owned)]
+                            let string_result: T = serde_json::from_value(serde_json::Value::String(response_text.clone()))
+                                .map_err(|e| anyhow!("String conversion error: {}", e))?;
+                            Ok(string_result)
+                        } else {
+                            parse_json_response_with_brace_prefix::<T>(&response_text)
                         }
+                    },
+
+                    // For all other providers - use appropriate parsing
+                    _ => {
+                        if std::any::type_name::<T>() == std::any::type_name::<String>() {
+                            // For String type, we need to handle differently
+                            #[allow(clippy::unnecessary_to_owned)]
+                            let string_result: T = serde_json::from_value(serde_json::Value::String(response_text.clone()))
+                                .map_err(|e| anyhow!("String conversion error: {}", e))?;
+                            Ok(string_result)
+                        } else {
+                            // First try direct parsing, then fall back to extraction
+                            parse_json_response::<T>(&response_text)
+                        }
+                    }
+                };
+
+                match result {
+                    Ok(message) => Ok(message),
+                    Err(e) => {
+                        log_debug!("JSON parse error: {} text: {}", e, response_text);
+                        Err(anyhow!("JSON parse error: {}", e))
                     }
                 }
             }
@@ -141,7 +173,7 @@ where
 
     match result {
         Ok(message) => {
-            log_debug!("Deserialized message: {:?}", message);
+            log_debug!("Generated message successfully");
             Ok(message)
         }
         Err(e) => {
@@ -149,6 +181,43 @@ where
             Err(anyhow!("Failed to generate message: {}", e))
         }
     }
+}
+
+/// Parse a provider's response that should be pure JSON
+fn parse_json_response<T: DeserializeOwned>(text: &str) -> Result<T> {
+    match serde_json::from_str::<T>(text) {
+        Ok(message) => Ok(message),
+        Err(e) => {
+            // Fallback to a more robust extraction if direct parsing fails
+            log_debug!(
+                "Direct JSON parse failed: {}. Attempting fallback extraction.",
+                e
+            );
+            extract_and_parse_json(text)
+        }
+    }
+}
+
+/// Parse a response from Anthropic that needs the prefixed "{"
+fn parse_json_response_with_brace_prefix<T: DeserializeOwned>(text: &str) -> Result<T> {
+    // Add the opening brace that we prefilled in the prompt
+    let json_text = format!("{{{}", text);
+    match serde_json::from_str::<T>(&json_text) {
+        Ok(message) => Ok(message),
+        Err(e) => {
+            log_debug!(
+                "Brace-prefixed JSON parse failed: {}. Attempting fallback extraction.",
+                e
+            );
+            extract_and_parse_json(text)
+        }
+    }
+}
+
+/// Extracts and parses JSON from a potentially non-JSON response
+fn extract_and_parse_json<T: DeserializeOwned>(text: &str) -> Result<T> {
+    let cleaned_json = clean_json_from_llm(text);
+    serde_json::from_str(&cleaned_json).map_err(|e| anyhow!("JSON parse error: {}", e))
 }
 
 /// Returns a list of available LLM providers as strings

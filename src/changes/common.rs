@@ -6,6 +6,7 @@ use crate::config::Config;
 use crate::git::GitRepo;
 use crate::llm;
 use anyhow::{Context, Result};
+use schemars::JsonSchema;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use std::fmt::Debug;
@@ -24,8 +25,7 @@ pub async fn generate_changes_content<T>(
     create_user_prompt: UserPromptFn,
 ) -> Result<T>
 where
-    T: DeserializeOwned + Serialize + Debug,
-    String: Into<T>,
+    T: DeserializeOwned + Serialize + Debug + JsonSchema,
 {
     // Create ChangeAnalyzer with Arc<GitRepo>
     let analyzer = ChangeAnalyzer::new(git_repo.clone())?;

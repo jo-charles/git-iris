@@ -248,37 +248,6 @@ pub struct GeneratedReview {
     pub best_practices: Option<DimensionAnalysis>,
 }
 
-impl From<String> for GeneratedReview {
-    fn from(s: String) -> Self {
-        match serde_json::from_str(&s) {
-            Ok(review) => review,
-            Err(e) => {
-                crate::log_debug!("Failed to parse review JSON: {}", e);
-                crate::log_debug!("Input was: {}", s);
-                Self {
-                    summary: "Error parsing code review".to_string(),
-                    code_quality: "There was an error parsing the code review from the AI."
-                        .to_string(),
-                    suggestions: vec!["Please try again.".to_string()],
-                    issues: vec![],
-                    positive_aspects: vec![],
-                    complexity: None,
-                    abstraction: None,
-                    deletion: None,
-                    hallucination: None,
-                    style: None,
-                    security: None,
-                    performance: None,
-                    duplication: None,
-                    error_handling: None,
-                    testing: None,
-                    best_practices: None,
-                }
-            }
-        }
-    }
-}
-
 impl GeneratedReview {
     /// Formats a location string to ensure it includes file reference when possible
     ///
