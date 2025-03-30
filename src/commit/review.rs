@@ -63,11 +63,8 @@ pub async fn handle_review_command(common: CommonParams, _print: bool) -> Result
 
     // Create and start the spinner
     let spinner = ui::create_spinner("");
-    let random_message = messages::get_waiting_message();
-    spinner.set_message(format!(
-        "{} Analyzing code across multiple dimensions...",
-        random_message.text
-    ));
+    let random_message = messages::get_review_waiting_message();
+    spinner.set_message(format!("{}", random_message.text));
 
     // Generate the code review
     let review = service

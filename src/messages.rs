@@ -135,6 +135,128 @@ lazy_static! {
             color: PLASMA_CYAN
         },
     ];
+    static ref REVIEW_WAITING_MESSAGES: Vec<ColoredMessage> = vec![
+        ColoredMessage {
+            text: "🔎 Scanning code dimensions for quality signatures...".to_string(),
+            color: NEBULA_PURPLE
+        },
+        ColoredMessage {
+            text: "🌌 Traversing the architecture cosmos for patterns...".to_string(),
+            color: CELESTIAL_BLUE
+        },
+        ColoredMessage {
+            text: "🛡️ Invoking the guardians of code integrity...".to_string(),
+            color: AURORA_GREEN
+        },
+        ColoredMessage {
+            text: "✨ Illuminating shadow bugs with code starlight...".to_string(),
+            color: STARLIGHT
+        },
+        ColoredMessage {
+            text: "🔮 Gazing into the crystal orb of future maintainability...".to_string(),
+            color: PLASMA_CYAN
+        },
+        ColoredMessage {
+            text: "📜 Unrolling the ancient scrolls of best practices...".to_string(),
+            color: SOLAR_YELLOW
+        },
+        ColoredMessage {
+            text: "🧪 Distilling your code into its purest essence...".to_string(),
+            color: GALAXY_PINK
+        },
+        ColoredMessage {
+            text: "⚖️ Weighing your code on the scales of elegance...".to_string(),
+            color: CELESTIAL_BLUE
+        },
+        ColoredMessage {
+            text: "🌈 Tracing the rainbow paths between your functions...".to_string(),
+            color: AURORA_GREEN
+        },
+        ColoredMessage {
+            text: "🔍 Magnifying the subtle harmonies in your algorithms...".to_string(),
+            color: NEBULA_PURPLE
+        },
+        ColoredMessage {
+            text: "🧠 Communing with the collective wisdom of master coders...".to_string(),
+            color: METEOR_RED
+        },
+        ColoredMessage {
+            text: "🌊 Diving into the depths of your code ocean...".to_string(),
+            color: PLASMA_CYAN
+        },
+        ColoredMessage {
+            text: "🗿 Consulting the monoliths of software architecture...".to_string(),
+            color: COMET_ORANGE
+        },
+        ColoredMessage {
+            text: "⏳ Sifting through the time sands of execution paths...".to_string(),
+            color: SOLAR_YELLOW
+        },
+        ColoredMessage {
+            text: "🧩 Assembling the puzzle pieces of your code story...".to_string(),
+            color: GALAXY_PINK
+        },
+        ColoredMessage {
+            text: "🔬 Analyzing code particles at quantum precision...".to_string(),
+            color: CELESTIAL_BLUE
+        },
+        ColoredMessage {
+            text: "🌟 Measuring the brightness of your code stars...".to_string(),
+            color: STARLIGHT
+        },
+        ColoredMessage {
+            text: "🧵 Following the threads of logic throughout your tapestry...".to_string(),
+            color: AURORA_GREEN
+        },
+        ColoredMessage {
+            text: "🔱 Summoning the trident of code quality dimensions...".to_string(),
+            color: NEBULA_PURPLE
+        },
+        ColoredMessage {
+            text: "🌀 Spiraling through nested layers of abstraction...".to_string(),
+            color: PLASMA_CYAN
+        },
+        ColoredMessage {
+            text: "🏺 Examining the ancient artifacts of your repository...".to_string(),
+            color: METEOR_RED
+        },
+        ColoredMessage {
+            text: "🎭 Unmasking the hidden characters in your code drama...".to_string(),
+            color: GALAXY_PINK
+        },
+        ColoredMessage {
+            text: "🧿 Warding off evil bugs with protective insights...".to_string(),
+            color: CELESTIAL_BLUE
+        },
+        ColoredMessage {
+            text: "🔥 Forging stronger code in the flames of analysis...".to_string(),
+            color: COMET_ORANGE
+        },
+        ColoredMessage {
+            text: "🌱 Nurturing the seeds of excellence in your codebase...".to_string(),
+            color: AURORA_GREEN
+        },
+        ColoredMessage {
+            text: "🎯 Pinpointing opportunities for cosmic refinement...".to_string(),
+            color: SOLAR_YELLOW
+        },
+        ColoredMessage {
+            text: "🕸️ Mapping the intricate web of dependencies...".to_string(),
+            color: NEBULA_PURPLE
+        },
+        ColoredMessage {
+            text: "🔧 Calibrating the tools of code enlightenment...".to_string(),
+            color: PLASMA_CYAN
+        },
+        ColoredMessage {
+            text: "🧮 Computing the algorithms of optimal elegance...".to_string(),
+            color: STARLIGHT
+        },
+        ColoredMessage {
+            text: "🌠 Charting the trajectory of your code evolution...".to_string(),
+            color: CELESTIAL_BLUE
+        },
+    ];
     static ref USER_MESSAGES: Vec<ColoredMessage> = vec![
         ColoredMessage {
             text: "🚀 Launching commit rocket".to_string(),
@@ -207,6 +329,17 @@ pub fn get_waiting_message() -> ColoredMessage {
         .unwrap_or_else(|| ColoredMessage {
             text: "Processing your request...".to_string(),
             color: SOLAR_YELLOW,
+        })
+}
+
+pub fn get_review_waiting_message() -> ColoredMessage {
+    let mut rng = rand::rng();
+    REVIEW_WAITING_MESSAGES
+        .choose(&mut rng)
+        .cloned()
+        .unwrap_or_else(|| ColoredMessage {
+            text: "Analyzing your code quality...".to_string(),
+            color: NEBULA_PURPLE,
         })
 }
 
