@@ -376,7 +376,7 @@ pub fn create_review_system_prompt(config: &Config) -> anyhow::Result<String> {
               {{
                 \"description\": \"Brief description\",
                 \"severity\": \"Critical/High/Medium/Low\",
-                \"location\": \"Line number or code location\",
+                \"location\": \"filename.rs:line_numbers or path/to/file.rs:lines_range\",
                 \"explanation\": \"Detailed explanation of the issue\",
                 \"recommendation\": \"Specific suggestion for improvement\"
               }},
@@ -423,7 +423,7 @@ pub fn create_review_system_prompt(config: &Config) -> anyhow::Result<String> {
               {
                 \"description\": \"Complex authentication flow with excessive nesting\",
                 \"severity\": \"Medium\",
-                \"location\": \"auth_service.rs:45-67\",
+                \"location\": \"src/auth/auth_service.rs:45-67\",
                 \"explanation\": \"The authentication validation contains 5 levels of nesting, making it difficult to follow the logic flow.\",
                 \"recommendation\": \"Extract validation steps into separate functions and use early returns to reduce nesting\"
               }
@@ -435,7 +435,7 @@ pub fn create_review_system_prompt(config: &Config) -> anyhow::Result<String> {
               {
                 \"description\": \"Missing error handling in token refresh\",
                 \"severity\": \"High\",
-                \"location\": \"auth_service.rs:102-120\",
+                \"location\": \"src/auth/auth_service.rs:102-120\",
                 \"explanation\": \"The token refresh function doesn't properly handle network timeouts, potentially leaving users in an inconsistent state.\",
                 \"recommendation\": \"Add explicit error handling for network timeouts with appropriate user feedback\"
               }

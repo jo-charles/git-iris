@@ -1,6 +1,10 @@
 use colored::Colorize;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use textwrap;
+
+/// Width in characters for wrapping explanations in code reviews
+const EXPLANATION_WRAP_WIDTH: usize = 80;
 
 /// Represents a specific issue found during code review
 #[derive(Serialize, Deserialize, Debug, Clone, JsonSchema)]
@@ -9,7 +13,8 @@ pub struct CodeIssue {
     pub description: String,
     /// Severity level of the issue (Critical, High, Medium, Low)
     pub severity: String,
-    /// Line numbers or location references for the issue
+    /// Location of the issue, preferably in "filename.rs:line_numbers" format
+    /// or "path/to/file.rs:line_numbers" format for better readability
     pub location: String,
     /// Detailed explanation of why this is problematic
     pub explanation: String,
@@ -275,34 +280,56 @@ impl From<String> for GeneratedReview {
 }
 
 impl GeneratedReview {
+    /// Formats a location string to ensure it includes file reference when possible
+    ///
+    /// Intelligently formats location strings by detecting whether they already
+    /// contain a file reference or just line numbers.
+    pub fn format_location(location: &str) -> String {
+        if location.contains(':')
+            || location.to_lowercase().contains(".rs")
+            || location.to_lowercase().contains(".ts")
+            || location.to_lowercase().contains(".js")
+            || location.to_lowercase().contains("file")
+        {
+            // This is likely a file reference
+            location.to_string()
+        } else if location.to_lowercase().contains("line") {
+            // This already mentions line numbers
+            location.to_string()
+        } else {
+            // Treat as just line numbers - explicitly mention it's line numbers
+            format!("Line(s) {}", location)
+        }
+    }
+
     /// Formats the review into a readable string with colors and emojis for terminal display
     pub fn format(&self) -> String {
         let mut formatted = String::new();
 
         formatted.push_str(&format!(
             "{}\n\n{}\n\n",
-            "✨ Code Review Summary ✨".bright_magenta().bold(),
+            "✧･ﾟ: *✧･ﾟ CODE REVIEW ✧･ﾟ: *✧･ﾟ".bright_magenta().bold(),
             self.summary.bright_white()
         ));
 
         formatted.push_str(&format!(
             "{}\n\n{}\n\n",
-            "🔍 Code Quality Assessment".bright_cyan().bold(),
+            "◤ QUALITY ASSESSMENT ◢".bright_cyan().bold(),
             self.code_quality.bright_white()
         ));
 
         if !self.positive_aspects.is_empty() {
-            formatted.push_str(&format!("{}\n\n", "✅ Positive Aspects".green().bold()));
-            for (i, aspect) in self.positive_aspects.iter().enumerate() {
-                formatted.push_str(&format!("{}. {}\n", i + 1, aspect.green()));
+            formatted.push_str(&format!("{}\n\n", "✅ STRENGTHS //".green().bold()));
+            for aspect in self.positive_aspects.iter() {
+                formatted.push_str(&format!("  {} {}\n", "•".bright_green(), aspect.green()));
             }
             formatted.push('\n');
         }
 
         if !self.issues.is_empty() {
-            formatted.push_str(&format!("{}\n\n", "❌ Issues Identified".yellow().bold()));
-            for (i, issue) in self.issues.iter().enumerate() {
-                formatted.push_str(&format!("{}. {}\n", i + 1, issue.yellow()));
+            formatted.push_str(&format!("{}\n\n", "⚠️ CORE ISSUES //".yellow().bold()));
+            for issue in self.issues.iter() {
+                formatted.push_str(&format!("  {} {}\n", "•".bright_yellow(), issue.yellow()));
             }
             formatted.push('\n');
         }
@@ -310,67 +337,68 @@ impl GeneratedReview {
         // Format the dimension-specific analyses if they exist
         Self::format_dimension_analysis(
             &mut formatted,
-            QualityDimension::Complexity.display_name(),
+            QualityDimension::Complexity,
             self.complexity.as_ref(),
         );
         Self::format_dimension_analysis(
             &mut formatted,
-            QualityDimension::Abstraction.display_name(),
+            QualityDimension::Abstraction,
             self.abstraction.as_ref(),
         );
         Self::format_dimension_analysis(
             &mut formatted,
-            QualityDimension::Deletion.display_name(),
+            QualityDimension::Deletion,
             self.deletion.as_ref(),
         );
         Self::format_dimension_analysis(
             &mut formatted,
-            QualityDimension::Hallucination.display_name(),
+            QualityDimension::Hallucination,
             self.hallucination.as_ref(),
         );
         Self::format_dimension_analysis(
             &mut formatted,
-            QualityDimension::Style.display_name(),
+            QualityDimension::Style,
             self.style.as_ref(),
         );
         Self::format_dimension_analysis(
             &mut formatted,
-            QualityDimension::Security.display_name(),
+            QualityDimension::Security,
             self.security.as_ref(),
         );
         Self::format_dimension_analysis(
             &mut formatted,
-            QualityDimension::Performance.display_name(),
+            QualityDimension::Performance,
             self.performance.as_ref(),
         );
         Self::format_dimension_analysis(
             &mut formatted,
-            QualityDimension::Duplication.display_name(),
+            QualityDimension::Duplication,
             self.duplication.as_ref(),
         );
         Self::format_dimension_analysis(
             &mut formatted,
-            QualityDimension::ErrorHandling.display_name(),
+            QualityDimension::ErrorHandling,
             self.error_handling.as_ref(),
         );
         Self::format_dimension_analysis(
             &mut formatted,
-            QualityDimension::Testing.display_name(),
+            QualityDimension::Testing,
             self.testing.as_ref(),
         );
         Self::format_dimension_analysis(
             &mut formatted,
-            QualityDimension::BestPractices.display_name(),
+            QualityDimension::BestPractices,
             self.best_practices.as_ref(),
         );
 
         if !self.suggestions.is_empty() {
-            formatted.push_str(&format!(
-                "{}\n\n",
-                "💡 Suggestions for Improvement".bright_blue().bold()
-            ));
-            for (i, suggestion) in self.suggestions.iter().enumerate() {
-                formatted.push_str(&format!("{}. {}\n", i + 1, suggestion.bright_blue()));
+            formatted.push_str(&format!("{}\n\n", "💡 SUGGESTIONS //".bright_blue().bold()));
+            for suggestion in self.suggestions.iter() {
+                formatted.push_str(&format!(
+                    "  {} {}\n",
+                    "•".bright_cyan(),
+                    suggestion.bright_blue()
+                ));
             }
         }
 
@@ -380,33 +408,80 @@ impl GeneratedReview {
     /// Helper method to format a single dimension analysis
     fn format_dimension_analysis(
         formatted: &mut String,
-        title: &str,
+        dimension: QualityDimension,
         analysis: Option<&DimensionAnalysis>,
     ) {
         if let Some(dim) = analysis {
             if dim.issues_found && !dim.issues.is_empty() {
-                formatted.push_str(&format!("{}\n\n", format!("🔎 {title}").yellow().bold()));
+                // Choose emoji based on the dimension
+                let (emoji, color_fn) = match dimension {
+                    QualityDimension::Complexity => ("🧠", "bright_magenta"),
+                    QualityDimension::Abstraction => ("🏗️", "bright_cyan"),
+                    QualityDimension::Deletion => ("🗑️", "bright_white"),
+                    QualityDimension::Hallucination => ("👻", "bright_magenta"),
+                    QualityDimension::Style => ("🎨", "bright_blue"),
+                    QualityDimension::Security => ("🔒", "bright_red"),
+                    QualityDimension::Performance => ("⚡", "bright_yellow"),
+                    QualityDimension::Duplication => ("🔄", "bright_cyan"),
+                    QualityDimension::ErrorHandling => ("🧯", "bright_red"),
+                    QualityDimension::Testing => ("🧪", "bright_green"),
+                    QualityDimension::BestPractices => ("📐", "bright_blue"),
+                };
+
+                let title = dimension.display_name();
+                let header = match color_fn {
+                    "bright_magenta" => format!("◤ {emoji} {title} ◢").bright_magenta().bold(),
+                    "bright_cyan" => format!("◤ {emoji} {title} ◢").bright_cyan().bold(),
+                    "bright_white" => format!("◤ {emoji} {title} ◢").bright_white().bold(),
+                    "bright_blue" => format!("◤ {emoji} {title} ◢").bright_blue().bold(),
+                    "bright_red" => format!("◤ {emoji} {title} ◢").bright_red().bold(),
+                    "bright_yellow" => format!("◤ {emoji} {title} ◢").bright_yellow().bold(),
+                    "bright_green" => format!("◤ {emoji} {title} ◢").bright_green().bold(),
+                    _ => format!("◤ {emoji} {title} ◢").normal().bold(),
+                };
+
+                formatted.push_str(&format!("{}\n\n", header));
 
                 for (i, issue) in dim.issues.iter().enumerate() {
-                    let severity_color = match issue.severity.as_str() {
-                        "Critical" => issue.description.bright_red(),
-                        "High" => issue.description.red(),
-                        "Medium" => issue.description.yellow(),
-                        "Low" => issue.description.bright_yellow(),
-                        _ => issue.description.normal(),
+                    // Severity badge with custom styling based on severity
+                    let severity_badge = match issue.severity.as_str() {
+                        "Critical" => format!("[{}]", "CRITICAL".bright_red().bold()),
+                        "High" => format!("[{}]", "HIGH".red().bold()),
+                        "Medium" => format!("[{}]", "MEDIUM".yellow().bold()),
+                        "Low" => format!("[{}]", "LOW".bright_yellow().bold()),
+                        _ => format!("[{}]", issue.severity.normal().bold()),
                     };
 
                     formatted.push_str(&format!(
-                        "{}. {} ({})\n",
-                        i + 1,
-                        severity_color,
-                        issue.severity
+                        "  {} {} {}\n",
+                        format!("{:02}", i + 1).bright_white().bold(),
+                        severity_badge,
+                        issue.description.bright_white()
                     ));
-                    formatted
-                        .push_str(&format!("   Location: {}\n", issue.location.bright_white()));
-                    formatted.push_str(&format!("   {}\n", issue.explanation));
+
+                    let formatted_location = Self::format_location(&issue.location).bright_white();
                     formatted.push_str(&format!(
-                        "   Recommendation: {}\n\n",
+                        "     {}: {}\n",
+                        "LOCATION".bright_cyan().bold(),
+                        formatted_location
+                    ));
+
+                    // Format explanation with some spacing for readability
+                    let explanation_lines =
+                        textwrap::wrap(&issue.explanation, EXPLANATION_WRAP_WIDTH);
+                    formatted.push_str(&format!("     {}: ", "DETAIL".bright_cyan().bold()));
+                    for (i, line) in explanation_lines.iter().enumerate() {
+                        if i == 0 {
+                            formatted.push_str(&format!("{}\n", line));
+                        } else {
+                            formatted.push_str(&format!("            {}\n", line));
+                        }
+                    }
+
+                    // Format recommendation with a different style
+                    formatted.push_str(&format!(
+                        "     {}: {}\n\n",
+                        "FIX".bright_green().bold(),
                         issue.recommendation.bright_green()
                     ));
                 }
@@ -489,16 +564,6 @@ pub async fn handle_review_command(common: CommonParams, _print: bool) -> Result
 
     // Stop the spinner
     spinner.finish_and_clear();
-
-    // Print information about the enhanced review
-    ui::print_info("\n✨ Enhanced Code Review ✨");
-    ui::print_info("This review analyzes your code across multiple dimensions:");
-
-    // Show all dimensions using the enum
-    for dimension in QualityDimension::all() {
-        ui::print_info(&format!(" • {}", dimension.display_name()));
-    }
-    println!();
 
     // Print the review to stdout or save to file if requested
     println!("{}", review.format());

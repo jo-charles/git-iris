@@ -48,23 +48,23 @@ fn test_review_format() {
 
     // Check that the formatted output contains all the important parts
     // We can't match exact strings because of color codes, so we'll check for key substrings
-    assert!(formatted.contains("Code Review Summary"));
+    assert!(formatted.contains("CODE REVIEW"));
     assert!(formatted.contains("Test summary"));
-    assert!(formatted.contains("Code Quality Assessment"));
+    assert!(formatted.contains("QUALITY ASSESSMENT"));
     assert!(formatted.contains("Good quality"));
-    assert!(formatted.contains("Positive Aspects"));
+    assert!(formatted.contains("STRENGTHS"));
     assert!(formatted.contains("Positive 1"));
     assert!(formatted.contains("Positive 2"));
-    assert!(formatted.contains("Issues Identified"));
+    assert!(formatted.contains("CORE ISSUES"));
     assert!(formatted.contains("Issue 1"));
-    assert!(formatted.contains("Suggestions for Improvement"));
+    assert!(formatted.contains("SUGGESTIONS"));
     assert!(formatted.contains("Suggestion 1"));
     assert!(formatted.contains("Suggestion 2"));
 
     // Check the complexity dimension was formatted
     assert!(formatted.contains("Complexity"));
     assert!(formatted.contains("Complex function"));
-    assert!(formatted.contains("Medium"));
+    assert!(formatted.contains("MEDIUM"));
     assert!(formatted.contains("src/main.rs:42"));
     assert!(formatted.contains("This function has too many nested conditionals"));
     assert!(formatted.contains("Extract nested logic into separate functions"));
@@ -72,12 +72,40 @@ fn test_review_format() {
     // Check the best practices dimension was formatted
     assert!(formatted.contains("Best Practices"));
     assert!(formatted.contains("SOLID principle violation"));
-    assert!(formatted.contains("High"));
+    assert!(formatted.contains("HIGH"));
     assert!(formatted.contains("src/user_service.rs:105-120"));
     assert!(formatted.contains("This class violates the Single Responsibility Principle"));
     assert!(
         formatted.contains("Split into separate UserService and AuthenticationService classes")
     );
+}
+
+#[test]
+fn test_format_location() {
+    // Test with a path containing filename and line numbers
+    let location = "src/commit/review.rs:45-67";
+    let formatted = GeneratedReview::format_location(location);
+    assert_eq!(formatted, location);
+
+    // Test with just line numbers
+    let location = "45-67";
+    let formatted = GeneratedReview::format_location(location);
+    assert_eq!(formatted, "Line(s) 45-67");
+
+    // Test with line keyword
+    let location = "Line 45";
+    let formatted = GeneratedReview::format_location(location);
+    assert_eq!(formatted, location);
+
+    // Test with file keyword
+    let location = "in file helpers.js";
+    let formatted = GeneratedReview::format_location(location);
+    assert_eq!(formatted, location);
+
+    // Test with just file extension
+    let location = "helpers.js";
+    let formatted = GeneratedReview::format_location(location);
+    assert_eq!(formatted, location);
 }
 
 // Note: We don't include a test for handle_review_command here because:
