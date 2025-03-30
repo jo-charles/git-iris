@@ -1,8 +1,24 @@
 use super::{FileAnalyzer, ProjectMetadata};
 use crate::context::StagedFile;
 use crate::log_debug;
+use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::HashSet;
+
+// Regex for extracting modified top-level JSON keys
+static JSON_TOP_LEVEL_KEY_RE: Lazy<Result<Regex, regex::Error>> = Lazy::new(|| {
+    Regex::new(r#"^[+-]\s*"(\w+)"\s*:"#)
+});
+// Regex for checking JSON array changes
+static JSON_ARRAY_CHANGE_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"(?m)^[+-]\s*(?:"[^"]+"\s*:\s*)?\[|\s*[+-]\s*"[^"]+","#)
+        .expect("Should compile: JSON_ARRAY_CHANGE_RE")
+});
+// Regex for checking nested JSON object changes
+static JSON_NESTED_OBJECT_CHANGE_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"(?m)^[+-]\s*"[^"]+"\s*:\s*\{|\s*[+-]\s*"[^"]+"\s*:"#)
+        .expect("Should compile: JSON_NESTED_OBJECT_CHANGE_RE")
+});
 
 pub struct JsonAnalyzer;
 
@@ -85,10 +101,10 @@ impl JsonAnalyzer {
 
 fn extract_modified_top_level_keys(diff: &str) -> Option<Vec<String>> {
     let lines: Vec<&str> = diff.lines().collect();
-    let re = match Regex::new(r#"^[+-]\s*"(\w+)"\s*:"#) {
+    let re = match JSON_TOP_LEVEL_KEY_RE.as_ref() {
         Ok(re) => re,
         Err(e) => {
-            log_debug!("Failed to compile regex: {}", e);
+            log_debug!("Failed to compile JSON_TOP_LEVEL_KEY_RE: {}", e);
             return None;
         }
     };
@@ -120,13 +136,9 @@ fn extract_modified_top_level_keys(diff: &str) -> Option<Vec<String>> {
 }
 
 fn has_array_changes(diff: &str) -> bool {
-    let re = Regex::new(r#"(?m)^[+-]\s*(?:"[^"]+"\s*:\s*)?\[|\s*[+-]\s*"[^"]+","#)
-        .expect("Could not compile regex");
-    re.is_match(diff)
+    JSON_ARRAY_CHANGE_RE.is_match(diff)
 }
 
 fn has_nested_object_changes(diff: &str) -> bool {
-    let re = Regex::new(r#"(?m)^[+-]\s*"[^"]+"\s*:\s*\{|\s*[+-]\s*"[^"]+"\s*:"#)
-        .expect("Could not compile regex");
-    re.is_match(diff)
+    JSON_NESTED_OBJECT_CHANGE_RE.is_match(diff)
 }

@@ -1,7 +1,31 @@
 use super::{FileAnalyzer, ProjectMetadata};
 use crate::context::StagedFile;
+use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::HashSet;
+
+// Regex for extracting Gradle version from build.gradle.kts
+static GRADLE_KTS_VERSION_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"version\s*=\s*['"](.*?)['"]"#).expect("Should compile: GRADLE_KTS_VERSION_RE")
+});
+// Regex for extracting Gradle dependencies from build.gradle.kts
+static GRADLE_KTS_DEPENDENCY_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"implementation\s*\(\s*["'](.+?):(.+?):(.+?)["']\)"#)
+        .expect("Should compile: GRADLE_KTS_DEPENDENCY_RE")
+});
+// Regex for extracting modified Kotlin classes/interfaces/objects
+static KOTLIN_CLASS_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?m)^[+-]\s*(class|interface|object)\s+(\w+)")
+        .expect("Should compile: KOTLIN_CLASS_RE")
+});
+// Regex for extracting modified Kotlin functions
+static KOTLIN_FUNCTION_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?m)^[+-]\s*(fun)\s+(\w+)").expect("Should compile: KOTLIN_FUNCTION_RE")
+});
+// Regex for checking Kotlin import changes
+static KOTLIN_IMPORT_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?m)^[+-]\s*import\s+").expect("Should compile: KOTLIN_IMPORT_RE")
+});
 
 pub struct KotlinAnalyzer;
 
@@ -48,15 +72,11 @@ impl KotlinAnalyzer {
     fn extract_gradle_metadata(content: &str, metadata: &mut ProjectMetadata) {
         metadata.build_system = Some("Gradle".to_string());
 
-        let version_re =
-            Regex::new(r#"version\s*=\s*['"](.*?)['"]"#).expect("Could not compile regex");
-        if let Some(cap) = version_re.captures(content) {
+        if let Some(cap) = GRADLE_KTS_VERSION_RE.captures(content) {
             metadata.version = Some(cap[1].to_string());
         }
 
-        let dependency_re = Regex::new(r#"implementation\s*\(\s*["'](.+?):(.+?):(.+?)["']\)"#)
-            .expect("Could not compile regex");
-        for cap in dependency_re.captures_iter(content) {
+        for cap in GRADLE_KTS_DEPENDENCY_RE.captures_iter(content) {
             metadata
                 .dependencies
                 .push(format!("{}:{}:{}", &cap[1], &cap[2], &cap[3]));
@@ -79,9 +99,7 @@ impl KotlinAnalyzer {
 }
 
 fn extract_modified_classes(diff: &str) -> Option<Vec<String>> {
-    let re = Regex::new(r"(?m)^[+-]\s*(class|interface|object)\s+(\w+)")
-        .expect("Could not compile regex");
-    let classes: HashSet<String> = re
+    let classes: HashSet<String> = KOTLIN_CLASS_RE
         .captures_iter(diff)
         .filter_map(|cap| cap.get(2).map(|m| m.as_str().to_string()))
         .collect();
@@ -94,8 +112,7 @@ fn extract_modified_classes(diff: &str) -> Option<Vec<String>> {
 }
 
 fn extract_modified_functions(diff: &str) -> Option<Vec<String>> {
-    let re = Regex::new(r"(?m)^[+-]\s*(fun)\s+(\w+)").expect("Could not compile regex");
-    let functions: HashSet<String> = re
+    let functions: HashSet<String> = KOTLIN_FUNCTION_RE
         .captures_iter(diff)
         .filter_map(|cap| cap.get(2).map(|m| m.as_str().to_string()))
         .collect();
@@ -108,6 +125,5 @@ fn extract_modified_functions(diff: &str) -> Option<Vec<String>> {
 }
 
 fn has_import_changes(diff: &str) -> bool {
-    let re = Regex::new(r"(?m)^[+-]\s*import\s+").expect("Could not compile regex");
-    re.is_match(diff)
+    KOTLIN_IMPORT_RE.is_match(diff)
 }

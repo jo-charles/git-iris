@@ -1,7 +1,33 @@
 use super::{FileAnalyzer, ProjectMetadata};
 use crate::context::StagedFile;
+use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::HashSet;
+
+// Regex for extracting modified JS/TS functions (function keyword or const arrow func)
+static JS_FUNCTION_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?m)^[+-]\s*(function\s+(\w+)|const\s+(\w+)\s*=\s*(\([^)]*\)\s*=>|\function))")
+        .expect("Should compile: JS_FUNCTION_RE")
+});
+// Regex for extracting modified JS/TS classes
+static JS_CLASS_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?m)^[+-]\s*class\s+(\w+)")
+        .expect("Should compile: JS_CLASS_RE")
+});
+// Regex for checking JS/TS import/export changes
+static JS_IMPORT_EXPORT_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?m)^[+-]\s*(import|export)")
+        .expect("Should compile: JS_IMPORT_EXPORT_RE")
+});
+// Regex for extracting modified React class components
+static REACT_CLASS_COMPONENT_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?m)^[+-]\s*class\s+(\w+)\s+extends\s+React\.Component")
+        .expect("Should compile: REACT_CLASS_COMPONENT_RE")
+});
+// Regex for extracting modified React functional components
+static REACT_FUNC_COMPONENT_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?m)^[+-]\s*(?:function\s+(\w+)|const\s+(\w+)\s*=)(?:\s*\([^)]*\))?\s*(?:=>)?\s*(?:\{[^}]*return|=>)\s*(?:<|\()").expect("Should compile: REACT_FUNC_COMPONENT_RE")
+});
 
 pub struct JavaScriptAnalyzer;
 
@@ -97,11 +123,7 @@ impl JavaScriptAnalyzer {
 }
 
 fn extract_modified_functions(diff: &str) -> Option<Vec<String>> {
-    let re = Regex::new(
-        r"(?m)^[+-]\s*(function\s+(\w+)|const\s+(\w+)\s*=\s*(\([^)]*\)\s*=>|\function))",
-    )
-    .expect("Could not compile regex");
-    let functions: Vec<String> = re
+    let functions: Vec<String> = JS_FUNCTION_RE
         .captures_iter(diff)
         .filter_map(|cap| cap.get(2).or(cap.get(3)).map(|m| m.as_str().to_string()))
         .collect();
@@ -114,8 +136,7 @@ fn extract_modified_functions(diff: &str) -> Option<Vec<String>> {
 }
 
 fn extract_modified_classes(diff: &str) -> Option<Vec<String>> {
-    let re = Regex::new(r"(?m)^[+-]\s*class\s+(\w+)").expect("Could not compile regex");
-    let classes: Vec<String> = re
+    let classes: Vec<String> = JS_CLASS_RE
         .captures_iter(diff)
         .filter_map(|cap| cap.get(1).map(|m| m.as_str().to_string()))
         .collect();
@@ -128,24 +149,19 @@ fn extract_modified_classes(diff: &str) -> Option<Vec<String>> {
 }
 
 fn has_import_changes(diff: &str) -> bool {
-    let re = Regex::new(r"(?m)^[+-]\s*(import|export)").expect("Could not compile regex");
-    re.is_match(diff)
+    JS_IMPORT_EXPORT_RE.is_match(diff)
 }
 
 fn extract_modified_react_components(diff: &str) -> Option<Vec<String>> {
-    let class_re = Regex::new(r"(?m)^[+-]\s*class\s+(\w+)\s+extends\s+React\.Component")
-        .expect("Could not compile regex");
-    let func_re = Regex::new(r"(?m)^[+-]\s*(?:function\s+(\w+)|const\s+(\w+)\s*=)(?:\s*\([^)]*\))?\s*(?:=>)?\s*(?:\{[^}]*return|=>)\s*(?:<|\()").expect("Could not compile regex");
-
     let mut components = HashSet::new();
 
-    for cap in class_re.captures_iter(diff) {
+    for cap in REACT_CLASS_COMPONENT_RE.captures_iter(diff) {
         if let Some(m) = cap.get(1) {
             components.insert(m.as_str().to_string());
         }
     }
 
-    for cap in func_re.captures_iter(diff) {
+    for cap in REACT_FUNC_COMPONENT_RE.captures_iter(diff) {
         if let Some(m) = cap.get(1).or(cap.get(2)) {
             components.insert(m.as_str().to_string());
         }

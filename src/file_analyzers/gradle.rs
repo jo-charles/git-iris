@@ -1,7 +1,39 @@
 use super::{FileAnalyzer, ProjectMetadata};
 use crate::context::StagedFile;
+use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::HashSet;
+
+// Regex for checking dependency changes in Gradle diff
+static GRADLE_DEP_CHANGE_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?m)^[+-]\s*(implementation|api|testImplementation|compile)")
+        .expect("Should compile: GRADLE_DEP_CHANGE_RE")
+});
+// Regex for checking plugin changes in Gradle diff
+static GRADLE_PLUGIN_CHANGE_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?m)^[+-]\s*(plugins|apply plugin)")
+        .expect("Should compile: GRADLE_PLUGIN_CHANGE_RE")
+});
+// Regex for checking task changes in Gradle diff
+static GRADLE_TASK_CHANGE_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?m)^[+-]\s*task\s+")
+        .expect("Should compile: GRADLE_TASK_CHANGE_RE")
+});
+// Regex for extracting Gradle project version
+static GRADLE_VERSION_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"version\s*=\s*['"](.*?)['"]"#)
+        .expect("Should compile: GRADLE_VERSION_RE")
+});
+// Regex for extracting Gradle dependencies
+static GRADLE_DEPENDENCY_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"implementation\s+['"](.+?):(.+?):(.+?)['"]"#)
+        .expect("Should compile: GRADLE_DEPENDENCY_RE")
+});
+// Regex for extracting Gradle plugins
+static GRADLE_PLUGIN_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"id\s+['"](.+?)['"]"#)
+        .expect("Should compile: GRADLE_PLUGIN_RE")
+});
 
 pub struct GradleAnalyzer;
 
@@ -52,30 +84,25 @@ impl FileAnalyzer for GradleAnalyzer {
 }
 
 fn has_dependency_changes(diff: &str) -> bool {
-    let re = Regex::new(r"(?m)^[+-]\s*(implementation|api|testImplementation|compile)")
-        .expect("Could not compile regex");
-    re.is_match(diff)
+    GRADLE_DEP_CHANGE_RE.is_match(diff)
 }
 
 fn has_plugin_changes(diff: &str) -> bool {
-    let re = Regex::new(r"(?m)^[+-]\s*(plugins|apply plugin)").expect("Could not compile regex");
-    re.is_match(diff)
+    GRADLE_PLUGIN_CHANGE_RE.is_match(diff)
 }
 
 fn has_task_changes(diff: &str) -> bool {
-    let re = Regex::new(r"(?m)^[+-]\s*task\s+").expect("Could not compile regex");
-    re.is_match(diff)
+    GRADLE_TASK_CHANGE_RE.is_match(diff)
 }
 
 fn extract_gradle_version(content: &str) -> Option<String> {
-    let version_re = Regex::new(r#"version\s*=\s*['"](.*?)['"]"#).expect("Could not compile regex");
-    version_re.captures(content).map(|cap| cap[1].to_string())
+    GRADLE_VERSION_RE
+        .captures(content)
+        .map(|cap| cap[1].to_string())
 }
 
 fn extract_gradle_dependencies(content: &str) -> Option<Vec<String>> {
-    let dependency_re = Regex::new(r#"implementation\s+['"](.+?):(.+?):(.+?)['"]"#)
-        .expect("Could not compile regex");
-    let dependencies: HashSet<String> = dependency_re
+    let dependencies: HashSet<String> = GRADLE_DEPENDENCY_RE
         .captures_iter(content)
         .map(|cap| format!("{}:{}:{}", &cap[1], &cap[2], &cap[3]))
         .collect();
@@ -88,8 +115,7 @@ fn extract_gradle_dependencies(content: &str) -> Option<Vec<String>> {
 }
 
 fn extract_gradle_plugins(content: &str) -> Option<Vec<String>> {
-    let plugin_re = Regex::new(r#"id\s+['"](.+?)['"]"#).expect("Could not compile regex");
-    let plugins: HashSet<String> = plugin_re
+    let plugins: HashSet<String> = GRADLE_PLUGIN_RE
         .captures_iter(content)
         .map(|cap| cap[1].to_string())
         .collect();

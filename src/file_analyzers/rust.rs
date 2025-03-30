@@ -1,6 +1,33 @@
 use super::{FileAnalyzer, ProjectMetadata};
 use crate::context::StagedFile;
+use once_cell::sync::Lazy;
 use regex::Regex;
+
+// Regex for extracting version from Cargo.toml
+static CARGO_VERSION_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"version\s*=\s*"([^"]+)""#).expect("Should compile: CARGO_VERSION_RE")
+});
+// Regex for finding the [dependencies] section in Cargo.toml
+static CARGO_DEPS_SECTION_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?m)^\[dependencies\](?:\s*\n(?:.*\s*=\s*.*)*)")
+        .expect("Should compile: CARGO_DEPS_SECTION_RE")
+});
+// Regex for extracting modified Rust functions
+static RUST_FN_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"[+-]\s*(?:pub\s+)?fn\s+(\w+)").expect("Should compile: RUST_FN_RE")
+});
+// Regex for extracting modified Rust structs
+static RUST_STRUCT_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"[+-]\s*(?:pub\s+)?struct\s+(\w+)").expect("Should compile: RUST_STRUCT_RE")
+});
+// Regex for extracting modified Rust traits
+static RUST_TRAIT_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"[+-]\s*(?:pub\s+)?trait\s+(\w+)").expect("Should compile: RUST_TRAIT_RE")
+});
+// Regex for checking Rust import changes (use/extern crate)
+static RUST_IMPORT_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"[+-]\s*(use|extern crate)").expect("Should compile: RUST_IMPORT_RE")
+});
 
 /// Analyzer for Rust source files
 pub struct RustAnalyzer;
@@ -52,14 +79,11 @@ impl FileAnalyzer for RustAnalyzer {
 
 impl RustAnalyzer {
     fn extract_cargo_metadata(content: &str, metadata: &mut ProjectMetadata) {
-        let version_re = Regex::new(r#"version\s*=\s*"([^"]+)""#).expect("Could not compile regex");
-        if let Some(cap) = version_re.captures(content) {
+        if let Some(cap) = CARGO_VERSION_RE.captures(content) {
             metadata.version = Some(cap[1].to_string());
         }
 
-        let deps_re = Regex::new(r"(?m)^\[dependencies\](?:\s*\n(?:.*\s*=\s*.*)*)")
-            .expect("Could not compile regex");
-        if let Some(deps_section) = deps_re.find(content) {
+        if let Some(deps_section) = CARGO_DEPS_SECTION_RE.find(content) {
             let deps_lines = deps_section.as_str().lines().skip(1);
             for line in deps_lines {
                 if let Some(dep_name) = line.split('=').next() {
@@ -85,8 +109,7 @@ impl RustAnalyzer {
 }
 
 fn extract_modified_functions(diff: &str) -> Option<Vec<String>> {
-    let re = Regex::new(r"[+-]\s*(?:pub\s+)?fn\s+(\w+)").expect("Could not compile regex");
-    let functions: Vec<String> = re
+    let functions: Vec<String> = RUST_FN_RE
         .captures_iter(diff)
         .filter_map(|cap| cap.get(1).map(|m| m.as_str().to_string()))
         .collect();
@@ -99,8 +122,7 @@ fn extract_modified_functions(diff: &str) -> Option<Vec<String>> {
 }
 
 fn extract_modified_structs(diff: &str) -> Option<Vec<String>> {
-    let re = Regex::new(r"[+-]\s*(?:pub\s+)?struct\s+(\w+)").expect("Could not compile regex");
-    let structs: Vec<String> = re
+    let structs: Vec<String> = RUST_STRUCT_RE
         .captures_iter(diff)
         .filter_map(|cap| cap.get(1).map(|m| m.as_str().to_string()))
         .collect();
@@ -113,8 +135,7 @@ fn extract_modified_structs(diff: &str) -> Option<Vec<String>> {
 }
 
 fn extract_modified_traits(diff: &str) -> Option<Vec<String>> {
-    let re = Regex::new(r"[+-]\s*(?:pub\s+)?trait\s+(\w+)").expect("Could not compile regex");
-    let traits: Vec<String> = re
+    let traits: Vec<String> = RUST_TRAIT_RE
         .captures_iter(diff)
         .filter_map(|cap| cap.get(1).map(|m| m.as_str().to_string()))
         .collect();
@@ -127,6 +148,5 @@ fn extract_modified_traits(diff: &str) -> Option<Vec<String>> {
 }
 
 fn has_import_changes(diff: &str) -> bool {
-    let re = Regex::new(r"[+-]\s*(use|extern crate)").expect("Could not compile regex");
-    re.is_match(diff)
+    RUST_IMPORT_RE.is_match(diff)
 }

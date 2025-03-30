@@ -1,7 +1,34 @@
 use super::{FileAnalyzer, ProjectMetadata};
 use crate::context::StagedFile;
+use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::HashSet;
+
+// Regex for extracting CMake project version
+static CMAKE_VERSION_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"project\([^)]+\s+VERSION\s+([^\s)]+)")
+        .expect("Should compile: CMAKE_VERSION_RE")
+});
+// Regex for extracting CMake dependencies (find_package)
+static CMAKE_DEPENDENCY_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"find_package\(([^)]+)\)")
+        .expect("Should compile: CMAKE_DEPENDENCY_RE")
+});
+// Regex for extracting modified C++ functions
+static CPP_FUNCTION_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?m)^[+-]\s*(?:static\s+)?(?:inline\s+)?(?:const\s+)?(?:volatile\s+)?(?:unsigned\s+)?(?:signed\s+)?(?:short\s+)?(?:long\s+)?(?:void|int|char|float|double|struct\s+\w+|class\s+\w+)\s+(\w+)\s*\(")
+        .expect("Should compile: CPP_FUNCTION_RE")
+});
+// Regex for extracting modified C++ classes
+static CPP_CLASS_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?m)^[+-]\s*class\s+(\w+)")
+        .expect("Should compile: CPP_CLASS_RE")
+});
+// Regex for checking C++ include changes
+static CPP_INCLUDE_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?m)^[+-]\s*#include")
+        .expect("Should compile: CPP_INCLUDE_RE")
+});
 
 pub struct CppAnalyzer;
 
@@ -48,15 +75,11 @@ impl CppAnalyzer {
     fn extract_cmake_metadata(content: &str, metadata: &mut ProjectMetadata) {
         metadata.build_system = Some("CMake".to_string());
 
-        let version_re =
-            Regex::new(r"project\([^)]+\s+VERSION\s+([^\s)]+)").expect("Could not compile regex");
-        if let Some(cap) = version_re.captures(content) {
+        if let Some(cap) = CMAKE_VERSION_RE.captures(content) {
             metadata.version = Some(cap[1].to_string());
         }
 
-        let dependency_re =
-            Regex::new(r"find_package\(([^)]+)\)").expect("Could not compile regex");
-        for cap in dependency_re.captures_iter(content) {
+        for cap in CMAKE_DEPENDENCY_RE.captures_iter(content) {
             let package = cap[1].split(' ').next().unwrap_or(&cap[1]);
             metadata.dependencies.push(package.to_string());
         }
@@ -74,8 +97,7 @@ impl CppAnalyzer {
 }
 
 fn extract_modified_functions(diff: &str) -> Option<Vec<String>> {
-    let re = Regex::new(r"(?m)^[+-]\s*(?:static\s+)?(?:inline\s+)?(?:const\s+)?(?:volatile\s+)?(?:unsigned\s+)?(?:signed\s+)?(?:short\s+)?(?:long\s+)?(?:void|int|char|float|double|struct\s+\w+|class\s+\w+)\s+(\w+)\s*\(").expect("Could not compile regex");
-    let functions: HashSet<String> = re
+    let functions: HashSet<String> = CPP_FUNCTION_RE
         .captures_iter(diff)
         .filter_map(|cap| cap.get(1).map(|m| m.as_str().to_string()))
         .collect();
@@ -88,8 +110,7 @@ fn extract_modified_functions(diff: &str) -> Option<Vec<String>> {
 }
 
 fn extract_modified_classes(diff: &str) -> Option<Vec<String>> {
-    let re = Regex::new(r"(?m)^[+-]\s*class\s+(\w+)").expect("Could not compile regex");
-    let classes: HashSet<String> = re
+    let classes: HashSet<String> = CPP_CLASS_RE
         .captures_iter(diff)
         .filter_map(|cap| cap.get(1).map(|m| m.as_str().to_string()))
         .collect();
@@ -102,6 +123,5 @@ fn extract_modified_classes(diff: &str) -> Option<Vec<String>> {
 }
 
 fn has_include_changes(diff: &str) -> bool {
-    let re = Regex::new(r"(?m)^[+-]\s*#include").expect("Could not compile regex");
-    re.is_match(diff)
+    CPP_INCLUDE_RE.is_match(diff)
 }

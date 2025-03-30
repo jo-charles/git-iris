@@ -1,7 +1,40 @@
 use super::{FileAnalyzer, ProjectMetadata};
 use crate::context::StagedFile;
+use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::HashSet;
+
+// Regex for extracting Maven version from pom.xml
+static MAVEN_VERSION_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"<version>(.+?)</version>").expect("Should compile: MAVEN_VERSION_RE")
+});
+// Regex for extracting Maven dependencies from pom.xml
+static MAVEN_DEPENDENCY_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"<dependency>\s*<groupId>(.+?)</groupId>\s*<artifactId>(.+?)</artifactId>")
+        .expect("Should compile: MAVEN_DEPENDENCY_RE")
+});
+// Regex for extracting Gradle version from build.gradle
+static GRADLE_VERSION_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"version\s*=\s*['"](.*?)['"]"#).expect("Should compile: GRADLE_VERSION_RE")
+});
+// Regex for extracting Gradle dependencies from build.gradle
+static GRADLE_DEPENDENCY_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"implementation\s+['"](.+?):(.+?):"#).expect("Should compile: GRADLE_DEPENDENCY_RE")
+});
+// Regex for extracting modified Java classes
+static JAVA_CLASS_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?m)^[+-]\s*(public\s+|private\s+)?(class|interface|enum)\s+(\w+)")
+        .expect("Should compile: JAVA_CLASS_RE")
+});
+// Regex for extracting modified Java methods
+static JAVA_METHOD_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?m)^[+-]\s*(public|protected|private)?\s*\w+\s+(\w+)\s*\([^\)]*\)")
+        .expect("Should compile: JAVA_METHOD_RE")
+});
+// Regex for checking Java import changes
+static JAVA_IMPORT_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?m)^[+-]\s*import\s+").expect("Should compile: JAVA_IMPORT_RE")
+});
 
 pub struct JavaAnalyzer;
 
@@ -50,15 +83,11 @@ impl JavaAnalyzer {
     fn extract_maven_metadata(content: &str, metadata: &mut ProjectMetadata) {
         metadata.build_system = Some("Maven".to_string());
 
-        let version_re = Regex::new(r"<version>(.+?)</version>").expect("Could not compile regex");
-        if let Some(cap) = version_re.captures(content) {
+        if let Some(cap) = MAVEN_VERSION_RE.captures(content) {
             metadata.version = Some(cap[1].to_string());
         }
 
-        let dependency_re =
-            Regex::new(r"<dependency>\s*<groupId>(.+?)</groupId>\s*<artifactId>(.+?)</artifactId>")
-                .expect("Could not compile regex");
-        for cap in dependency_re.captures_iter(content) {
+        for cap in MAVEN_DEPENDENCY_RE.captures_iter(content) {
             metadata
                 .dependencies
                 .push(format!("{}:{}", &cap[1], &cap[2]));
@@ -68,15 +97,11 @@ impl JavaAnalyzer {
     fn extract_gradle_metadata(content: &str, metadata: &mut ProjectMetadata) {
         metadata.build_system = Some("Gradle".to_string());
 
-        let version_re =
-            Regex::new(r#"version\s*=\s*['"](.*?)['"]"#).expect("Could not compile regex");
-        if let Some(cap) = version_re.captures(content) {
+        if let Some(cap) = GRADLE_VERSION_RE.captures(content) {
             metadata.version = Some(cap[1].to_string());
         }
 
-        let dependency_re =
-            Regex::new(r#"implementation\s+['"](.+?):(.+?):"#).expect("Could not compile regex");
-        for cap in dependency_re.captures_iter(content) {
+        for cap in GRADLE_DEPENDENCY_RE.captures_iter(content) {
             metadata
                 .dependencies
                 .push(format!("{}:{}", &cap[1], &cap[2]));
@@ -99,9 +124,7 @@ impl JavaAnalyzer {
 }
 
 fn extract_modified_classes(diff: &str) -> Option<Vec<String>> {
-    let re = Regex::new(r"(?m)^[+-]\s*(public\s+|private\s+)?(class|interface|enum)\s+(\w+)")
-        .expect("Could not compile regex");
-    let classes: HashSet<String> = re
+    let classes: HashSet<String> = JAVA_CLASS_RE
         .captures_iter(diff)
         .filter_map(|cap| cap.get(3).map(|m| m.as_str().to_string()))
         .collect();
@@ -114,9 +137,7 @@ fn extract_modified_classes(diff: &str) -> Option<Vec<String>> {
 }
 
 fn extract_modified_methods(diff: &str) -> Option<Vec<String>> {
-    let re = Regex::new(r"(?m)^[+-]\s*(public|protected|private)?\s*\w+\s+(\w+)\s*\([^\)]*\)")
-        .expect("Could not compile regex");
-    let methods: HashSet<String> = re
+    let methods: HashSet<String> = JAVA_METHOD_RE
         .captures_iter(diff)
         .filter_map(|cap| cap.get(2).map(|m| m.as_str().to_string()))
         .collect();
@@ -129,6 +150,5 @@ fn extract_modified_methods(diff: &str) -> Option<Vec<String>> {
 }
 
 fn has_import_changes(diff: &str) -> bool {
-    let re = Regex::new(r"(?m)^[+-]\s*import\s+").expect("Could not compile regex");
-    re.is_match(diff)
+    JAVA_IMPORT_RE.is_match(diff)
 }

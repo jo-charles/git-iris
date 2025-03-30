@@ -3,8 +3,21 @@ use crate::context::{ChangeType, RecentCommit};
 use crate::git::GitRepo;
 use anyhow::Result;
 use git2::{Diff, Oid};
+use once_cell::sync::Lazy;
 use regex::Regex;
 use std::sync::Arc;
+
+// Regex for extracting issue numbers (e.g., #123, GH-123)
+static ISSUE_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?:#|GH-)(\d+)")
+        .expect("Failed to compile issue number regex pattern - this is a bug")
+});
+
+// Regex for extracting pull request numbers (e.g., PR #123, pull request 123)
+static PR_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?i)(?:pull request|PR)\s*#?(\d+)")
+        .expect("Failed to compile pull request regex pattern - this is a bug")
+});
 
 /// Represents the analyzed changes for a single commit
 #[derive(Debug, Clone)]
@@ -246,18 +259,18 @@ impl ChangeAnalyzer {
 
     /// Extract associated issue numbers from the commit message
     fn extract_associated_issues(commit_message: &str) -> Vec<String> {
-        let re = Regex::new(r"(?:#|GH-)(\d+)")
-            .expect("Failed to compile issue number regex pattern - this is a bug");
-        re.captures_iter(commit_message)
+        // Use the lazily initialized static regex
+        ISSUE_RE
+            .captures_iter(commit_message)
             .map(|cap| format!("#{}", &cap[1]))
             .collect()
     }
 
     /// Extract pull request number from the commit message
     fn extract_pull_request(commit_message: &str) -> Option<String> {
-        let re = Regex::new(r"(?i)(?:pull request|PR)\s*#?(\d+)")
-            .expect("Failed to compile pull request regex pattern - this is a bug");
-        re.captures(commit_message)
+        // Use the lazily initialized static regex
+        PR_RE
+            .captures(commit_message)
             .map(|cap| format!("PR #{}", &cap[1]))
     }
 

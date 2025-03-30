@@ -1,6 +1,32 @@
 use super::{FileAnalyzer, ProjectMetadata};
 use crate::context::StagedFile;
+use once_cell::sync::Lazy;
 use regex::Regex;
+
+// Regex for extracting the first H1 header (potential project title)
+static MD_TITLE_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?m)^#\s+(.+)$").expect("Should compile: MD_TITLE_RE")
+});
+// Regex for extracting version string (case-insensitive)
+static MD_VERSION_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?i)version[:\s]+(\d+\.\d+\.\d+)").expect("Should compile: MD_VERSION_RE")
+});
+// Regex for extracting modified headers (H1-H6)
+static MD_MODIFIED_HEADER_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"[+-]\s*(#{1,6})\s+(.+)").expect("Should compile: MD_MODIFIED_HEADER_RE")
+});
+// Regex for checking list item changes
+static MD_LIST_CHANGE_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"[+-]\s*[-*+]\s+").expect("Should compile: MD_LIST_CHANGE_RE")
+});
+// Regex for checking code block changes (```)
+static MD_CODE_BLOCK_CHANGE_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"[+-]\s*```").expect("Should compile: MD_CODE_BLOCK_CHANGE_RE")
+});
+// Regex for checking link changes ([text](url))
+static MD_LINK_CHANGE_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"[+-]\s*\[.+\]\(.+\)").expect("Should compile: MD_LINK_CHANGE_RE")
+});
 
 pub struct MarkdownAnalyzer;
 
@@ -45,8 +71,7 @@ impl FileAnalyzer for MarkdownAnalyzer {
 impl MarkdownAnalyzer {
     fn extract_readme_metadata(content: &str, metadata: &mut ProjectMetadata) {
         // Extract project name from the first header
-        let title_re = Regex::new(r"(?m)^#\s+(.+)$").expect("Could not compile regex");
-        if let Some(cap) = title_re.captures(content) {
+        if let Some(cap) = MD_TITLE_RE.captures(content) {
             metadata.language = Some(cap[1].to_string());
         }
 
@@ -62,17 +87,14 @@ impl MarkdownAnalyzer {
         }
 
         // Extract version if present
-        let version_re =
-            Regex::new(r"(?i)version[:\s]+(\d+\.\d+\.\d+)").expect("Could not compile regex");
-        if let Some(cap) = version_re.captures(content) {
+        if let Some(cap) = MD_VERSION_RE.captures(content) {
             metadata.version = Some(cap[1].to_string());
         }
     }
 }
 
 fn extract_modified_headers(diff: &str) -> Option<Vec<String>> {
-    let re = Regex::new(r"[+-]\s*(#{1,6})\s+(.+)").expect("Could not compile regex");
-    let headers: Vec<String> = re
+    let headers: Vec<String> = MD_MODIFIED_HEADER_RE
         .captures_iter(diff)
         .filter_map(|cap| cap.get(2).map(|m| m.as_str().to_string()))
         .collect();
@@ -85,16 +107,13 @@ fn extract_modified_headers(diff: &str) -> Option<Vec<String>> {
 }
 
 fn has_list_changes(diff: &str) -> bool {
-    let re = Regex::new(r"[+-]\s*[-*+]\s+").expect("Could not compile regex");
-    re.is_match(diff)
+    MD_LIST_CHANGE_RE.is_match(diff)
 }
 
 fn has_code_block_changes(diff: &str) -> bool {
-    let re = Regex::new(r"[+-]\s*```").expect("Could not compile regex");
-    re.is_match(diff)
+    MD_CODE_BLOCK_CHANGE_RE.is_match(diff)
 }
 
 fn has_link_changes(diff: &str) -> bool {
-    let re = Regex::new(r"[+-]\s*\[.+\]\(.+\)").expect("Could not compile regex");
-    re.is_match(diff)
+    MD_LINK_CHANGE_RE.is_match(diff)
 }

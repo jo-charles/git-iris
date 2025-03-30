@@ -1,6 +1,33 @@
 use super::{FileAnalyzer, ProjectMetadata};
 use crate::context::StagedFile;
+use once_cell::sync::Lazy;
 use regex::Regex;
+
+// Regex for extracting version from setup.py
+static SETUP_PY_VERSION_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"version\s*=\s*['"]([^'"]+)['"]"#).expect("Should compile: SETUP_PY_VERSION_RE")
+});
+// Regex for extracting install_requires from setup.py
+static SETUP_PY_INSTALL_REQUIRES_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"install_requires\s*=\s*\[(.*?)\]").expect("Should compile: SETUP_PY_INSTALL_REQUIRES_RE")
+});
+// Regex for extracting modified Python functions
+static PY_FUNCTION_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?m)^[+-](?:(?:\s*@\w+\s*\n)+)?\s*def\s+(\w+)")
+        .expect("Should compile: PY_FUNCTION_RE")
+});
+// Regex for extracting modified Python classes
+static PY_CLASS_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?m)^[+-]\s*class\s+(\w+)").expect("Should compile: PY_CLASS_RE")
+});
+// Regex for checking Python import changes
+static PY_IMPORT_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?m)^[+-]\s*(import|from)").expect("Should compile: PY_IMPORT_RE")
+});
+// Regex for extracting modified Python decorators
+static PY_DECORATOR_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?m)^[+-]\s*@(\w+)").expect("Should compile: PY_DECORATOR_RE")
+});
 
 pub struct PythonAnalyzer;
 
@@ -60,15 +87,11 @@ impl PythonAnalyzer {
     }
 
     fn extract_setup_metadata(content: &str, metadata: &mut ProjectMetadata) {
-        let version_re =
-            Regex::new(r#"version\s*=\s*['"]([^'"]+)['"]"#).expect("Could not compile regex");
-        if let Some(cap) = version_re.captures(content) {
+        if let Some(cap) = SETUP_PY_VERSION_RE.captures(content) {
             metadata.version = Some(cap[1].to_string());
         }
 
-        let install_requires_re =
-            Regex::new(r"install_requires\s*=\s*\[(.*?)\]").expect("Could not compile regex");
-        if let Some(cap) = install_requires_re.captures(content) {
+        if let Some(cap) = SETUP_PY_INSTALL_REQUIRES_RE.captures(content) {
             let deps = cap[1].split(',');
             for dep in deps {
                 let cleaned = dep.trim().trim_matches(|c| c == '\'' || c == '"');
@@ -95,9 +118,7 @@ impl PythonAnalyzer {
 }
 
 fn extract_modified_functions(diff: &str) -> Option<Vec<String>> {
-    let re = Regex::new(r"(?m)^[+-](?:(?:\s*@\w+\s*\n)+)?\s*def\s+(\w+)")
-        .expect("Could not compile regex");
-    let functions: Vec<String> = re
+    let functions: Vec<String> = PY_FUNCTION_RE
         .captures_iter(diff)
         .filter_map(|cap| {
             let func_name = cap.get(1).map(|m| m.as_str().to_string())?;
@@ -117,8 +138,7 @@ fn extract_modified_functions(diff: &str) -> Option<Vec<String>> {
 }
 
 fn extract_modified_classes(diff: &str) -> Option<Vec<String>> {
-    let re = Regex::new(r"(?m)^[+-]\s*class\s+(\w+)").expect("Could not compile regex");
-    let classes: Vec<String> = re
+    let classes: Vec<String> = PY_CLASS_RE
         .captures_iter(diff)
         .filter_map(|cap| cap.get(1).map(|m| m.as_str().to_string()))
         .collect();
@@ -131,13 +151,11 @@ fn extract_modified_classes(diff: &str) -> Option<Vec<String>> {
 }
 
 fn has_import_changes(diff: &str) -> bool {
-    let re = Regex::new(r"(?m)^[+-]\s*(import|from)").expect("Could not compile regex");
-    re.is_match(diff)
+    PY_IMPORT_RE.is_match(diff)
 }
 
 fn extract_modified_decorators(diff: &str) -> Option<Vec<String>> {
-    let re = Regex::new(r"(?m)^[+-]\s*@(\w+)").expect("Could not compile regex");
-    let decorators: Vec<String> = re
+    let decorators: Vec<String> = PY_DECORATOR_RE
         .captures_iter(diff)
         .filter_map(|cap| cap.get(1).map(|m| m.as_str().to_string()))
         .collect();

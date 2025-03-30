@@ -1,7 +1,25 @@
 use super::{FileAnalyzer, ProjectMetadata};
 use crate::context::StagedFile;
+use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::HashSet;
+
+// Regex for extracting top-level version in YAML
+static YAML_VERSION_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"(?m)^version:\s*['"]?(.+?)['"]?$"#).expect("Should compile: YAML_VERSION_RE")
+});
+// Regex for extracting modified top-level YAML keys
+static YAML_TOP_LEVEL_KEY_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?m)^[+-]\s*(\w+):(?:\s|$)").expect("Should compile: YAML_TOP_LEVEL_KEY_RE")
+});
+// Regex for checking YAML list changes
+static YAML_LIST_CHANGE_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?m)^[+-]\s*-\s+").expect("Should compile: YAML_LIST_CHANGE_RE")
+});
+// Regex for checking nested YAML changes (indented keys)
+static YAML_NESTED_CHANGE_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?m)^[+-]\s+\w+:").expect("Should compile: YAML_NESTED_CHANGE_RE")
+});
 
 pub struct YamlAnalyzer;
 
@@ -42,9 +60,7 @@ impl FileAnalyzer for YamlAnalyzer {
         }
 
         // Extract version if present
-        let version_re =
-            Regex::new(r#"(?m)^version:\s*['"]?(.+?)['"]?$"#).expect("Could not compile regex");
-        if let Some(cap) = version_re.captures(content) {
+        if let Some(cap) = YAML_VERSION_RE.captures(content) {
             metadata.version = Some(cap[1].to_string());
         }
 
@@ -53,8 +69,7 @@ impl FileAnalyzer for YamlAnalyzer {
 }
 
 fn extract_modified_top_level_keys(diff: &str) -> Option<Vec<String>> {
-    let re = Regex::new(r"(?m)^[+-]\s*(\w+):(?:\s|$)").expect("Could not compile regex");
-    let keys: HashSet<String> = re
+    let keys: HashSet<String> = YAML_TOP_LEVEL_KEY_RE
         .captures_iter(diff)
         .filter_map(|cap| {
             let key = cap.get(1).map(|m| m.as_str().to_string())?;
@@ -74,11 +89,9 @@ fn extract_modified_top_level_keys(diff: &str) -> Option<Vec<String>> {
 }
 
 fn has_list_changes(diff: &str) -> bool {
-    let re = Regex::new(r"(?m)^[+-]\s*-\s+").expect("Could not compile regex");
-    re.is_match(diff)
+    YAML_LIST_CHANGE_RE.is_match(diff)
 }
 
 fn has_nested_changes(diff: &str) -> bool {
-    let re = Regex::new(r"(?m)^[+-]\s+\w+:").expect("Could not compile regex");
-    re.is_match(diff)
+    YAML_NESTED_CHANGE_RE.is_match(diff)
 }
