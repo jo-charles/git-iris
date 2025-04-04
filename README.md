@@ -37,6 +37,7 @@ Git-Iris offers a suite of AI-powered tools to enhance your Git workflow:
 - 📜 **Dynamic Changelog Generation**: Create structured, detailed changelogs between any two Git references
 - 📋 **Comprehensive Release Notes**: Automatically generate release notes with summaries and key changes
 - 🔄 **Multi-Provider AI Support**: Supports OpenAI, Anthropic, Google, Groq, XAI, DeepSeek, Phind, and Ollama via the [llm crate](https://crates.io/crates/llm)
+- 🌐 **Remote Repository Support**: Work with remote repositories for changelogs and release notes without cloning manually
 - 🎨 **Gitmoji Integration**: Add expressive emojis to your commits, changelogs, and release notes
 - 🖥️ **Interactive CLI**: Refine AI-generated content through an intuitive command-line interface
 - 🔧 **Customizable Workflows**: Tailor AI behavior with custom instructions and presets
@@ -225,6 +226,7 @@ Options:
 - `-l`, `--log`: Enable logging to file
 - `-p`, `--print`: Print the generated message to stdout and exit
 - `--no-verify`: Skip verification steps (pre/post commit hooks)
+- `-r`, `--repo`: Specify a remote repository URL instead of using the local repository
 
 Example:
 
@@ -237,6 +239,26 @@ To generate a commit message and print it to stdout without starting the interac
 ```bash
 git-iris gen --print
 ```
+
+### Working with Remote Repositories
+
+Git-Iris supports working with remote repositories directly without having to clone them manually:
+
+```bash
+# Generate a changelog between two tags on a remote repository
+git-iris changelog --repo https://github.com/example/repo.git --from v1.0.0 --to v2.0.0
+
+# Generate release notes for a remote repository
+git-iris release-notes --repo https://github.com/example/repo.git --from v1.0.0 --to v2.0.0
+
+# Review code in a remote repository (read-only)
+git-iris review --repo https://github.com/example/repo.git
+
+# Generate a commit message for a remote repository (read-only)
+git-iris gen --repo https://github.com/example/repo.git --print
+```
+
+Note: When working with remote repositories, Git-Iris operates in read-only mode. You can't commit changes directly to remote repositories.
 
 ### Interactive Commit Process
 

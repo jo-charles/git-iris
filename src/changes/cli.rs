@@ -21,6 +21,7 @@ use std::sync::Arc;
 /// * `common` - Common parameters for the command, including configuration overrides.
 /// * `from` - The starting point (commit or tag) for the changelog.
 /// * `to` - The ending point for the changelog. Defaults to "HEAD" if not provided.
+/// * `repository_url` - Optional URL of the remote repository to use.
 ///
 /// # Returns
 ///
@@ -29,6 +30,7 @@ pub async fn handle_changelog_command(
     common: CommonParams,
     from: String,
     to: Option<String>,
+    repository_url: Option<String>,
 ) -> Result<()> {
     // Load and apply configuration
     let mut config = Config::load()?;
@@ -42,14 +44,23 @@ pub async fn handle_changelog_command(
         ui::print_error(&format!("Error: {e}"));
         ui::print_info("\nPlease ensure the following:");
         ui::print_info("1. Git is installed and accessible from the command line.");
-        ui::print_info("2. You are running this command from within a Git repository.");
+        ui::print_info(
+            "2. You are running this command from within a Git repository or provide a repository URL with --repo.",
+        );
         ui::print_info("3. You have set up your configuration using 'git-iris config'.");
         return Err(e);
     }
 
-    // Get the current directory and create a GitRepo instance
-    let repo_path = env::current_dir()?;
-    let git_repo = Arc::new(GitRepo::new(&repo_path).context("Failed to create GitRepo")?);
+    // Use the repository URL from command line or common params
+    let repo_url = repository_url.or(common.repository_url);
+
+    // Create a GitRepo instance based on the URL or current directory
+    let git_repo = if let Some(url) = repo_url {
+        Arc::new(GitRepo::clone_remote_repository(&url).context("Failed to clone repository")?)
+    } else {
+        let repo_path = env::current_dir()?;
+        Arc::new(GitRepo::new(&repo_path).context("Failed to create GitRepo")?)
+    };
 
     // Set the default 'to' reference if not provided
     let to = to.unwrap_or_else(|| "HEAD".to_string());
@@ -82,6 +93,7 @@ pub async fn handle_changelog_command(
 /// * `common` - Common parameters for the command, including configuration overrides.
 /// * `from` - The starting point (commit or tag) for the release notes.
 /// * `to` - The ending point for the release notes. Defaults to "HEAD" if not provided.
+/// * `repository_url` - Optional URL of the remote repository to use.
 ///
 /// # Returns
 ///
@@ -90,6 +102,7 @@ pub async fn handle_release_notes_command(
     common: CommonParams,
     from: String,
     to: Option<String>,
+    repository_url: Option<String>,
 ) -> Result<()> {
     // Load and apply configuration
     let mut config = Config::load()?;
@@ -103,14 +116,23 @@ pub async fn handle_release_notes_command(
         ui::print_error(&format!("Error: {e}"));
         ui::print_info("\nPlease ensure the following:");
         ui::print_info("1. Git is installed and accessible from the command line.");
-        ui::print_info("2. You are running this command from within a Git repository.");
+        ui::print_info(
+            "2. You are running this command from within a Git repository or provide a repository URL with --repo.",
+        );
         ui::print_info("3. You have set up your configuration using 'git-iris config'.");
         return Err(e);
     }
 
-    // Get the current directory and create a GitRepo instance
-    let repo_path = env::current_dir()?;
-    let git_repo = Arc::new(GitRepo::new(&repo_path).context("Failed to create GitRepo")?);
+    // Use the repository URL from command line or common params
+    let repo_url = repository_url.or(common.repository_url);
+
+    // Create a GitRepo instance based on the URL or current directory
+    let git_repo = if let Some(url) = repo_url {
+        Arc::new(GitRepo::clone_remote_repository(&url).context("Failed to clone repository")?)
+    } else {
+        let repo_path = env::current_dir()?;
+        Arc::new(GitRepo::new(&repo_path).context("Failed to create GitRepo")?)
+    };
 
     // Set the default 'to' reference if not provided
     let to = to.unwrap_or_else(|| "HEAD".to_string());

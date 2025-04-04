@@ -13,8 +13,8 @@ pub struct CodeIssue {
     pub description: String,
     /// Severity level of the issue (Critical, High, Medium, Low)
     pub severity: String,
-    /// Location of the issue, preferably in "filename.rs:line_numbers" format
-    /// or "path/to/file.rs:line_numbers" format for better readability
+    /// Location of the issue, preferably in "`filename.rs:line_numbers`" format
+    /// or "`path/to/file.rs:line_numbers`" format for better readability
     pub location: String,
     /// Detailed explanation of why this is problematic
     pub explanation: String,
@@ -267,7 +267,7 @@ impl GeneratedReview {
             location.to_string()
         } else {
             // Treat as just line numbers - explicitly mention it's line numbers
-            format!("Line(s) {}", location)
+            format!("Line(s) {location}")
         }
     }
 
@@ -289,7 +289,7 @@ impl GeneratedReview {
 
         if !self.positive_aspects.is_empty() {
             formatted.push_str(&format!("{}\n\n", "✅ STRENGTHS //".green().bold()));
-            for aspect in self.positive_aspects.iter() {
+            for aspect in &self.positive_aspects {
                 formatted.push_str(&format!("  {} {}\n", "•".bright_green(), aspect.green()));
             }
             formatted.push('\n');
@@ -297,7 +297,7 @@ impl GeneratedReview {
 
         if !self.issues.is_empty() {
             formatted.push_str(&format!("{}\n\n", "⚠️ CORE ISSUES //".yellow().bold()));
-            for issue in self.issues.iter() {
+            for issue in &self.issues {
                 formatted.push_str(&format!("  {} {}\n", "•".bright_yellow(), issue.yellow()));
             }
             formatted.push('\n');
@@ -362,7 +362,7 @@ impl GeneratedReview {
 
         if !self.suggestions.is_empty() {
             formatted.push_str(&format!("{}\n\n", "💡 SUGGESTIONS //".bright_blue().bold()));
-            for suggestion in self.suggestions.iter() {
+            for suggestion in &self.suggestions {
                 formatted.push_str(&format!(
                     "  {} {}\n",
                     "•".bright_cyan(),
@@ -409,7 +409,7 @@ impl GeneratedReview {
                     _ => format!("◤ {emoji} {title} ◢").normal().bold(),
                 };
 
-                formatted.push_str(&format!("{}\n\n", header));
+                formatted.push_str(&format!("{header}\n\n"));
 
                 for (i, issue) in dim.issues.iter().enumerate() {
                     // Severity badge with custom styling based on severity
@@ -441,9 +441,9 @@ impl GeneratedReview {
                     formatted.push_str(&format!("     {}: ", "DETAIL".bright_cyan().bold()));
                     for (i, line) in explanation_lines.iter().enumerate() {
                         if i == 0 {
-                            formatted.push_str(&format!("{}\n", line));
+                            formatted.push_str(&format!("{line}\n"));
                         } else {
-                            formatted.push_str(&format!("            {}\n", line));
+                            formatted.push_str(&format!("            {line}\n"));
                         }
                     }
 
@@ -462,6 +462,7 @@ impl GeneratedReview {
 use super::service::IrisCommitService;
 use crate::common::CommonParams;
 use crate::config::Config;
+use crate::git::GitRepo;
 use crate::instruction_presets::PresetType;
 use crate::messages;
 use crate::ui;
@@ -470,7 +471,11 @@ use std::sync::Arc;
 
 /// Handles the review command which generates an AI code review of staged changes
 /// with comprehensive analysis across multiple dimensions of code quality
-pub async fn handle_review_command(common: CommonParams, _print: bool) -> Result<()> {
+pub async fn handle_review_command(
+    common: CommonParams,
+    _print: bool,
+    repository_url: Option<String>,
+) -> Result<()> {
     // Check if the preset is appropriate for code reviews
     if !common.is_valid_preset_for_type(PresetType::Review) {
         ui::print_warning(
@@ -481,17 +486,24 @@ pub async fn handle_review_command(common: CommonParams, _print: bool) -> Result
 
     let mut config = Config::load()?;
     common.apply_to_config(&mut config)?;
-    let current_dir = std::env::current_dir()?;
 
+    // Combine repository URL from CLI and CommonParams
+    let repo_url = repository_url.or(common.repository_url.clone());
+
+    // Create the git repository
+    let git_repo = GitRepo::new_from_url(repo_url).context("Failed to create GitRepo")?;
+
+    let repo_path = git_repo.repo_path().clone();
     let provider_name = &config.default_provider;
 
     let service = Arc::new(
         IrisCommitService::new(
             config.clone(),
-            &current_dir.clone(),
+            &repo_path,
             provider_name,
             false, // gitmoji not needed for review
             false, // verification not needed for review
+            git_repo,
         )
         .context("Failed to create IrisCommitService")?,
     );
@@ -501,7 +513,9 @@ pub async fn handle_review_command(common: CommonParams, _print: bool) -> Result
         ui::print_error(&format!("Error: {e}"));
         ui::print_info("\nPlease ensure the following:");
         ui::print_info("1. Git is installed and accessible from the command line.");
-        ui::print_info("2. You are running this command from within a Git repository.");
+        ui::print_info(
+            "2. You are running this command from within a Git repository or provide a repository URL with --repo.",
+        );
         ui::print_info("3. You have set up your configuration using 'git-iris config'.");
         return Err(e);
     }
@@ -524,7 +538,7 @@ pub async fn handle_review_command(common: CommonParams, _print: bool) -> Result
     // Create and start the spinner
     let spinner = ui::create_spinner("");
     let random_message = messages::get_review_waiting_message();
-    spinner.set_message(format!("{}", random_message.text));
+    spinner.set_message(random_message.text.to_string());
 
     // Generate the code review
     let review = service

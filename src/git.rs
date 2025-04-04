@@ -11,11 +11,20 @@ use std::io;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
+use tempfile::TempDir;
 use tokio::task;
+use url::Url;
 
 /// Represents a Git repository and provides methods for interacting with it.
 pub struct GitRepo {
     repo_path: PathBuf,
+    /// Optional temporary directory for cloned repositories
+    #[allow(dead_code)] // This field is needed to maintain ownership of temp directories
+    temp_dir: Option<TempDir>,
+    /// Whether this is a remote repository
+    is_remote: bool,
+    /// Original remote URL if this is a cloned repository
+    remote_url: Option<String>,
 }
 
 #[derive(Debug)]
@@ -29,7 +38,7 @@ pub struct CommitResult {
 }
 
 impl GitRepo {
-    /// Creates a new `GitRepo` instance.
+    /// Creates a new `GitRepo` instance from a local path.
     ///
     /// # Arguments
     ///
@@ -41,6 +50,62 @@ impl GitRepo {
     pub fn new(repo_path: &Path) -> Result<Self> {
         Ok(Self {
             repo_path: repo_path.to_path_buf(),
+            temp_dir: None,
+            is_remote: false,
+            remote_url: None,
+        })
+    }
+
+    /// Creates a new `GitRepo` instance, handling both local and remote repositories.
+    ///
+    /// # Arguments
+    ///
+    /// * `repository_url` - Optional URL for a remote repository.
+    ///
+    /// # Returns
+    ///
+    /// A Result containing the `GitRepo` instance or an error.
+    pub fn new_from_url(repository_url: Option<String>) -> Result<Self> {
+        if let Some(url) = repository_url { Self::clone_remote_repository(&url) } else {
+            let current_dir = env::current_dir()?;
+            Self::new(&current_dir)
+        }
+    }
+
+    /// Clones a remote repository and creates a `GitRepo` instance for it.
+    ///
+    /// # Arguments
+    ///
+    /// * `url` - The URL of the remote repository to clone.
+    ///
+    /// # Returns
+    ///
+    /// A Result containing the `GitRepo` instance or an error.
+    pub fn clone_remote_repository(url: &str) -> Result<Self> {
+        log_debug!("Cloning remote repository from URL: {}", url);
+
+        // Validate URL
+        let _ = Url::parse(url).map_err(|e| anyhow!("Invalid repository URL: {}", e))?;
+
+        // Create a temporary directory for the clone
+        let temp_dir = TempDir::new()?;
+        let temp_path = temp_dir.path();
+
+        log_debug!("Created temporary directory for clone: {:?}", temp_path);
+
+        // Clone the repository into the temporary directory
+        let repo = match Repository::clone(url, temp_path) {
+            Ok(repo) => repo,
+            Err(e) => return Err(anyhow!("Failed to clone repository: {}", e)),
+        };
+
+        log_debug!("Successfully cloned repository to {:?}", repo.path());
+
+        Ok(Self {
+            repo_path: temp_path.to_path_buf(),
+            temp_dir: Some(temp_dir),
+            is_remote: true,
+            remote_url: Some(url.to_string()),
         })
     }
 
@@ -75,8 +140,9 @@ impl GitRepo {
 
         log_debug!("Extracted project metadata: {:?}", project_metadata);
 
-        let user_name = repo.config()?.get_string("user.name")?;
-        let user_email = repo.config()?.get_string("user.email")?;
+        // Try to get user info from the repository config
+        let user_name = repo.config()?.get_string("user.name").unwrap_or_default();
+        let user_email = repo.config()?.get_string("user.email").unwrap_or_default();
 
         let context = CommitContext::new(
             branch,
@@ -89,6 +155,46 @@ impl GitRepo {
 
         log_debug!("Git info retrieved successfully");
         Ok(context)
+    }
+
+    /// Returns whether this `GitRepo` instance is working with a remote repository
+    pub fn is_remote(&self) -> bool {
+        self.is_remote
+    }
+
+    /// Returns the original remote URL if this is a cloned repository
+    pub fn get_remote_url(&self) -> Option<&str> {
+        self.remote_url.as_deref()
+    }
+
+    /// Returns the repository path
+    pub fn repo_path(&self) -> &PathBuf {
+        &self.repo_path
+    }
+
+    /// Updates the remote repository by fetching the latest changes
+    pub fn update_remote(&self) -> Result<()> {
+        if !self.is_remote {
+            return Err(anyhow!("Not a remote repository"));
+        }
+
+        log_debug!("Updating remote repository");
+        let repo = self.open_repo()?;
+
+        // Find the default remote (usually "origin")
+        let remotes = repo.remotes()?;
+        let remote_name = remotes
+            .iter()
+            .flatten()
+            .next()
+            .ok_or_else(|| anyhow!("No remote found"))?;
+
+        // Fetch updates from the remote
+        let mut remote = repo.find_remote(remote_name)?;
+        remote.fetch(&["master", "main"], None, None)?;
+
+        log_debug!("Successfully updated remote repository");
+        Ok(())
     }
 
     /// Retrieves the current branch name.
@@ -370,6 +476,12 @@ impl GitRepo {
     ///
     /// A Result containing the `CommitResult` or an error.
     pub fn commit_and_verify(&self, message: &str) -> Result<CommitResult> {
+        if self.is_remote {
+            return Err(anyhow!(
+                "Cannot commit to a remote repository in read-only mode"
+            ));
+        }
+
         match self.commit(message) {
             Ok(result) => {
                 if let Err(e) = self.execute_hook("post-commit") {
@@ -394,6 +506,12 @@ impl GitRepo {
     ///
     /// A Result containing the `CommitResult` or an error.
     pub fn commit(&self, message: &str) -> Result<CommitResult> {
+        if self.is_remote {
+            return Err(anyhow!(
+                "Cannot commit to a remote repository in read-only mode"
+            ));
+        }
+
         let repo = self.open_repo()?;
         let signature = repo.signature()?;
         let mut index = repo.index()?;
@@ -523,6 +641,11 @@ impl GitRepo {
     ///
     /// A Result indicating success or an error.
     pub fn execute_hook(&self, hook_name: &str) -> Result<()> {
+        if self.is_remote {
+            log_debug!("Skipping hook execution for remote repository");
+            return Ok(());
+        }
+
         let repo = self.open_repo()?;
         let hook_path = repo.path().join("hooks").join(hook_name);
 
@@ -607,5 +730,14 @@ impl GitRepo {
         diff.contains("Binary files")
             || diff.contains("GIT binary patch")
             || diff.contains("[Binary file changed]")
+    }
+}
+
+impl Drop for GitRepo {
+    fn drop(&mut self) {
+        // The TempDir will be automatically cleaned up when dropped
+        if self.is_remote {
+            log_debug!("Cleaning up temporary repository at {:?}", self.repo_path);
+        }
     }
 }

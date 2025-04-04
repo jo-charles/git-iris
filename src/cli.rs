@@ -44,6 +44,15 @@ pub struct Cli {
         help = "Display the version"
     )]
     pub version: bool,
+
+    /// Repository URL to use instead of local repository
+    #[arg(
+        short = 'r',
+        long = "repo",
+        global = true,
+        help = "Repository URL to use instead of local repository"
+    )]
+    pub repository_url: Option<String>,
 }
 
 /// Enumeration of available subcommands
@@ -209,7 +218,7 @@ pub async fn main() -> anyhow::Result<()> {
     }
 
     if let Some(command) = cli.command {
-        handle_command(command).await
+        handle_command(command, cli.repository_url).await
     } else {
         // If no subcommand is provided, print the help
         let _ = Cli::parse_from(["git-iris", "--help"]);
@@ -218,7 +227,10 @@ pub async fn main() -> anyhow::Result<()> {
 }
 
 /// Handle the command based on parsed arguments
-pub async fn handle_command(command: Commands) -> anyhow::Result<()> {
+pub async fn handle_command(
+    command: Commands,
+    repository_url: Option<String>,
+) -> anyhow::Result<()> {
     match command {
         Commands::Gen {
             common,
@@ -239,7 +251,15 @@ pub async fn handle_command(command: Commands) -> anyhow::Result<()> {
             ui::print_version(crate_version!());
             println!();
 
-            commit::handle_gen_command(common, auto_commit, !no_gitmoji, print, !no_verify).await?;
+            commit::handle_gen_command(
+                common,
+                auto_commit,
+                !no_gitmoji,
+                print,
+                !no_verify,
+                repository_url,
+            )
+            .await?;
         }
         Commands::Config {
             common,
@@ -269,7 +289,7 @@ pub async fn handle_command(command: Commands) -> anyhow::Result<()> {
                 from,
                 to
             );
-            changes::handle_changelog_command(common, from, to).await?;
+            changes::handle_changelog_command(common, from, to, repository_url).await?;
         }
         Commands::ReleaseNotes { common, from, to } => {
             log_debug!(
@@ -278,7 +298,7 @@ pub async fn handle_command(command: Commands) -> anyhow::Result<()> {
                 from,
                 to
             );
-            changes::handle_release_notes_command(common, from, to).await?;
+            changes::handle_release_notes_command(common, from, to, repository_url).await?;
         }
         Commands::Review { common, print } => {
             log_debug!(
@@ -288,7 +308,7 @@ pub async fn handle_command(command: Commands) -> anyhow::Result<()> {
             );
             ui::print_version(crate_version!());
             println!();
-            commit::review::handle_review_command(common, print).await?;
+            commit::review::handle_review_command(common, print, repository_url).await?;
         }
     }
 

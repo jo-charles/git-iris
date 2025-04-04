@@ -42,7 +42,17 @@ async fn test_perform_commit() -> Result<()> {
     let use_gitmoji = true;
     let verify = true;
 
-    let service = IrisCommitService::new(config, &repo_path, provider_name, use_gitmoji, verify)?;
+    // Create a new GitRepo for the service
+    let service_repo = GitRepo::new(temp_dir.path())?;
+
+    let service = IrisCommitService::new(
+        config,
+        &repo_path,
+        provider_name,
+        use_gitmoji,
+        verify,
+        service_repo,
+    )?;
 
     let result = service.perform_commit("Test commit message")?;
     println!("Perform commit result: {result:?}");

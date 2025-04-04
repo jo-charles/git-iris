@@ -30,29 +30,36 @@ impl IrisCommitService {
     /// # Arguments
     ///
     /// * `config` - The configuration for the service
-    /// * `repo_path` - The path to the Git repository
+    /// * `repo_path` - The path to the Git repository (unused but kept for API compatibility)
     /// * `provider_name` - The name of the LLM provider to use
     /// * `use_gitmoji` - Whether to use Gitmoji in commit messages
     /// * `verify` - Whether to verify commits
+    /// * `git_repo` - An existing `GitRepo` instance
     ///
     /// # Returns
     ///
     /// A Result containing the new `IrisCommitService` instance or an error
     pub fn new(
         config: Config,
-        repo_path: &Path,
+        _repo_path: &Path,
         provider_name: &str,
         use_gitmoji: bool,
         verify: bool,
+        git_repo: GitRepo,
     ) -> Result<Self> {
         Ok(Self {
             config,
-            repo: Arc::new(GitRepo::new(repo_path)?),
+            repo: Arc::new(git_repo),
             provider_name: provider_name.to_string(),
             use_gitmoji,
             verify,
             cached_context: Arc::new(RwLock::new(None)),
         })
+    }
+
+    /// Check if the repository is remote
+    pub fn is_remote_repository(&self) -> bool {
+        self.repo.is_remote()
     }
 
     /// Check the environment for necessary prerequisites
@@ -297,6 +304,11 @@ impl IrisCommitService {
     ///
     /// A Result containing the `CommitResult` or an error.
     pub fn perform_commit(&self, message: &str) -> Result<CommitResult> {
+        // Check if this is a remote repository
+        if self.is_remote_repository() {
+            return Err(anyhow::anyhow!("Cannot commit to a remote repository"));
+        }
+
         let processed_message = process_commit_message(message.to_string(), self.use_gitmoji);
         log_debug!("Performing commit with message: {}", processed_message);
 
@@ -334,6 +346,12 @@ impl IrisCommitService {
 
     /// Execute the pre-commit hook if verification is enabled
     pub fn pre_commit(&self) -> Result<()> {
+        // Skip pre-commit hook for remote repositories
+        if self.is_remote_repository() {
+            log_debug!("Skipping pre-commit hook for remote repository");
+            return Ok(());
+        }
+
         if self.verify {
             self.repo.execute_hook("pre-commit")
         } else {

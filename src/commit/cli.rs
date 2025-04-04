@@ -3,6 +3,7 @@ use super::service::IrisCommitService;
 use super::types::format_commit_message;
 use crate::common::CommonParams;
 use crate::config::Config;
+use crate::git::GitRepo;
 use crate::instruction_presets::PresetType;
 use crate::messages;
 use crate::tui::run_tui_commit;
@@ -11,12 +12,14 @@ use anyhow::{Context, Result};
 use std::sync::Arc;
 
 #[allow(clippy::fn_params_excessive_bools)] // its ok to use multiple bools here
+#[allow(clippy::too_many_lines)] // Function is slightly over the line limit but still readable
 pub async fn handle_gen_command(
     common: CommonParams,
     auto_commit: bool,
     use_gitmoji: bool,
     print: bool,
     verify: bool,
+    repository_url: Option<String>,
 ) -> Result<()> {
     // Check if the preset is appropriate for commit messages
     if !common.is_valid_preset_for_type(PresetType::Commit) {
@@ -28,17 +31,24 @@ pub async fn handle_gen_command(
 
     let mut config = Config::load()?;
     common.apply_to_config(&mut config)?;
-    let current_dir = std::env::current_dir()?;
 
+    // Combine repository URL from CLI and CommonParams
+    let repo_url = repository_url.or(common.repository_url.clone());
+
+    // Create the git repository
+    let git_repo = GitRepo::new_from_url(repo_url).context("Failed to create GitRepo")?;
+
+    let repo_path = git_repo.repo_path().clone();
     let provider_name = &config.default_provider;
 
     let service = Arc::new(
         IrisCommitService::new(
             config.clone(),
-            &current_dir.clone(),
+            &repo_path,
             provider_name,
             use_gitmoji && config.use_gitmoji,
             verify,
+            git_repo,
         )
         .context("Failed to create IrisCommitService")?,
     );
@@ -48,7 +58,9 @@ pub async fn handle_gen_command(
         ui::print_error(&format!("Error: {e}"));
         ui::print_info("\nPlease ensure the following:");
         ui::print_info("1. Git is installed and accessible from the command line.");
-        ui::print_info("2. You are running this command from within a Git repository.");
+        ui::print_info(
+            "2. You are running this command from within a Git repository or provide a repository URL with --repo.",
+        );
         ui::print_info("3. You have set up your configuration using 'git-iris config'.");
         return Err(e);
     }
@@ -93,6 +105,16 @@ pub async fn handle_gen_command(
     }
 
     if auto_commit {
+        // Only allow auto-commit for local repositories
+        if service.is_remote_repository() {
+            ui::print_error(
+                "Cannot automatically commit to a remote repository. Use --print instead.",
+            );
+            return Err(anyhow::anyhow!(
+                "Auto-commit not supported for remote repositories"
+            ));
+        }
+
         match service.perform_commit(&format_commit_message(&initial_message)) {
             Ok(result) => {
                 let output =
@@ -104,6 +126,15 @@ pub async fn handle_gen_command(
                 return Err(e);
             }
         }
+        return Ok(());
+    }
+
+    // Only allow interactive commit for local repositories
+    if service.is_remote_repository() {
+        ui::print_warning(
+            "Interactive commit not available for remote repositories. Using print mode instead.",
+        );
+        println!("{}", format_commit_message(&initial_message));
         return Ok(());
     }
 

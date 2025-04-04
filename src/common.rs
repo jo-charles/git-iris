@@ -63,6 +63,14 @@ pub struct CommonParams {
         default_value = "standard"
     )]
     pub detail_level: String,
+
+    /// Repository URL to use instead of local repository
+    #[arg(
+        short = 'r',
+        long = "repo",
+        help = "Repository URL to use instead of local repository"
+    )]
+    pub repository_url: Option<String>,
 }
 
 impl CommonParams {

@@ -102,10 +102,10 @@ where
         log_debug!("Attempting to generate message");
 
         // Enhanced prompt that requests specifically formatted JSON output
-        let enhanced_prompt = if std::any::type_name::<T>() != std::any::type_name::<String>() {
-            format!("{}\n\nPlease respond with a valid JSON object and nothing else. No explanations or text outside the JSON.", user_prompt)
-        } else {
+        let enhanced_prompt = if std::any::type_name::<T>() == std::any::type_name::<String>() {
             user_prompt.to_string()
+        } else {
+            format!("{user_prompt}\n\nPlease respond with a valid JSON object and nothing else. No explanations or text outside the JSON.")
         };
 
         // Create chat message with user prompt
@@ -201,7 +201,7 @@ fn parse_json_response<T: DeserializeOwned>(text: &str) -> Result<T> {
 /// Parse a response from Anthropic that needs the prefixed "{"
 fn parse_json_response_with_brace_prefix<T: DeserializeOwned>(text: &str) -> Result<T> {
     // Add the opening brace that we prefilled in the prompt
-    let json_text = format!("{{{}", text);
+    let json_text = format!("{{{text}");
     match serde_json::from_str::<T>(&json_text) {
         Ok(message) => Ok(message),
         Err(e) => {
