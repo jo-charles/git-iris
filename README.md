@@ -3,6 +3,7 @@
 <div align="center">
 
 [![CI/CD](https://img.shields.io/github/actions/workflow/status/hyperb1iss/git-iris/cicd.yml?style=for-the-badge&logo=github-actions&logoColor=white&color=4C566A)](https://github.com/hyperb1iss/git-iris/actions)
+[![Docker](https://img.shields.io/docker/pulls/hyperb1iss/git-iris?style=for-the-badge&logo=docker&logoColor=white&color=2496ED)](https://hub.docker.com/r/hyperb1iss/git-iris)
 [![License](https://img.shields.io/badge/License-Apache%202.0-5E81AC?style=for-the-badge&logo=apache&logoColor=white&color=3B6EA8)](https://opensource.org/licenses/Apache-2.0)
 [![GitHub Release](https://img.shields.io/github/release/hyperb1iss/git-iris.svg?style=for-the-badge&logo=github&logoColor=white&color=9D6DB3)][releases]
 [![Crates.io](https://img.shields.io/crates/v/git-iris.svg?style=for-the-badge&logo=rust&logoColor=white&color=D35D47)][crates]
@@ -11,7 +12,7 @@
 
 _Elevate your Git workflow with the power of AI_ 🚀
 
-[Installation](#installation) • [Configuration](#configuration) • [Usage](#usage) • [Contributing](#contributing) • [License](#license)
+[Installation](#installation) • [Docker](#docker) • [Configuration](#configuration) • [Usage](#usage) • [Contributing](#contributing) • [License](#license)
 
 </div>
 
@@ -59,6 +60,22 @@ Git-Iris offers a suite of AI-powered tools to enhance your Git workflow:
 cargo install git-iris
 ```
 
+### Via Docker
+
+Git-Iris is available as a Docker image:
+
+```bash
+docker pull hyperb1iss/git-iris:latest
+```
+
+Run it:
+
+```bash
+docker run --rm -v "$(pwd):/git-repo" hyperb1iss/git-iris gen
+```
+
+For detailed instructions, examples, and CI/CD integration, see our [Docker Usage Guide](docker/README.md).
+
 ### Manual Installation
 
 1. Clone the repository:
@@ -73,6 +90,58 @@ cargo install git-iris
    cargo build --release
    cargo install --path .
    ```
+
+## 🐳 Docker
+
+Git-Iris provides official Docker images for easy integration into your CI/CD pipelines and workflows without installation:
+
+```bash
+# Generate a commit message (mount current directory)
+docker run --rm --user $(id -u):$(id -g) -v "$(pwd):/git-repo" hyperb1iss/git-iris gen
+
+# Configure with environment variables
+docker run --rm --user $(id -u):$(id -g) -v "$(pwd):/git-repo" \
+  -e GITIRIS_PROVIDER="openai" \
+  -e GITIRIS_API_KEY="your-api-key" \
+  hyperb1iss/git-iris gen
+```
+
+For persistent configuration, mount a volume to store your settings:
+
+```bash
+docker run --rm --user $(id -u):$(id -g) -v "$(pwd):/git-repo" \
+  -v git-iris-config:/root/.config/git-iris \
+  hyperb1iss/git-iris config --provider openai --api-key your-api-key
+```
+
+The Docker image is particularly useful in CI/CD workflows:
+
+```yaml
+# GitHub Actions example
+- name: Generate Release Notes
+  env:
+    GITIRIS_PROVIDER: openai
+    GITIRIS_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+  run: |
+    docker run --rm -v "$(pwd):/git-repo" \
+      -e GITIRIS_PROVIDER -e GITIRIS_API_KEY \
+      hyperb1iss/git-iris release-notes \
+      --from $(git describe --tags --abbrev=0 $(git rev-list --tags --skip=1 --max-count=1)) \
+      --to $(git describe --tags --abbrev=0) \
+      --print > RELEASE_NOTES.md
+```
+
+To build and test the Docker image locally:
+
+```bash
+# Build the image with a custom tag
+./docker/build.sh mytag
+
+# Test the image
+./docker/test-image.sh mytag
+```
+
+For detailed instructions, examples, and CI/CD integration, see our [Docker Usage Guide](docker/README.md).
 
 ## ⚙️ Configuration
 
