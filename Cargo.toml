@@ -47,7 +47,7 @@ schemars = "0.8.21"
 parking_lot = "0.12.1"
 llm = "1.1.0"
 url = "2.5.0"
-rmcp = { git = "https://github.com/modelcontextprotocol/rust-sdk", branch = "main", features = ["server"] }
+rmcp = { git = "https://github.com/modelcontextprotocol/rust-sdk", branch = "main", features = ["server", "transport-sse-server"] }
 
 [dev-dependencies]
 dotenv = "0.15.0"

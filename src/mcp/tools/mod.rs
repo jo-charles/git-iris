@@ -59,21 +59,34 @@ impl GitIrisToolbox {
     ) -> anyhow::Result<String> {
         log_debug!("Generating release notes with request: {:?}", request);
         
-        // Parse detail level
-        let detail_level = match request.detail_level.as_deref() {
-            Some("minimal") => DetailLevel::Minimal,
-            Some("detailed") => DetailLevel::Detailed,
-            _ => DetailLevel::Standard,
+        // Parse detail level with robust empty string handling
+        let detail_level = if request.detail_level.trim().is_empty() {
+            log_debug!("Empty detail level, using Standard");
+            DetailLevel::Standard
+        } else {
+            match request.detail_level.trim().to_lowercase().as_str() {
+                "minimal" => DetailLevel::Minimal,
+                "detailed" => DetailLevel::Detailed,
+                "standard" => DetailLevel::Standard,
+                other => {
+                    log_debug!("Unknown detail level '{}', defaulting to Standard", other);
+                    DetailLevel::Standard
+                }
+            }
         };
         
-        // Set up config with custom instructions if provided
+        // Set up config with custom instructions if provided and not empty
         let mut config = self.config.clone();
-        if let Some(instructions) = request.custom_instructions {
-            config.set_temp_instructions(Some(instructions));
+        if !request.custom_instructions.trim().is_empty() {
+            config.set_temp_instructions(Some(request.custom_instructions));
         }
         
-        // Default to HEAD if to is not specified
-        let to = request.to.unwrap_or_else(|| "HEAD".to_string());
+        // Default to HEAD if to is empty
+        let to = if request.to.trim().is_empty() {
+            "HEAD".to_string()
+        } else {
+            request.to
+        };
         
         // Generate the release notes using the publicly re-exported generator
         ReleaseNotesGenerator::generate(

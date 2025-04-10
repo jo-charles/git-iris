@@ -11,6 +11,8 @@ pub struct MCPServerConfig {
     pub transport: MCPTransportType,
     /// Port to use for network transports
     pub port: Option<u16>,
+    /// Listen address for network transports (e.g., "127.0.0.1", "0.0.0.0")
+    pub listen_address: Option<String>,
 }
 
 /// Types of transports supported by the MCP server
@@ -30,6 +32,7 @@ impl Default for MCPServerConfig {
             dev_mode: false,
             transport: MCPTransportType::StdIO,
             port: None,
+            listen_address: None,
         }
     }
 }
@@ -50,6 +53,12 @@ impl MCPServerConfig {
     /// Create a new configuration with the specified port
     pub fn with_port(mut self, port: u16) -> Self {
         self.port = Some(port);
+        self
+    }
+    
+    /// Create a new configuration with the specified listen address
+    pub fn with_listen_address(mut self, listen_address: impl Into<String>) -> Self {
+        self.listen_address = Some(listen_address.into());
         self
     }
 } 

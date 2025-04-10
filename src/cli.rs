@@ -149,12 +149,25 @@ pub enum Commands {
         dev: bool,
 
         /// Transport type to use (stdio, sse, websocket)
-        #[arg(short, long, help = "Transport type to use (stdio, sse, websocket)", default_value = "stdio")]
+        #[arg(
+            short,
+            long,
+            help = "Transport type to use (stdio, sse, websocket)",
+            default_value = "stdio"
+        )]
         transport: String,
 
         /// Port to use for network transports
         #[arg(short, long, help = "Port to use for network transports")]
         port: Option<u16>,
+
+        /// Listen address for network transports
+        #[arg(
+            long,
+            help = "Listen address for network transports (e.g., '127.0.0.1', '0.0.0.0')",
+            default_value = "127.0.0.1"
+        )]
+        listen_address: Option<String>,
     },
 
     // Configuration and utility commands
@@ -329,14 +342,20 @@ pub async fn handle_command(
             println!();
             commit::review::handle_review_command(common, print, repository_url).await?;
         }
-        Commands::Serve { dev, transport, port } => {
+        Commands::Serve {
+            dev,
+            transport,
+            port,
+            listen_address,
+        } => {
             log_debug!(
-                "Handling 'serve' command with dev: {}, transport: {}, port: {:?}",
+                "Handling 'serve' command with dev: {}, transport: {}, port: {:?}, listen_address: {:?}",
                 dev,
                 transport,
-                port
+                port,
+                listen_address
             );
-            commands::handle_serve_command(dev, transport, port).await?;
+            commands::handle_serve_command(dev, transport, port, listen_address).await?;
         }
     }
 

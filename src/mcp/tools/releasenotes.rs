@@ -21,16 +21,19 @@ pub struct ReleaseNotesRequest {
     pub from: String,
     
     /// Ending reference (commit hash, tag, or branch name). Defaults to HEAD if not specified.
-    #[schemars(description = "Ending reference (commit hash, tag, or branch name). Defaults to HEAD if not specified.")]
-    pub to: Option<String>,
+    #[schemars(description = "Ending reference (commit hash, tag, or branch name). Defaults to HEAD if empty or not specified.")]
+    #[serde(default)]
+    pub to: String,
     
-    /// Level of detail for the release notes (minimal, standard, detailed)
-    #[schemars(description = "Level of detail for the release notes (minimal, standard, detailed)")]
-    pub detail_level: Option<String>,
+    /// Level of detail for the release notes
+    #[schemars(description = "Level of detail for the release notes. Values: 'minimal', 'detailed'. Defaults to 'standard' if empty or not specified.")]
+    #[serde(default)]
+    pub detail_level: String,
     
     /// Custom instructions for the AI
-    #[schemars(description = "Custom instructions for the AI")]
-    pub custom_instructions: Option<String>,
+    #[schemars(description = "Custom instructions for the AI. Empty by default.")]
+    #[serde(default)]
+    pub custom_instructions: String,
 }
 
-// Implementation will be handled by the tool_box macro in the parent module 
+// Implementation will be handled by the tool_box macro in the parent module
