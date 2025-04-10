@@ -67,9 +67,14 @@ pub async fn serve(config: MCPServerConfig) -> Result<()> {
 
     // Initialize GitRepo for use with tools
     let git_repo = Arc::new(GitRepo::new_from_url(None)?);
+    log_debug!(
+        "Initialized Git repository at: {}",
+        git_repo.repo_path().display()
+    );
 
     // Load Git-Iris configuration
     let git_iris_config = GitIrisConfig::load()?;
+    log_debug!("Loaded Git-Iris configuration");
 
     // Create the handler with necessary dependencies
     let handler = GitIrisHandler::new(git_repo, git_iris_config);

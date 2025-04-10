@@ -147,7 +147,27 @@ impl ServerHandler for GitIrisHandler {
     // Handle notification when client workspace roots change
     fn on_roots_list_changed(&self) -> impl Future<Output = ()> + Send + '_ {
         log_debug!("Client workspace roots changed");
-        std::future::ready(())
+        async move {
+            // Access and update workspace roots
+            let roots = self
+                .workspace_roots
+                .lock()
+                .expect("Failed to lock workspace roots mutex");
+
+            // If we have a workspace root, log it
+            if let Some(root) = roots.first() {
+                log_debug!("Primary workspace root: {}", root.display());
+            } else {
+                log_debug!("No workspace roots provided by client");
+            }
+
+            // If this is a development log, print more information
+            if roots.len() > 1 {
+                for (i, root) in roots.iter().skip(1).enumerate() {
+                    log_debug!("Additional workspace root {}: {}", i + 1, root.display());
+                }
+            }
+        }
     }
 
     async fn list_tools(

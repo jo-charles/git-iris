@@ -6,6 +6,7 @@ use crate::common::DetailLevel;
 use crate::config::Config as GitIrisConfig;
 use crate::git::GitRepo;
 use rmcp::model::{Annotated, CallToolResult, Content, RawContent, RawTextContent};
+use std::path::Path;
 use std::sync::Arc;
 
 /// Common trait for all Git-Iris MCP tools
@@ -53,5 +54,31 @@ pub fn parse_detail_level(detail_level: &str) -> DetailLevel {
 pub fn apply_custom_instructions(config: &mut crate::config::Config, custom_instructions: &str) {
     if !custom_instructions.trim().is_empty() {
         config.set_temp_instructions(Some(custom_instructions.to_string()));
+    }
+}
+
+/// Resolves a Git repository from an optional `repo_path` parameter
+///
+/// If `repo_path` is provided, creates a new `GitRepo` for that path/URL.
+/// Otherwise, falls back to the default `git_repo` provided by the handler.
+pub fn resolve_git_repo(
+    repo_path: Option<&str>,
+    default_git_repo: Arc<GitRepo>,
+) -> Result<Arc<GitRepo>, anyhow::Error> {
+    match repo_path {
+        Some(path) if !path.trim().is_empty() => {
+            if path.starts_with("http://")
+                || path.starts_with("https://")
+                || path.starts_with("git@")
+            {
+                // Handle remote repository URL
+                Ok(Arc::new(GitRepo::new_from_url(Some(path.to_string()))?))
+            } else {
+                // Handle local repository path
+                let path = Path::new(path);
+                Ok(Arc::new(GitRepo::new(path)?))
+            }
+        }
+        _ => Ok(default_git_repo),
     }
 }

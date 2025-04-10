@@ -47,6 +47,7 @@ mod tests {
             to: "HEAD".to_string(),
             detail_level: "minimal".to_string(),
             custom_instructions: "Keep it brief".to_string(),
+            repository: String::new(),
         };
 
         // Execute the tool directly

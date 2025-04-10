@@ -7,7 +7,7 @@ use crate::commit::types::format_commit_message;
 use crate::config::Config as GitIrisConfig;
 use crate::git::GitRepo;
 use crate::log_debug;
-use crate::mcp::tools::utils::{GitIrisTool, create_text_result};
+use crate::mcp::tools::utils::{GitIrisTool, create_text_result, resolve_git_repo};
 
 use rmcp::handler::server::tool::cached_schema_for_type;
 use rmcp::model::{CallToolResult, Tool};
@@ -39,6 +39,10 @@ pub struct CommitTool {
     /// Custom instructions for the AI
     #[serde(default)]
     pub custom_instructions: String,
+
+    /// Repository path or URL (optional)
+    #[serde(default)]
+    pub repository: String,
 }
 
 impl CommitTool {
@@ -64,6 +68,15 @@ impl GitIrisTool for CommitTool {
         config: GitIrisConfig,
     ) -> Result<CallToolResult, anyhow::Error> {
         log_debug!("Processing commit request with: {:?}", self);
+
+        // Resolve repository based on the repository parameter
+        let repo_path = if self.repository.trim().is_empty() {
+            None
+        } else {
+            Some(self.repository.as_str())
+        };
+        let git_repo = resolve_git_repo(repo_path, git_repo)?;
+        log_debug!("Using repository: {}", git_repo.repo_path().display());
 
         // Check if we can perform the operation on this repository
         if self.auto_commit && git_repo.is_remote() {

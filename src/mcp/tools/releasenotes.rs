@@ -8,6 +8,7 @@ use crate::git::GitRepo;
 use crate::log_debug;
 use crate::mcp::tools::utils::{
     GitIrisTool, apply_custom_instructions, create_text_result, parse_detail_level,
+    resolve_git_repo,
 };
 
 use rmcp::handler::server::tool::cached_schema_for_type;
@@ -35,6 +36,10 @@ pub struct ReleaseNotesTool {
     /// Custom instructions for the AI
     #[serde(default)]
     pub custom_instructions: String,
+
+    /// Repository path or URL (optional)
+    #[serde(default)]
+    pub repository: String,
 }
 
 impl ReleaseNotesTool {
@@ -60,6 +65,15 @@ impl GitIrisTool for ReleaseNotesTool {
         config: GitIrisConfig,
     ) -> Result<CallToolResult, anyhow::Error> {
         log_debug!("Generating release notes with: {:?}", self);
+
+        // Resolve repository based on the repository parameter
+        let repo_path = if self.repository.trim().is_empty() {
+            None
+        } else {
+            Some(self.repository.as_str())
+        };
+        let git_repo = resolve_git_repo(repo_path, git_repo)?;
+        log_debug!("Using repository: {}", git_repo.repo_path().display());
 
         // Parse detail level using shared utility
         let detail_level = parse_detail_level(&self.detail_level);
