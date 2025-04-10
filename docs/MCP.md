@@ -1,6 +1,6 @@
 # Git-Iris MCP Integration
 
-Git-Iris now supports the Model Context Protocol (MCP), allowing it to be used directly from compatible editors and AI assistants.
+Git-Iris supports the Model Context Protocol (MCP), allowing it to be used directly from compatible editors and AI assistants.
 
 ## What is MCP?
 
@@ -8,14 +8,14 @@ The Model Context Protocol (MCP) is an open standard that enables AI assistants 
 
 - Claude Desktop
 - Cursor
-- VSCode (with appropriate extensions)
+- Visual Studio Code (with appropriate extensions)
 - Zed
 - Continue
 - Many other editors and AI assistants
 
 ## Using Git-Iris as an MCP Server
 
-To start Git-Iris as an MCP server, use the new `serve` command:
+To start Git-Iris as an MCP server, use the `serve` command:
 
 ```bash
 # Start with stdio transport (default)
@@ -24,9 +24,8 @@ git-iris serve
 # Start with development mode for more verbose logging
 git-iris serve --dev
 
-# In the future, additional transports will be available:
-# git-iris serve --transport sse --port 3077
-# git-iris serve --transport websocket --port 3078
+# Start with SSE transport on specific port
+git-iris serve --transport sse --port 3077 --listen-address 127.0.0.1
 ```
 
 ## Available Tools
@@ -35,72 +34,138 @@ Git-Iris exposes the following tools through MCP:
 
 ### `git_iris_commit`
 
-Generate commit messages, analyze staged changes, and perform commits.
+Generate commit messages and perform Git commits.
 
 **Parameters:**
-- `action`: "generate" (default), "analyze", or "commit"
-- `use_gitmoji`: Whether to use Gitmojis in the message (boolean)
-- `custom_instructions`: Custom instructions for the AI
-- `preset`: Instruction preset to use
-- `no_verify`: Skip verification for commit action (boolean)
 
-### `git_iris_review`
+- `auto_commit`: (boolean) Whether to generate and perform the commit (true) or just generate a message (false)
+- `use_gitmoji`: (boolean) Whether to use gitmoji in commit messages
+- `no_verify`: (boolean) Skip verification for commit action
+- `preset`: (string) Instruction preset to use
+- `custom_instructions`: (string) Custom instructions for the AI
+- `repository`: (string, optional) Repository path or URL
 
-Generate comprehensive code reviews for staged changes.
+Example:
+
+```json
+{
+  "auto_commit": true,
+  "use_gitmoji": true,
+  "preset": "conventional",
+  "custom_instructions": "Include the ticket number from JIRA"
+}
+```
+
+### `git_iris_code_review`
+
+Generate comprehensive code reviews with options for staged changes, unstaged changes, or specific commits.
 
 **Parameters:**
-- `target`: "staged" (default), "pr", or "branch"  
-- `target_id`: Target ID for PR or branch name
-- `detail_level`: "minimal", "standard" (default), or "detailed"
-- `dimension`: Specific quality dimension to focus on
-- `custom_instructions`: Custom instructions for the AI
+
+- `include_unstaged`: (boolean) Include unstaged changes in the review
+- `commit_id`: (string) Specific commit to review (hash, branch name, or reference)
+- `preset`: (string) Preset instruction set to use for the review
+- `custom_instructions`: (string) Custom instructions for the AI
+- `repository`: (string, optional) Repository path or URL
+
+Example:
+
+```json
+{
+  "preset": "security",
+  "custom_instructions": "Focus on performance issues",
+  "include_unstaged": true
+}
+```
 
 ### `git_iris_changelog`
 
-Generate changelogs and release notes between two Git references.
+Generate a detailed changelog between two Git references.
 
 **Parameters:**
-- `from`: Starting reference (commit hash, tag, or branch name)
-- `to`: Ending reference (defaults to HEAD)
-- `type`: "changelog" (default) or "release_notes"
-- `detail_level`: "minimal", "standard" (default), or "detailed"
-- `custom_instructions`: Custom instructions for the AI
 
-### `git_iris_analyze`
+- `from`: (string, required) Starting reference (commit hash, tag, or branch name)
+- `to`: (string) Ending reference (defaults to HEAD if not specified)
+- `detail_level`: (string) Level of detail for the changelog (minimal, standard, detailed)
+- `custom_instructions`: (string) Custom instructions for the AI
+- `repository`: (string, optional) Repository path or URL
 
-Analyze repository content and provide insights.
+Example:
+
+```json
+{
+  "from": "v1.0.0",
+  "to": "v2.0.0",
+  "detail_level": "detailed",
+  "custom_instructions": "Group changes by component"
+}
+```
+
+### `git_iris_release_notes`
+
+Generate comprehensive release notes between two Git references.
 
 **Parameters:**
-- `action`: "repo_summary" (default), "explain_commit", "suggest_tasks"
-- `target`: Target for analysis (e.g., commit hash)
-- `detail_level`: "minimal", "standard" (default), or "detailed"
-- `custom_instructions`: Custom instructions for the AI
 
-## Using Git-Iris with Claude Desktop
+- `from`: (string, required) Starting reference (commit hash, tag, or branch name)
+- `to`: (string) Ending reference (defaults to HEAD if not specified)
+- `detail_level`: (string) Level of detail for the release notes (minimal, standard, detailed)
+- `custom_instructions`: (string) Custom instructions for the AI
+- `repository`: (string, optional) Repository path or URL
+
+Example:
+
+```json
+{
+  "from": "v1.0.0",
+  "to": "v2.0.0",
+  "detail_level": "standard",
+  "custom_instructions": "Highlight breaking changes"
+}
+```
+
+## Using Git-Iris with Claude
+
+### Claude Desktop Integration
 
 1. Start Git-Iris as an MCP server: `git-iris serve`
 2. Open Claude Desktop
 3. Add Git-Iris as an MCP server through Claude's settings
 4. You can now use Git-Iris through Claude using the tools described above
 
+### Cursor Integration
+
+When using Cursor with Claude, Git-Iris tools are automatically available as long as the server is running.
+
+## Using Git-Iris with Visual Studio Code
+
+1. Start Git-Iris as an MCP server: `git-iris serve --transport sse --port 3077`
+2. Install an MCP-compatible extension in VS Code
+3. Configure the extension to connect to Git-Iris at `http://localhost:3077`
+4. Use the tools through the extension's interface
+
 ## Technical Implementation
 
-The MCP integration uses the `mcp_daemon` crate to implement the MCP server. The implementation is structured as follows:
+The MCP integration uses the `rmcp` crate to implement the MCP server. The implementation is structured as follows:
 
 - `src/mcp/mod.rs`: The main module for MCP-related functionality
 - `src/mcp/server.rs`: Server implementation for handling MCP requests
 - `src/mcp/config.rs`: Configuration for the MCP server
 - `src/mcp/tools/`: Tool implementations for exposing Git-Iris features
-- `src/mcp/transports.rs`: Transport implementations for different communication modes
+  - `changelog.rs`: Changelog generation tool
+  - `releasenotes.rs`: Release notes generation tool
+  - `commit.rs`: Commit message generation and execution tool
+  - `codereview.rs`: Code review tool
+  - `utils.rs`: Shared utilities for MCP tools
+  - `mod.rs`: Tool registration and handling
 
-Currently, only the stdio transport is fully implemented, with SSE and WebSocket support planned for future releases.
+Currently, the stdio and SSE transports are fully implemented.
 
 ## Future Improvements
 
 Planned improvements for the MCP integration include:
 
-1. Full implementation of all tool functions
-2. Support for SSE and WebSocket transports
-3. Additional resource sharing capabilities
-4. Integration with more MCP clients
-5. Security and authentication features 
+1. Additional tools for repository analysis and pull requests
+2. Enhanced security and authentication features
+3. Expanded integration with more MCP clients
+4. Support for remote operation through SSH or other protocols

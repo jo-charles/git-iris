@@ -32,21 +32,28 @@ Git-Iris is a comprehensive AI-powered Git workflow assistant that enhances your
 
 Git-Iris offers a suite of AI-powered tools to enhance your Git workflow:
 
-- 🤖 **Intelligent Commit Messages**: Generate context-aware, meaningful commit messages
-- 🔍 **AI-Powered Code Reviews**: Get detailed feedback on your changes before committing
-- 📜 **Dynamic Changelog Generation**: Create structured, detailed changelogs between any two Git references
-- 📋 **Comprehensive Release Notes**: Automatically generate release notes with summaries and key changes
-- 🔄 **Multi-Provider AI Support**: Supports OpenAI, Anthropic, Google, Groq, XAI, DeepSeek, Phind, and Ollama via the [llm crate](https://crates.io/crates/llm)
-- 🌐 **Remote Repository Support**: Work with remote repositories for changelogs and release notes without cloning manually
-- 🎨 **Gitmoji Integration**: Add expressive emojis to your commits, changelogs, and release notes
-- 🖥️ **Interactive CLI**: Refine AI-generated content through an intuitive command-line interface
-- 🔧 **Customizable Workflows**: Tailor AI behavior with custom instructions and presets
-- 📚 **Flexible Instruction Presets**: Quickly switch between different documentation styles
-- 🧠 **Smart Context Extraction**: Analyze repository changes for more accurate AI-generated content
-- 📊 **Intelligent Code Analysis**: Provide context-aware suggestions based on your codebase
-- 🔍 **Relevance Scoring**: Prioritize important changes in generated content
-- 📝 **Multi-Language Support**: Analyze changes in Rust, JavaScript, Python, Java, and more
-- 🚀 **Performance Optimized**: Efficient token management for responsive AI interactions
+### 🧠 Core Features
+
+- **Intelligent Commit Messages**: Generate context-aware, meaningful commit messages
+- **AI-Powered Code Reviews**: Get detailed feedback on your changes across multiple quality dimensions
+- **Dynamic Changelog Generation**: Create structured changelogs between any Git references
+- **Comprehensive Release Notes**: Generate release notes with summaries and key changes
+- **MCP Integration**: Connect directly with Claude, Cursor, VSCode and other compatible AI tools
+
+### 💪 Advanced Capabilities
+
+- **Multi-Provider Support**: Works with OpenAI, Anthropic, Google, Groq, XAI, Ollama and more
+- **Remote Repository Support**: Work with remote repositories without manual cloning
+- **Customizable Workflows**: Control AI behavior with custom instructions and presets
+- **Smart Context Analysis**: Extract relevant context from repository changes
+- **Multi-Language Support**: Analyze code in Rust, JavaScript, Python, Java, and more languages
+
+### 🎨 User Experience
+
+- **Interactive CLI**: Refine AI-generated content through an intuitive interface
+- **Gitmoji Integration**: Add expressive emojis to your Git documentation
+- **Performance Optimized**: Efficient token management for responsive interactions
+- **Docker Support**: Run in CI/CD pipelines and workflows without installation
 
 ## 🛠️ Installation
 
@@ -259,6 +266,20 @@ git-iris gen --repo https://github.com/example/repo.git --print
 ```
 
 Note: When working with remote repositories, Git-Iris operates in read-only mode. You can't commit changes directly to remote repositories.
+
+### Using MCP with AI Tools
+
+Git-Iris can be integrated with AI assistants and editors via the Model Context Protocol (MCP):
+
+```bash
+# Start MCP server (default stdio transport)
+git-iris serve
+
+# Start with SSE transport for editor integration
+git-iris serve --transport sse --port 3077
+```
+
+This allows you to use Git-Iris features directly from Claude, Cursor, VSCode, and other MCP-compatible tools. See [MCP.md](docs/MCP.md) for detailed documentation.
 
 ### Interactive Commit Process
 
