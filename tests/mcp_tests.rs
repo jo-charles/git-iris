@@ -6,6 +6,7 @@ mod tests {
     use git_iris::git::GitRepo;
     use git_iris::mcp::tools::GitIrisTools;
     use git_iris::mcp::tools::ReleaseNotesTool;
+    use git_iris::mcp::tools::utils::GitIrisTool;
     use rmcp::model::{Content, RawContent};
     use serde_json::{Map, Value, json};
     use std::sync::Arc;

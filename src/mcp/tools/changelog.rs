@@ -3,10 +3,12 @@
 //! This module provides the MCP tool for generating changelogs.
 
 use crate::changes::ChangelogGenerator;
-use crate::common::DetailLevel;
 use crate::config::Config as GitIrisConfig;
 use crate::git::GitRepo;
 use crate::log_debug;
+use crate::mcp::tools::utils::{
+    GitIrisTool, apply_custom_instructions, create_text_result, parse_detail_level,
+};
 
 use rmcp::handler::server::tool::cached_schema_for_type;
 use rmcp::model::{CallToolResult, Tool};
@@ -47,36 +49,24 @@ impl ChangelogTool {
             annotations: None,
         }
     }
+}
 
+#[async_trait::async_trait]
+impl GitIrisTool for ChangelogTool {
     /// Execute the changelog tool with the provided repository and configuration
-    pub async fn execute(
+    async fn execute(
         &self,
         git_repo: Arc<GitRepo>,
         config: GitIrisConfig,
     ) -> Result<CallToolResult, anyhow::Error> {
         log_debug!("Generating changelog with: {:?}", self);
 
-        // Parse detail level with robust empty string handling
-        let detail_level = if self.detail_level.trim().is_empty() {
-            log_debug!("Empty detail level, using Standard");
-            DetailLevel::Standard
-        } else {
-            match self.detail_level.trim().to_lowercase().as_str() {
-                "minimal" => DetailLevel::Minimal,
-                "detailed" => DetailLevel::Detailed,
-                "standard" => DetailLevel::Standard,
-                other => {
-                    log_debug!("Unknown detail level '{}', defaulting to Standard", other);
-                    DetailLevel::Standard
-                }
-            }
-        };
+        // Parse detail level using shared utility
+        let detail_level = parse_detail_level(&self.detail_level);
 
-        // Set up config with custom instructions if provided and not empty
+        // Set up config with custom instructions if provided
         let mut config = config.clone();
-        if !self.custom_instructions.trim().is_empty() {
-            config.set_temp_instructions(Some(self.custom_instructions.clone()));
-        }
+        apply_custom_instructions(&mut config, &self.custom_instructions);
 
         // Default to HEAD if to is empty
         let to = if self.to.trim().is_empty() {
@@ -90,18 +80,7 @@ impl ChangelogTool {
             ChangelogGenerator::generate(git_repo.clone(), &self.from, &to, &config, detail_level)
                 .await?;
 
-        // Create and return the result
+        // Create and return the result using shared utility
         Ok(create_text_result(content))
-    }
-}
-
-/// Helper function to create a text result
-fn create_text_result(text: String) -> CallToolResult {
-    CallToolResult {
-        content: vec![rmcp::model::Content::from(rmcp::model::Annotated {
-            raw: rmcp::model::RawContent::Text(rmcp::model::RawTextContent { text }),
-            annotations: None,
-        })],
-        is_error: None,
     }
 }

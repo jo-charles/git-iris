@@ -7,10 +7,12 @@ pub mod changelog;
 pub mod codereview;
 pub mod commit;
 pub mod releasenotes;
+pub mod utils;
 
 use crate::config::Config as GitIrisConfig;
 use crate::git::GitRepo;
 use crate::log_debug;
+use crate::mcp::tools::utils::GitIrisTool;
 
 use rmcp::Error;
 use rmcp::RoleServer;
@@ -198,32 +200,24 @@ impl ServerHandler for GitIrisHandler {
             Err(e) => return Err(handle_tool_error(&e)),
         };
 
-        // Match the tool variant and execute the corresponding logic
+        // Use the GitIrisTool trait to execute any tool without matching on specific types
         match tool_params {
-            GitIrisTools::ReleaseNotesTool(tool) => {
-                // Execute the tool
-                tool.execute(Arc::clone(&git_repo), config.clone())
-                    .await
-                    .map_err(|e| handle_tool_error(&e))
-            }
-            GitIrisTools::ChangelogTool(tool) => {
-                // Execute the tool
-                tool.execute(Arc::clone(&git_repo), config.clone())
-                    .await
-                    .map_err(|e| handle_tool_error(&e))
-            }
-            GitIrisTools::CommitTool(tool) => {
-                // Execute the tool
-                tool.execute(Arc::clone(&git_repo), config.clone())
-                    .await
-                    .map_err(|e| handle_tool_error(&e))
-            }
-            GitIrisTools::CodeReviewTool(tool) => {
-                // Execute the tool
-                tool.execute(Arc::clone(&git_repo), config)
-                    .await
-                    .map_err(|e| handle_tool_error(&e))
-            }
+            GitIrisTools::ReleaseNotesTool(tool) => tool
+                .execute(git_repo.clone(), config.clone())
+                .await
+                .map_err(|e| handle_tool_error(&e)),
+            GitIrisTools::ChangelogTool(tool) => tool
+                .execute(git_repo.clone(), config.clone())
+                .await
+                .map_err(|e| handle_tool_error(&e)),
+            GitIrisTools::CommitTool(tool) => tool
+                .execute(git_repo.clone(), config.clone())
+                .await
+                .map_err(|e| handle_tool_error(&e)),
+            GitIrisTools::CodeReviewTool(tool) => tool
+                .execute(git_repo, config)
+                .await
+                .map_err(|e| handle_tool_error(&e)),
         }
     }
 }

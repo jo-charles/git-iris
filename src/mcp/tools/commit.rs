@@ -7,6 +7,7 @@ use crate::commit::types::format_commit_message;
 use crate::config::Config as GitIrisConfig;
 use crate::git::GitRepo;
 use crate::log_debug;
+use crate::mcp::tools::utils::{GitIrisTool, create_text_result};
 
 use rmcp::handler::server::tool::cached_schema_for_type;
 use rmcp::model::{CallToolResult, Tool};
@@ -52,9 +53,12 @@ impl CommitTool {
             annotations: None,
         }
     }
+}
 
+#[async_trait::async_trait]
+impl GitIrisTool for CommitTool {
     /// Execute the commit tool with the provided repository and configuration
-    pub async fn execute(
+    async fn execute(
         &self,
         git_repo: Arc<GitRepo>,
         config: GitIrisConfig,
@@ -133,16 +137,5 @@ impl CommitTool {
 
         // If we're just generating a message, return it
         Ok(create_text_result(formatted_message))
-    }
-}
-
-/// Helper function to create a text result
-fn create_text_result(text: String) -> CallToolResult {
-    CallToolResult {
-        content: vec![rmcp::model::Content::from(rmcp::model::Annotated {
-            raw: rmcp::model::RawContent::Text(rmcp::model::RawTextContent { text }),
-            annotations: None,
-        })],
-        is_error: None,
     }
 }

@@ -7,6 +7,7 @@ use crate::commit::service::IrisCommitService;
 use crate::config::Config as GitIrisConfig;
 use crate::git::GitRepo;
 use crate::log_debug;
+use crate::mcp::tools::utils::{GitIrisTool, apply_custom_instructions, create_text_result};
 
 use rmcp::handler::server::tool::cached_schema_for_type;
 use rmcp::model::{CallToolResult, Tool};
@@ -48,9 +49,12 @@ impl CodeReviewTool {
             annotations: None,
         }
     }
+}
 
+#[async_trait::async_trait]
+impl GitIrisTool for CodeReviewTool {
     /// Execute the code review tool with the provided repository and configuration
-    pub async fn execute(
+    async fn execute(
         &self,
         git_repo: Arc<GitRepo>,
         config: GitIrisConfig,
@@ -70,11 +74,9 @@ impl CodeReviewTool {
             GitRepo::new(&repo_path)?,
         )?;
 
-        // Set up config with custom instructions if provided and not empty
+        // Set up config with custom instructions if provided
         let mut config_clone = config.clone();
-        if !self.custom_instructions.trim().is_empty() {
-            config_clone.set_temp_instructions(Some(self.custom_instructions.clone()));
-        }
+        apply_custom_instructions(&mut config_clone, &self.custom_instructions);
 
         // Process the preset
         let preset = if self.preset.trim().is_empty() {
@@ -104,16 +106,5 @@ impl CodeReviewTool {
         // Format and return the review
         let formatted_review = review.format();
         Ok(create_text_result(formatted_review))
-    }
-}
-
-/// Helper function to create a text result
-fn create_text_result(text: String) -> CallToolResult {
-    CallToolResult {
-        content: vec![rmcp::model::Content::from(rmcp::model::Annotated {
-            raw: rmcp::model::RawContent::Text(rmcp::model::RawTextContent { text }),
-            annotations: None,
-        })],
-        is_error: None,
     }
 }
