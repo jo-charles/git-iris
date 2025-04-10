@@ -87,12 +87,6 @@ pub async fn serve(config: MCPServerConfig) -> Result<()> {
             let socket_addr = get_socket_addr(&config)?;
             serve_sse(handler, socket_addr).await
         }
-        MCPTransportType::WebSocket => {
-            let _port = config
-                .port
-                .context("Port is required for WebSocket transport")?;
-            Err(anyhow::anyhow!("WebSocket transport not yet implemented"))
-        }
     }
 }
 

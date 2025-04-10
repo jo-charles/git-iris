@@ -300,10 +300,9 @@ pub async fn handle_serve_command(
     let transport_type = match transport.to_lowercase().as_str() {
         "stdio" => MCPTransportType::StdIO,
         "sse" => MCPTransportType::SSE,
-        "websocket" => MCPTransportType::WebSocket,
         _ => {
             return Err(anyhow::anyhow!(
-                "Invalid transport type: {}. Valid options are: stdio, sse, websocket",
+                "Invalid transport type: {}. Valid options are: stdio, sse",
                 transport
             ));
         }

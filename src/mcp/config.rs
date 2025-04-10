@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 pub struct MCPServerConfig {
     /// Whether to enable development mode with more verbose logging
     pub dev_mode: bool,
-    /// The transport type to use (stdio, sse, websocket)
+    /// The transport type to use (stdio, sse)
     pub transport: MCPTransportType,
     /// Port to use for network transports
     pub port: Option<u16>,
@@ -22,8 +22,6 @@ pub enum MCPTransportType {
     StdIO,
     /// Server-Sent Events transport
     SSE,
-    /// WebSocket transport
-    WebSocket,
 }
 
 impl Default for MCPServerConfig {

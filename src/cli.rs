@@ -159,11 +159,11 @@ pub enum Commands {
         #[arg(long, help = "Enable development mode with more verbose logging")]
         dev: bool,
 
-        /// Transport type to use (stdio, sse, websocket)
+        /// Transport type to use (stdio, sse)
         #[arg(
             short,
             long,
-            help = "Transport type to use (stdio, sse, websocket)",
+            help = "Transport type to use (stdio, sse)",
             default_value = "stdio"
         )]
         transport: String,
