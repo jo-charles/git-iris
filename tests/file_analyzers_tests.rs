@@ -231,7 +231,7 @@ fn test_default_analyzer() {
 
     let analysis = analyzer.analyze("unknown.xyz", &change);
     println!("Default Analyzer Test Debug: Analysis results: {analysis:?}");
-    assert!(analysis.is_empty());
+    assert!(analysis.contains(&"Unable to analyze non-text or binary file".to_string()));
 }
 
 #[test]
@@ -472,4 +472,153 @@ find_package(Boost REQUIRED)
     assert_eq!(metadata.build_system, Some("CMake".to_string()));
     assert_eq!(metadata.version, Some("1.0".to_string()));
     assert!(metadata.dependencies.contains(&"Boost".to_string()));
+}
+
+#[test]
+fn test_toml_analyzer() {
+    let analyzer = get_analyzer("Cargo.toml");
+    let change = StagedFile {
+        path: "Cargo.toml".to_string(),
+        change_type: ChangeType::Modified,
+        diff: r#"
++[dependencies]
++serde = "1.0.104"
+-serde = "1.0.100"
++[dev-dependencies]
++tokio = { version = "1.0", features = ["full"] }
+-version = "0.1.0"
++version = "0.1.0"
++[package]
++authors = ["User <user@example.com>"]
+        "#
+        .to_string(),
+        analysis: Vec::new(),
+        content: None,
+        content_excluded: false,
+    };
+
+    let analysis = analyzer.analyze("Cargo.toml", &change);
+    println!("TOML Test Debug: Analysis results: {analysis:?}");
+
+    // Verify basic TOML analysis
+    assert!(analysis.contains(&"Dependencies have been updated".to_string()));
+    assert!(analysis.contains(&"Version updated to 0.1.0".to_string()));
+
+    // Verify section detection
+    let sections_analysis = analysis
+        .iter()
+        .find(|&s| s.starts_with("Modified sections:"))
+        .expect("No sections analysis found");
+    assert!(sections_analysis.contains("dependencies"));
+    assert!(sections_analysis.contains("dev-dependencies"));
+    assert!(sections_analysis.contains("package"));
+
+    // Verify Rust-specific detection
+    assert!(analysis.contains(&"Rust project configuration changed".to_string()));
+
+    // Test metadata extraction
+    let content = r#"
+[package]
+name = "git-iris"
+version = "0.2.0"
+authors = ["Author <author@example.com>"]
+
+[dependencies]
+serde = "1.0.104"
+tokio = "1.0"
+"#;
+
+    let metadata = analyzer.extract_metadata("Cargo.toml", content);
+    assert_eq!(metadata.language, Some("Rust".to_string()));
+    assert_eq!(metadata.version, Some("0.2.0".to_string()));
+    assert!(metadata.dependencies.contains(&"serde".to_string()));
+    assert!(metadata.dependencies.contains(&"tokio".to_string()));
+}
+
+#[test]
+fn test_generic_text_analyzer() {
+    // Test basic text file
+    let analyzer = get_analyzer("config.txt");
+    let change = StagedFile {
+        path: "config.txt".to_string(),
+        change_type: ChangeType::Modified,
+        diff: r#"
++New line added
+-Old line removed
+ Unchanged line
+        "#
+        .to_string(),
+        analysis: Vec::new(),
+        content: None,
+        content_excluded: false,
+    };
+
+    let analysis = analyzer.analyze("config.txt", &change);
+    println!("Generic Text Test Debug: Analysis results: {analysis:?}");
+
+    // Verify basic line counting
+    let line_analysis = analysis
+        .iter()
+        .find(|&s| s.starts_with("Changes:"))
+        .expect("No line count analysis found");
+    assert!(line_analysis.contains("1 line(s) added"));
+    assert!(line_analysis.contains("1 line(s) removed"));
+
+    // Test config file
+    let config_analyzer = get_analyzer("app.config");
+    let config_change = StagedFile {
+        path: "app.config".to_string(),
+        change_type: ChangeType::Modified,
+        diff: r#"
++server.host=localhost
+-server.port=8080
++server.port=9000
+ log.level=info
+        "#
+        .to_string(),
+        analysis: Vec::new(),
+        content: None,
+        content_excluded: false,
+    };
+
+    let config_analysis = config_analyzer.analyze("app.config", &config_change);
+    println!("Config Test Debug: Analysis results: {config_analysis:?}");
+
+    let keys_analysis = config_analysis
+        .iter()
+        .find(|&s| s.starts_with("Modified configuration keys:"))
+        .expect("No config keys analysis found");
+    assert!(keys_analysis.contains("server.host"));
+    assert!(keys_analysis.contains("server.port"));
+
+    // Test XML file
+    let xml_analyzer = get_analyzer("web.xml");
+    let xml_change = StagedFile {
+        path: "web.xml".to_string(),
+        change_type: ChangeType::Modified,
+        diff: r#"
++  <servlet>
++    <servlet-name>MyServlet</servlet-name>
++  </servlet>
+-  <filter>
+-    <filter-name>OldFilter</filter-name>
+-  </filter>
+        "#
+        .to_string(),
+        analysis: Vec::new(),
+        content: None,
+        content_excluded: false,
+    };
+
+    let xml_analysis = xml_analyzer.analyze("web.xml", &xml_change);
+    println!("XML Test Debug: Analysis results: {xml_analysis:?}");
+
+    let tags_analysis = xml_analysis
+        .iter()
+        .find(|&s| s.starts_with("Modified tags:"))
+        .expect("No tags analysis found");
+
+    // Only check for the main tags, not the nested ones
+    assert!(tags_analysis.contains("servlet"));
+    assert!(tags_analysis.contains("filter"));
 }

@@ -33,8 +33,13 @@ mod markdown;
 mod python;
 /// Module for analyzing Rust files
 mod rust;
+/// Module for analyzing TOML files
+mod toml;
 /// Module for analyzing YAML files
 mod yaml;
+
+/// Module for analyzing generic text files
+mod text;
 
 /// Get the appropriate file analyzer based on the file extension
 pub fn get_analyzer(file: &str) -> Box<dyn FileAnalyzer + Send + Sync> {
@@ -68,29 +73,87 @@ pub fn get_analyzer(file: &str) -> Box<dyn FileAnalyzer + Send + Sync> {
                 "json" => return Box::new(json::JsonAnalyzer),
                 "md" | "markdown" => return Box::new(markdown::MarkdownAnalyzer),
                 "yaml" | "yml" => return Box::new(yaml::YamlAnalyzer),
-                _ => {}
+                "toml" => return Box::new(toml::TomlAnalyzer),
+                // Text-like extensions should use the generic text analyzer
+                "txt" | "cfg" | "ini" | "properties" | "env" | "conf" | "config" | "xml"
+                | "htm" | "html" | "css" | "scss" | "sass" | "less" | "sql" | "sh" | "bash"
+                | "zsh" | "bat" | "cmd" | "ps1" | "dockerfile" | "editorconfig" | "gitignore"
+                | "gitattributes" | "nginx" | "service" => {
+                    return Box::new(text::GenericTextAnalyzer);
+                }
+                _ => {
+                    // Try to determine if this is likely a text file
+                    if is_likely_text_file(file) {
+                        return Box::new(text::GenericTextAnalyzer);
+                    }
+                }
+            }
+        }
+    } else {
+        // Files without extension - check if they're likely text files
+        if is_likely_text_file(file) {
+            return Box::new(text::GenericTextAnalyzer);
+        }
+    }
+
+    // Fall back to default analyzer for binary or unknown formats
+    Box::new(DefaultAnalyzer)
+}
+
+/// Heuristic to determine if a file is likely text-based
+fn is_likely_text_file(file: &str) -> bool {
+    let file_name = std::path::Path::new(file).file_name();
+    if let Some(name) = file_name {
+        if let Some(name_str) = name.to_str() {
+            // Common configuration files without extensions
+            let config_file_names = [
+                "dockerfile",
+                ".gitignore",
+                ".gitattributes",
+                ".env",
+                "makefile",
+                "readme",
+                "license",
+                "authors",
+                "contributors",
+                "changelog",
+                "config",
+                "codeowners",
+                ".dockerignore",
+                ".npmrc",
+                ".yarnrc",
+                ".eslintrc",
+                ".prettierrc",
+                ".babelrc",
+                ".stylelintrc",
+            ];
+
+            for name in config_file_names {
+                if name_str.to_lowercase() == name.to_lowercase() {
+                    return true;
+                }
             }
         }
     }
 
-    Box::new(DefaultAnalyzer)
+    false
 }
 
-/// Default analyzer for unsupported file types
+/// Default analyzer for unsupported file types (likely binary)
 struct DefaultAnalyzer;
 
 impl FileAnalyzer for DefaultAnalyzer {
     fn analyze(&self, _file: &str, _staged_file: &StagedFile) -> Vec<String> {
-        vec![]
+        vec!["Unable to analyze non-text or binary file".to_string()]
     }
 
     fn get_file_type(&self) -> &'static str {
-        "Unknown file type"
+        "Unknown or binary file"
     }
 
     fn extract_metadata(&self, _file: &str, _content: &str) -> ProjectMetadata {
         ProjectMetadata {
-            language: Some("Unknown".to_string()),
+            language: Some("Binary/Unknown".to_string()),
             ..Default::default()
         }
     }
