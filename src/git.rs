@@ -37,6 +37,23 @@ pub struct CommitResult {
     pub new_files: Vec<(String, FileMode)>,
 }
 
+/// Collects repository information about files and branches
+#[derive(Debug)]
+pub struct RepoFilesInfo {
+    pub branch: String,
+    pub recent_commits: Vec<RecentCommit>,
+    pub staged_files: Vec<StagedFile>,
+    pub file_paths: Vec<String>,
+}
+
+/// Collects information about a specific commit
+#[derive(Debug)]
+pub struct CommitInfo {
+    pub branch: String,
+    pub commit: RecentCommit,
+    pub file_paths: Vec<String>,
+}
+
 impl GitRepo {
     /// Creates a new `GitRepo` instance from a local path.
     ///
@@ -732,6 +749,420 @@ impl GitRepo {
         diff.contains("Binary files")
             || diff.contains("GIT binary patch")
             || diff.contains("[Binary file changed]")
+    }
+
+    /// Gets unstaged file changes from the repository
+    ///
+    /// # Returns
+    ///
+    /// A Result containing a Vec of `StagedFile` objects for unstaged changes or an error.
+    fn get_unstaged_file_statuses(repo: &Repository) -> Result<Vec<StagedFile>> {
+        log_debug!("Getting unstaged file statuses");
+        let mut unstaged_files = Vec::new();
+
+        let mut opts = StatusOptions::new();
+        opts.include_untracked(true);
+        let statuses = repo.statuses(Some(&mut opts))?;
+
+        for entry in statuses.iter() {
+            let path = entry.path().context("Could not get path")?;
+            let status = entry.status();
+
+            // Look for changes in the working directory (unstaged)
+            if status.is_wt_new() || status.is_wt_modified() || status.is_wt_deleted() {
+                let change_type = if status.is_wt_new() {
+                    ChangeType::Added
+                } else if status.is_wt_modified() {
+                    ChangeType::Modified
+                } else {
+                    ChangeType::Deleted
+                };
+
+                let should_exclude = should_exclude_file(path);
+                let diff = if should_exclude {
+                    String::from("[Content excluded]")
+                } else {
+                    Self::get_diff_for_unstaged_file(repo, path)?
+                };
+
+                let content = if should_exclude
+                    || change_type != ChangeType::Modified
+                    || Self::is_binary_diff(&diff)
+                {
+                    None
+                } else {
+                    let path_obj = Path::new(path);
+                    if path_obj.exists() {
+                        Some(fs::read_to_string(path_obj)?)
+                    } else {
+                        None
+                    }
+                };
+
+                let analyzer = file_analyzers::get_analyzer(path);
+                let unstaged_file = StagedFile {
+                    path: path.to_string(),
+                    change_type: change_type.clone(),
+                    diff: diff.clone(),
+                    analysis: Vec::new(),
+                    content: content.clone(),
+                    content_excluded: should_exclude,
+                };
+
+                let analysis = if should_exclude {
+                    vec!["[Analysis excluded]".to_string()]
+                } else {
+                    analyzer.analyze(path, &unstaged_file)
+                };
+
+                unstaged_files.push(StagedFile {
+                    path: path.to_string(),
+                    change_type,
+                    diff,
+                    analysis,
+                    content,
+                    content_excluded: should_exclude,
+                });
+            }
+        }
+
+        log_debug!("Found {} unstaged files", unstaged_files.len());
+        Ok(unstaged_files)
+    }
+
+    /// Gets the diff for an unstaged file
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - The path of the file to get the diff for.
+    ///
+    /// # Returns
+    ///
+    /// A Result containing the diff as a String or an error.
+    fn get_diff_for_unstaged_file(repo: &Repository, path: &str) -> Result<String> {
+        log_debug!("Getting unstaged diff for file: {}", path);
+        let mut diff_options = DiffOptions::new();
+        diff_options.pathspec(path);
+
+        // For unstaged changes, we compare the index (staged) to the working directory
+        let diff = repo.diff_index_to_workdir(None, Some(&mut diff_options))?;
+
+        let mut diff_string = String::new();
+        diff.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
+            let origin = match line.origin() {
+                '+' | '-' | ' ' => line.origin(),
+                _ => ' ',
+            };
+            diff_string.push(origin);
+            diff_string.push_str(&String::from_utf8_lossy(line.content()));
+            true
+        })?;
+
+        if Self::is_binary_diff(&diff_string) {
+            Ok("[Binary file changed]".to_string())
+        } else {
+            log_debug!(
+                "Generated unstaged diff for {} ({} bytes)",
+                path,
+                diff_string.len()
+            );
+            Ok(diff_string)
+        }
+    }
+
+    /// Retrieves the files changed in a specific commit
+    ///
+    /// # Arguments
+    ///
+    /// * `commit_id` - The ID of the commit to analyze.
+    ///
+    /// # Returns
+    ///
+    /// A Result containing a Vec of `StagedFile` objects for the commit or an error.
+    pub fn get_commit_files(&self, commit_id: &str) -> Result<Vec<StagedFile>> {
+        log_debug!("Getting files for commit: {}", commit_id);
+        let repo = self.open_repo()?;
+
+        // Parse the commit ID
+        let obj = repo.revparse_single(commit_id)?;
+        let commit = obj.peel_to_commit()?;
+
+        let commit_tree = commit.tree()?;
+        let parent_commit = if commit.parent_count() > 0 {
+            Some(commit.parent(0)?)
+        } else {
+            None
+        };
+
+        let parent_tree = parent_commit.map(|c| c.tree()).transpose()?;
+
+        let mut commit_files = Vec::new();
+
+        let diff = repo.diff_tree_to_tree(parent_tree.as_ref(), Some(&commit_tree), None)?;
+
+        // Get statistics for each file and convert to our StagedFile format
+        diff.foreach(
+            &mut |delta, _| {
+                if let Some(path) = delta.new_file().path().and_then(|p| p.to_str()) {
+                    let change_type = match delta.status() {
+                        git2::Delta::Added => ChangeType::Added,
+                        git2::Delta::Modified => ChangeType::Modified,
+                        git2::Delta::Deleted => ChangeType::Deleted,
+                        _ => return true, // Skip other types of changes
+                    };
+
+                    let should_exclude = should_exclude_file(path);
+
+                    commit_files.push(StagedFile {
+                        path: path.to_string(),
+                        change_type,
+                        diff: String::new(), // Will be populated later
+                        analysis: Vec::new(),
+                        content: None,
+                        content_excluded: should_exclude,
+                    });
+                }
+                true
+            },
+            None,
+            None,
+            None,
+        )?;
+
+        // Get the diff for each file
+        for file in &mut commit_files {
+            if file.content_excluded {
+                file.diff = String::from("[Content excluded]");
+                file.analysis = vec!["[Analysis excluded]".to_string()];
+                continue;
+            }
+
+            let mut diff_options = DiffOptions::new();
+            diff_options.pathspec(&file.path);
+
+            let file_diff = repo.diff_tree_to_tree(
+                parent_tree.as_ref(),
+                Some(&commit_tree),
+                Some(&mut diff_options),
+            )?;
+
+            let mut diff_string = String::new();
+            file_diff.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
+                let origin = match line.origin() {
+                    '+' | '-' | ' ' => line.origin(),
+                    _ => ' ',
+                };
+                diff_string.push(origin);
+                diff_string.push_str(&String::from_utf8_lossy(line.content()));
+                true
+            })?;
+
+            if Self::is_binary_diff(&diff_string) {
+                file.diff = "[Binary file changed]".to_string();
+            } else {
+                file.diff = diff_string;
+            }
+
+            let analyzer = file_analyzers::get_analyzer(&file.path);
+            file.analysis = analyzer.analyze(&file.path, file);
+        }
+
+        log_debug!("Found {} files in commit", commit_files.len());
+        Ok(commit_files)
+    }
+
+    /// Get Git information including unstaged changes
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - The configuration object
+    /// * `include_unstaged` - Whether to include unstaged changes
+    ///
+    /// # Returns
+    ///
+    /// A Result containing the `CommitContext` or an error.
+    pub async fn get_git_info_with_unstaged(
+        &self,
+        _config: &Config,
+        include_unstaged: bool,
+    ) -> Result<CommitContext> {
+        log_debug!("Getting git info with unstaged flag: {}", include_unstaged);
+
+        // Extract all git2 data before crossing async boundaries
+        let files_info = self.extract_files_info(include_unstaged)?;
+
+        // Now perform async operations
+        let project_metadata = self.get_project_metadata(&files_info.file_paths).await?;
+
+        // Get user info after the async operation
+        let repo = self.open_repo()?;
+        let user_name = repo.config()?.get_string("user.name").unwrap_or_default();
+        let user_email = repo.config()?.get_string("user.email").unwrap_or_default();
+
+        let context = CommitContext::new(
+            files_info.branch,
+            files_info.recent_commits,
+            files_info.staged_files,
+            project_metadata,
+            user_name,
+            user_email,
+        );
+
+        log_debug!(
+            "Git info with unstaged={} retrieved successfully",
+            include_unstaged
+        );
+        Ok(context)
+    }
+
+    /// Extract files info without crossing async boundaries
+    fn extract_files_info(&self, include_unstaged: bool) -> Result<RepoFilesInfo> {
+        let repo = self.open_repo()?;
+
+        // Get basic repo info
+        let branch = self.get_current_branch()?;
+        let recent_commits = self.get_recent_commits(5)?;
+
+        // Get staged and unstaged files
+        let mut staged_files = Self::get_file_statuses(&repo)?;
+        if include_unstaged {
+            let unstaged_files = Self::get_unstaged_file_statuses(&repo)?;
+            staged_files.extend(unstaged_files);
+            log_debug!("Combined {} files (staged + unstaged)", staged_files.len());
+        }
+
+        // Extract file paths for metadata
+        let file_paths: Vec<String> = staged_files.iter().map(|file| file.path.clone()).collect();
+
+        Ok(RepoFilesInfo {
+            branch,
+            recent_commits,
+            staged_files,
+            file_paths,
+        })
+    }
+
+    /// Get Git information for a specific commit
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - The configuration object
+    /// * `commit_id` - The ID of the commit to analyze
+    ///
+    /// # Returns
+    ///
+    /// A Result containing the `CommitContext` or an error.
+    pub async fn get_git_info_for_commit(
+        &self,
+        _config: &Config,
+        commit_id: &str,
+    ) -> Result<CommitContext> {
+        log_debug!("Getting git info for commit: {}", commit_id);
+
+        // First, extract all the data we need from git2 objects before any async operations
+        let commit_info = self.extract_commit_info(commit_id)?;
+
+        // Now get metadata with async operations
+        let project_metadata = self.get_project_metadata(&commit_info.file_paths).await?;
+
+        // Get the files from commit after async boundary
+        let commit_files = self.get_commit_files(commit_id)?;
+
+        // Try to get user info from the repository config
+        let repo = self.open_repo()?;
+        let user_name = repo.config()?.get_string("user.name").unwrap_or_default();
+        let user_email = repo.config()?.get_string("user.email").unwrap_or_default();
+
+        let context = CommitContext::new(
+            commit_info.branch,
+            vec![commit_info.commit],
+            commit_files,
+            project_metadata,
+            user_name,
+            user_email,
+        );
+
+        log_debug!("Git info for commit retrieved successfully");
+        Ok(context)
+    }
+
+    /// Extract commit info without crossing async boundaries
+    fn extract_commit_info(&self, commit_id: &str) -> Result<CommitInfo> {
+        let repo = self.open_repo()?;
+
+        // Get branch name
+        let branch = self.get_current_branch()?;
+
+        // Parse the commit ID
+        let obj = repo.revparse_single(commit_id)?;
+        let commit = obj.peel_to_commit()?;
+
+        // Extract commit information
+        let commit_author = commit.author();
+        let author_name = commit_author.name().unwrap_or_default().to_string();
+        let commit_message = commit.message().unwrap_or_default().to_string();
+        let commit_time = commit.time().seconds().to_string();
+        let commit_hash = commit.id().to_string();
+
+        // Create the recent commit object
+        let recent_commit = RecentCommit {
+            hash: commit_hash,
+            message: commit_message,
+            author: author_name,
+            timestamp: commit_time,
+        };
+
+        // Get file paths from this commit
+        let file_paths = self.get_file_paths_for_commit(commit_id)?;
+
+        Ok(CommitInfo {
+            branch,
+            commit: recent_commit,
+            file_paths,
+        })
+    }
+
+    /// Gets just the file paths for a specific commit (not the full content)
+    fn get_file_paths_for_commit(&self, commit_id: &str) -> Result<Vec<String>> {
+        let repo = self.open_repo()?;
+
+        // Parse the commit ID
+        let obj = repo.revparse_single(commit_id)?;
+        let commit = obj.peel_to_commit()?;
+
+        let commit_tree = commit.tree()?;
+        let parent_commit = if commit.parent_count() > 0 {
+            Some(commit.parent(0)?)
+        } else {
+            None
+        };
+
+        let parent_tree = parent_commit.map(|c| c.tree()).transpose()?;
+
+        let mut file_paths = Vec::new();
+
+        // Create diff between trees
+        let diff = repo.diff_tree_to_tree(parent_tree.as_ref(), Some(&commit_tree), None)?;
+
+        // Extract file paths
+        diff.foreach(
+            &mut |delta, _| {
+                if let Some(path) = delta.new_file().path().and_then(|p| p.to_str()) {
+                    match delta.status() {
+                        git2::Delta::Added | git2::Delta::Modified | git2::Delta::Deleted => {
+                            file_paths.push(path.to_string());
+                        }
+                        _ => {} // Skip other types of changes
+                    }
+                }
+                true
+            },
+            None,
+            None,
+            None,
+        )?;
+
+        Ok(file_paths)
     }
 }
 

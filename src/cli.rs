@@ -100,6 +100,17 @@ pub enum Commands {
         /// Print the generated review to stdout and exit
         #[arg(short, long, help = "Print the generated review to stdout and exit")]
         print: bool,
+
+        /// Include unstaged changes in the review
+        #[arg(long, help = "Include unstaged changes in the review")]
+        include_unstaged: bool,
+
+        /// Review a specific commit by ID (hash, branch, or reference)
+        #[arg(
+            long,
+            help = "Review a specific commit by ID (hash, branch, or reference)"
+        )]
+        commit: Option<String>,
     },
 
     /// Generate a changelog
@@ -258,6 +269,133 @@ pub async fn main() -> anyhow::Result<()> {
     }
 }
 
+/// Configuration for the Gen command
+#[allow(clippy::struct_excessive_bools)]
+struct GenConfig {
+    auto_commit: bool,
+    use_gitmoji: bool,
+    print_only: bool,
+    verify: bool,
+}
+
+/// Handle the `Gen` command
+async fn handle_gen(
+    common: CommonParams,
+    config: GenConfig,
+    repository_url: Option<String>,
+) -> anyhow::Result<()> {
+    log_debug!(
+        "Handling 'gen' command with common: {:?}, auto_commit: {}, use_gitmoji: {}, print: {}, verify: {}",
+        common,
+        config.auto_commit,
+        config.use_gitmoji,
+        config.print_only,
+        config.verify
+    );
+
+    ui::print_version(crate_version!());
+    println!();
+
+    commit::handle_gen_command(
+        common,
+        config.auto_commit,
+        config.use_gitmoji,
+        config.print_only,
+        config.verify,
+        repository_url,
+    )
+    .await
+}
+
+/// Handle the `Config` command
+fn handle_config(
+    common: CommonParams,
+    api_key: Option<String>,
+    model: Option<String>,
+    token_limit: Option<usize>,
+    param: Option<Vec<String>>,
+) -> anyhow::Result<()> {
+    log_debug!(
+        "Handling 'config' command with common: {:?}, api_key: {:?}, model: {:?}, token_limit: {:?}, param: {:?}",
+        common,
+        api_key,
+        model,
+        token_limit,
+        param
+    );
+    commands::handle_config_command(common, api_key, model, token_limit, param)
+}
+
+/// Handle the `Review` command
+async fn handle_review(
+    common: CommonParams,
+    print: bool,
+    repository_url: Option<String>,
+    include_unstaged: bool,
+    commit: Option<String>,
+) -> anyhow::Result<()> {
+    log_debug!(
+        "Handling 'review' command with common: {:?}, print: {}, include_unstaged: {}, commit: {:?}",
+        common,
+        print,
+        include_unstaged,
+        commit
+    );
+    ui::print_version(crate_version!());
+    println!();
+    commit::review::handle_review_command(common, print, repository_url, include_unstaged, commit)
+        .await
+}
+
+/// Handle the `Changelog` command
+async fn handle_changelog(
+    common: CommonParams,
+    from: String,
+    to: Option<String>,
+    repository_url: Option<String>,
+) -> anyhow::Result<()> {
+    log_debug!(
+        "Handling 'changelog' command with common: {:?}, from: {}, to: {:?}",
+        common,
+        from,
+        to
+    );
+    changes::handle_changelog_command(common, from, to, repository_url).await
+}
+
+/// Handle the `ReleaseNotes` command
+async fn handle_release_notes(
+    common: CommonParams,
+    from: String,
+    to: Option<String>,
+    repository_url: Option<String>,
+) -> anyhow::Result<()> {
+    log_debug!(
+        "Handling 'release-notes' command with common: {:?}, from: {}, to: {:?}",
+        common,
+        from,
+        to
+    );
+    changes::handle_release_notes_command(common, from, to, repository_url).await
+}
+
+/// Handle the `Serve` command
+async fn handle_serve(
+    dev: bool,
+    transport: String,
+    port: Option<u16>,
+    listen_address: Option<String>,
+) -> anyhow::Result<()> {
+    log_debug!(
+        "Handling 'serve' command with dev: {}, transport: {}, port: {:?}, listen_address: {:?}",
+        dev,
+        transport,
+        port,
+        listen_address
+    );
+    commands::handle_serve_command(dev, transport, port, listen_address).await
+}
+
 /// Handle the command based on parsed arguments
 pub async fn handle_command(
     command: Commands,
@@ -271,27 +409,13 @@ pub async fn handle_command(
             print,
             no_verify,
         } => {
-            log_debug!(
-                "Handling 'gen' command with common: {:?}, auto_commit: {}, no_gitmoji: {}, print: {}, no_verify: {}",
-                common,
+            let config = GenConfig {
                 auto_commit,
-                no_gitmoji,
-                print,
-                no_verify
-            );
-
-            ui::print_version(crate_version!());
-            println!();
-
-            commit::handle_gen_command(
-                common,
-                auto_commit,
-                !no_gitmoji,
-                print,
-                !no_verify,
-                repository_url,
-            )
-            .await?;
+                use_gitmoji: !no_gitmoji,
+                print_only: print,
+                verify: !no_verify,
+            };
+            handle_gen(common, config, repository_url).await?;
         }
         Commands::Config {
             common,
@@ -300,47 +424,25 @@ pub async fn handle_command(
             token_limit,
             param,
         } => {
-            log_debug!(
-                "Handling 'config' command with common: {:?}, api_key: {:?}, model: {:?}, token_limit: {:?}, param: {:?}",
-                common,
-                api_key,
-                model,
-                token_limit,
-                param
-            );
-            commands::handle_config_command(common, api_key, model, token_limit, param)?;
+            handle_config(common, api_key, model, token_limit, param)?;
         }
         Commands::ListPresets => {
             log_debug!("Handling 'list_presets' command");
             commands::handle_list_presets_command()?;
         }
         Commands::Changelog { common, from, to } => {
-            log_debug!(
-                "Handling 'changelog' command with common: {:?}, from: {}, to: {:?}",
-                common,
-                from,
-                to
-            );
-            changes::handle_changelog_command(common, from, to, repository_url).await?;
+            handle_changelog(common, from, to, repository_url).await?;
         }
         Commands::ReleaseNotes { common, from, to } => {
-            log_debug!(
-                "Handling 'release-notes' command with common: {:?}, from: {}, to: {:?}",
-                common,
-                from,
-                to
-            );
-            changes::handle_release_notes_command(common, from, to, repository_url).await?;
+            handle_release_notes(common, from, to, repository_url).await?;
         }
-        Commands::Review { common, print } => {
-            log_debug!(
-                "Handling 'review' command with common: {:?}, print: {}",
-                common,
-                print
-            );
-            ui::print_version(crate_version!());
-            println!();
-            commit::review::handle_review_command(common, print, repository_url).await?;
+        Commands::Review {
+            common,
+            print,
+            include_unstaged,
+            commit,
+        } => {
+            handle_review(common, print, repository_url, include_unstaged, commit).await?;
         }
         Commands::Serve {
             dev,
@@ -348,14 +450,7 @@ pub async fn handle_command(
             port,
             listen_address,
         } => {
-            log_debug!(
-                "Handling 'serve' command with dev: {}, transport: {}, port: {:?}, listen_address: {:?}",
-                dev,
-                transport,
-                port,
-                listen_address
-            );
-            commands::handle_serve_command(dev, transport, port, listen_address).await?;
+            handle_serve(dev, transport, port, listen_address).await?;
         }
     }
 

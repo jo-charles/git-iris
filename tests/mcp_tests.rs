@@ -103,6 +103,18 @@ mod tests {
                     "Custom instructions not set correctly"
                 );
             }
+            GitIrisTools::ChangelogTool(_) => {
+                // Not testing this variant in this test
+                println!("ChangelogTool variant not being tested in this test");
+            }
+            GitIrisTools::CommitTool(_) => {
+                // Not testing this variant in this test
+                println!("CommitTool variant not being tested in this test");
+            }
+            GitIrisTools::CodeReviewTool(_) => {
+                // Not testing this variant in this test
+                println!("CodeReviewTool variant not being tested in this test");
+            }
         }
     }
 }

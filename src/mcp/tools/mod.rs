@@ -4,6 +4,7 @@
 //! that expose Git-Iris functionality to MCP clients.
 
 pub mod changelog;
+pub mod codereview;
 pub mod commit;
 pub mod releasenotes;
 
@@ -28,6 +29,7 @@ use std::sync::Mutex;
 
 // Re-export all tools for easy importing
 pub use self::changelog::ChangelogTool;
+pub use self::codereview::CodeReviewTool;
 pub use self::commit::CommitTool;
 pub use self::releasenotes::ReleaseNotesTool;
 
@@ -37,6 +39,7 @@ pub enum GitIrisTools {
     ReleaseNotesTool(ReleaseNotesTool),
     ChangelogTool(ChangelogTool),
     CommitTool(CommitTool),
+    CodeReviewTool(CodeReviewTool),
 }
 
 impl GitIrisTools {
@@ -46,6 +49,7 @@ impl GitIrisTools {
             ReleaseNotesTool::get_tool_definition(),
             ChangelogTool::get_tool_definition(),
             CommitTool::get_tool_definition(),
+            CodeReviewTool::get_tool_definition(),
         ]
     }
 
@@ -75,6 +79,12 @@ impl GitIrisTools {
                 let tool: CommitTool = serde_json::from_value(Value::Object(params))
                     .map_err(|e| Error::invalid_params(format!("Invalid parameters: {e}"), None))?;
                 Ok(GitIrisTools::CommitTool(tool))
+            }
+            "git_iris_code_review" => {
+                // Convert params to CodeReviewTool
+                let tool: CodeReviewTool = serde_json::from_value(Value::Object(params))
+                    .map_err(|e| Error::invalid_params(format!("Invalid parameters: {e}"), None))?;
+                Ok(GitIrisTools::CodeReviewTool(tool))
             }
             _ => Err(Error::invalid_params(
                 format!("Unknown tool: {tool_name}"),
@@ -175,35 +185,42 @@ impl ServerHandler for GitIrisHandler {
         // Try to convert to our GitIrisTools enum
         let tool_params = GitIrisTools::try_from(params)?;
 
+        // Make a clone of the repository path before executing the tool
+        // This prevents git2 objects from crossing async boundaries
+        let git_repo_path = self.git_repo.repo_path().clone();
+
+        // Clone config to avoid sharing it across async boundaries
+        let config = self.config.clone();
+
+        // Create a new git repo instance - handle any errors here before async code
+        let git_repo = match GitRepo::new(&git_repo_path) {
+            Ok(repo) => Arc::new(repo),
+            Err(e) => return Err(handle_tool_error(&e)),
+        };
+
         // Match the tool variant and execute the corresponding logic
         match tool_params {
             GitIrisTools::ReleaseNotesTool(tool) => {
-                // Get required dependencies for this tool
-                let git_repo = Arc::clone(&self.git_repo);
-                let config = self.config.clone();
-
                 // Execute the tool
-                tool.execute(git_repo, config)
+                tool.execute(Arc::clone(&git_repo), config.clone())
                     .await
                     .map_err(|e| handle_tool_error(&e))
             }
             GitIrisTools::ChangelogTool(tool) => {
-                // Get required dependencies for this tool
-                let git_repo = Arc::clone(&self.git_repo);
-                let config = self.config.clone();
-
                 // Execute the tool
-                tool.execute(git_repo, config)
+                tool.execute(Arc::clone(&git_repo), config.clone())
                     .await
                     .map_err(|e| handle_tool_error(&e))
             }
             GitIrisTools::CommitTool(tool) => {
-                // Get required dependencies for this tool
-                let git_repo = Arc::clone(&self.git_repo);
-                let config = self.config.clone();
-
                 // Execute the tool
-                tool.execute(git_repo, config)
+                tool.execute(Arc::clone(&git_repo), config.clone())
+                    .await
+                    .map_err(|e| handle_tool_error(&e))
+            }
+            GitIrisTools::CodeReviewTool(tool) => {
+                // Execute the tool
+                tool.execute(Arc::clone(&git_repo), config)
                     .await
                     .map_err(|e| handle_tool_error(&e))
             }

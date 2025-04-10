@@ -475,6 +475,8 @@ pub async fn handle_review_command(
     common: CommonParams,
     _print: bool,
     repository_url: Option<String>,
+    include_unstaged: bool,
+    commit_id: Option<String>,
 ) -> Result<()> {
     // Check if the preset is appropriate for code reviews
     if !common.is_valid_preset_for_type(PresetType::Review) {
@@ -520,16 +522,6 @@ pub async fn handle_review_command(
         return Err(e);
     }
 
-    let git_info = service.get_git_info().await?;
-
-    if git_info.staged_files.is_empty() {
-        ui::print_warning(
-            "No staged changes. Please stage your changes before generating a review.",
-        );
-        ui::print_info("You can stage changes using 'git add <file>' or 'git add .'");
-        return Ok(());
-    }
-
     let effective_instructions = common
         .instructions
         .unwrap_or_else(|| config.instructions.clone());
@@ -540,10 +532,63 @@ pub async fn handle_review_command(
     let random_message = messages::get_review_waiting_message();
     spinner.set_message(random_message.text.to_string());
 
-    // Generate the code review
-    let review = service
-        .generate_review(preset_str, &effective_instructions)
-        .await?;
+    // Generate the code review, with different approaches based on parameters
+    let review = if let Some(commit_id) = commit_id {
+        // Show the commit we're reviewing
+        spinner.set_message(format!(
+            "{} - Reviewing commit: {}",
+            random_message.text, commit_id
+        ));
+
+        // Get the review for the specified commit
+        service
+            .generate_review_for_commit(preset_str, &effective_instructions, &commit_id)
+            .await?
+    } else {
+        // Check if we should include unstaged changes
+        if include_unstaged {
+            spinner.set_message(format!(
+                "{} - Including unstaged changes",
+                random_message.text
+            ));
+
+            // Get the git info with unstaged changes to check if there are any changes
+            let git_info = service.get_git_info_with_unstaged(include_unstaged).await?;
+
+            if git_info.staged_files.is_empty() {
+                spinner.finish_and_clear();
+                ui::print_warning("No changes found (staged or unstaged). Nothing to review.");
+                return Ok(());
+            }
+
+            // Generate the review with unstaged changes
+            service
+                .generate_review_with_unstaged(
+                    preset_str,
+                    &effective_instructions,
+                    include_unstaged,
+                )
+                .await?
+        } else {
+            // Original behavior - only staged changes
+            let git_info = service.get_git_info().await?;
+
+            if git_info.staged_files.is_empty() {
+                spinner.finish_and_clear();
+                ui::print_warning(
+                    "No staged changes. Please stage your changes before generating a review.",
+                );
+                ui::print_info("You can stage changes using 'git add <file>' or 'git add .'");
+                ui::print_info("To include unstaged changes, use --include-unstaged");
+                return Ok(());
+            }
+
+            // Generate the review with only staged changes
+            service
+                .generate_review(preset_str, &effective_instructions)
+                .await?
+        }
+    };
 
     // Stop the spinner
     spinner.finish_and_clear();

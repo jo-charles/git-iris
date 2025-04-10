@@ -85,6 +85,53 @@ impl IrisCommitService {
         Ok(context)
     }
 
+    /// Get Git information including unstaged changes
+    pub async fn get_git_info_with_unstaged(
+        &self,
+        include_unstaged: bool,
+    ) -> Result<CommitContext> {
+        if !include_unstaged {
+            return self.get_git_info().await;
+        }
+
+        {
+            // Only use cached context if we're not including unstaged changes
+            // because unstaged changes might have changed since we last checked
+            let cached_context = self.cached_context.read().await;
+            if let Some(context) = &*cached_context {
+                if !include_unstaged {
+                    return Ok(context.clone());
+                }
+            }
+        }
+
+        let context = self
+            .repo
+            .get_git_info_with_unstaged(&self.config, include_unstaged)
+            .await?;
+
+        // Don't cache the context with unstaged changes since they can be constantly changing
+        if !include_unstaged {
+            let mut cached_context = self.cached_context.write().await;
+            *cached_context = Some(context.clone());
+        }
+
+        Ok(context)
+    }
+
+    /// Get Git information for a specific commit
+    pub async fn get_git_info_for_commit(&self, commit_id: &str) -> Result<CommitContext> {
+        log_debug!("Getting git info for commit: {}", commit_id);
+
+        let context = self
+            .repo
+            .get_git_info_for_commit(&self.config, commit_id)
+            .await?;
+
+        // We don't cache commit-specific contexts
+        Ok(context)
+    }
+
     /// Private helper method to handle common token optimization logic
     ///
     /// # Arguments
@@ -232,6 +279,132 @@ impl IrisCommitService {
         }
 
         Ok(generated_message)
+    }
+
+    /// Generate a review for unstaged changes
+    ///
+    /// # Arguments
+    ///
+    /// * `preset` - The instruction preset to use
+    /// * `instructions` - Custom instructions for the AI
+    /// * `include_unstaged` - Whether to include unstaged changes in the review
+    ///
+    /// # Returns
+    ///
+    /// A Result containing the generated code review or an error
+    pub async fn generate_review_with_unstaged(
+        &self,
+        preset: &str,
+        instructions: &str,
+        include_unstaged: bool,
+    ) -> anyhow::Result<GeneratedReview> {
+        let mut config_clone = self.config.clone();
+
+        // Set the preset and instructions
+        if preset.is_empty() {
+            config_clone.instruction_preset = "default".to_string();
+        } else {
+            let library = get_instruction_preset_library();
+            if let Some(preset_info) = library.get_preset(preset) {
+                if preset_info.preset_type == PresetType::Commit {
+                    log_debug!(
+                        "Warning: Preset '{}' is commit-specific, not ideal for reviews",
+                        preset
+                    );
+                }
+                config_clone.instruction_preset = preset.to_string();
+            } else {
+                log_debug!("Preset '{}' not found, using default", preset);
+                config_clone.instruction_preset = "default".to_string();
+            }
+        }
+
+        config_clone.instructions = instructions.to_string();
+
+        // Get context including unstaged changes if requested
+        let context = self.get_git_info_with_unstaged(include_unstaged).await?;
+
+        // Create system prompt
+        let system_prompt = super::prompt::create_review_system_prompt(&config_clone)?;
+
+        // Use the shared optimization logic
+        let (_, final_user_prompt) = self.optimize_prompt(
+            &config_clone,
+            &system_prompt,
+            context,
+            super::prompt::create_review_user_prompt,
+        );
+
+        llm::get_message::<GeneratedReview>(
+            &config_clone,
+            &self.provider_name,
+            &system_prompt,
+            &final_user_prompt,
+        )
+        .await
+    }
+
+    /// Generate a review for a specific commit
+    ///
+    /// # Arguments
+    ///
+    /// * `preset` - The instruction preset to use
+    /// * `instructions` - Custom instructions for the AI
+    /// * `commit_id` - The ID of the commit to review
+    ///
+    /// # Returns
+    ///
+    /// A Result containing the generated code review or an error
+    pub async fn generate_review_for_commit(
+        &self,
+        preset: &str,
+        instructions: &str,
+        commit_id: &str,
+    ) -> anyhow::Result<GeneratedReview> {
+        let mut config_clone = self.config.clone();
+
+        // Set the preset and instructions
+        if preset.is_empty() {
+            config_clone.instruction_preset = "default".to_string();
+        } else {
+            let library = get_instruction_preset_library();
+            if let Some(preset_info) = library.get_preset(preset) {
+                if preset_info.preset_type == PresetType::Commit {
+                    log_debug!(
+                        "Warning: Preset '{}' is commit-specific, not ideal for reviews",
+                        preset
+                    );
+                }
+                config_clone.instruction_preset = preset.to_string();
+            } else {
+                log_debug!("Preset '{}' not found, using default", preset);
+                config_clone.instruction_preset = "default".to_string();
+            }
+        }
+
+        config_clone.instructions = instructions.to_string();
+
+        // Get context for the specific commit
+        let context = self.get_git_info_for_commit(commit_id).await?;
+
+        // Create system prompt
+        let system_prompt = super::prompt::create_review_system_prompt(&config_clone)?;
+
+        // Use the shared optimization logic
+        let (_, final_user_prompt) = self.optimize_prompt(
+            &config_clone,
+            &system_prompt,
+            context,
+            super::prompt::create_review_user_prompt,
+        );
+
+        llm::get_message::<GeneratedReview>(
+            &config_clone,
+            &self.provider_name,
+            &system_prompt,
+            &final_user_prompt,
+        )
+        .await
     }
 
     /// Generate a code review using AI
