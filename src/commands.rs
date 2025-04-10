@@ -11,6 +11,8 @@ use anyhow::Context;
 use anyhow::{Result, anyhow};
 use colored::Colorize;
 use std::collections::HashMap;
+use crate::mcp::config::{MCPServerConfig, MCPTransportType};
+use crate::mcp::server;
 
 /// Handle the 'config' command
 #[allow(clippy::too_many_lines)]
@@ -269,4 +271,48 @@ pub fn handle_list_presets_command() -> Result<()> {
     println!("\nPreset types: [B] = Both commands, [C] = Commit only, [R] = Review only");
 
     Ok(())
+}
+
+/// Handle the 'serve' command to start an MCP server
+pub async fn handle_serve_command(
+    dev: bool,
+    transport: String,
+    port: Option<u16>,
+) -> anyhow::Result<()> {
+    log_debug!(
+        "Starting 'serve' command with dev: {}, transport: {}, port: {:?}",
+        dev,
+        transport,
+        port
+    );
+
+    // Create MCP server configuration
+    let mut config = MCPServerConfig::default();
+    
+    // Set development mode
+    if dev {
+        config = config.with_dev_mode();
+    }
+    
+    // Set transport type
+    let transport_type = match transport.to_lowercase().as_str() {
+        "stdio" => MCPTransportType::StdIO,
+        "sse" => MCPTransportType::SSE,
+        "websocket" => MCPTransportType::WebSocket,
+        _ => {
+            return Err(anyhow::anyhow!(
+                "Invalid transport type: {}. Valid options are: stdio, sse, websocket",
+                transport
+            ));
+        }
+    };
+    config = config.with_transport(transport_type);
+    
+    // Set port if provided
+    if let Some(p) = port {
+        config = config.with_port(p);
+    }
+    
+    // Start the server - all UI output is now handled inside serve implementation
+    server::serve(config).await
 }

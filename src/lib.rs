@@ -11,6 +11,7 @@ pub mod gitmoji;
 pub mod instruction_presets;
 pub mod llm;
 pub mod logger;
+pub mod mcp;
 pub mod messages;
 pub mod token_optimizer;
 pub mod tui;

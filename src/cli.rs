@@ -138,6 +138,25 @@ pub enum Commands {
         to: Option<String>,
     },
 
+    /// Start an MCP server to provide Git-Iris functionality to AI tools
+    #[command(
+        about = "Start an MCP server",
+        long_about = "Start a Model Context Protocol (MCP) server to provide Git-Iris functionality to AI tools and assistants."
+    )]
+    Serve {
+        /// Enable development mode with more verbose logging
+        #[arg(long, help = "Enable development mode with more verbose logging")]
+        dev: bool,
+
+        /// Transport type to use (stdio, sse, websocket)
+        #[arg(short, long, help = "Transport type to use (stdio, sse, websocket)", default_value = "stdio")]
+        transport: String,
+
+        /// Port to use for network transports
+        #[arg(short, long, help = "Port to use for network transports")]
+        port: Option<u16>,
+    },
+
     // Configuration and utility commands
     /// Configure the AI-assisted Git commit message generator
     #[command(about = "Configure Git-Iris settings and providers")]
@@ -309,6 +328,15 @@ pub async fn handle_command(
             ui::print_version(crate_version!());
             println!();
             commit::review::handle_review_command(common, print, repository_url).await?;
+        }
+        Commands::Serve { dev, transport, port } => {
+            log_debug!(
+                "Handling 'serve' command with dev: {}, transport: {}, port: {:?}",
+                dev,
+                transport,
+                port
+            );
+            commands::handle_serve_command(dev, transport, port).await?;
         }
     }
 
