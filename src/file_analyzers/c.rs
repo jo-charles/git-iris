@@ -6,13 +6,11 @@ use std::collections::HashSet;
 
 // Regex for extracting makefile version
 static MAKEFILE_VERSION_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"VERSION\s*=\s*([^\s]+)")
-        .expect("Should compile: MAKEFILE_VERSION_RE")
+    Regex::new(r"VERSION\s*=\s*([^\s]+)").expect("Should compile: MAKEFILE_VERSION_RE")
 });
 // Regex for extracting makefile dependencies
 static MAKEFILE_DEPENDENCY_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"LIBS\s*\+=\s*([^\s]+)")
-        .expect("Should compile: MAKEFILE_DEPENDENCY_RE")
+    Regex::new(r"LIBS\s*\+=\s*([^\s]+)").expect("Should compile: MAKEFILE_DEPENDENCY_RE")
 });
 // Regex for extracting modified C functions
 static C_FUNCTION_RE: Lazy<Regex> = Lazy::new(|| {
@@ -20,15 +18,11 @@ static C_FUNCTION_RE: Lazy<Regex> = Lazy::new(|| {
         .expect("Should compile: C_FUNCTION_RE")
 });
 // Regex for extracting modified C structs
-static C_STRUCT_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?m)^[+-]\s*struct\s+(\w+)")
-        .expect("Should compile: C_STRUCT_RE")
-});
+static C_STRUCT_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?m)^[+-]\s*struct\s+(\w+)").expect("Should compile: C_STRUCT_RE"));
 // Regex for checking C include changes
-static C_INCLUDE_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?m)^[+-]\s*#include")
-        .expect("Should compile: C_INCLUDE_RE")
-});
+static C_INCLUDE_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?m)^[+-]\s*#include").expect("Should compile: C_INCLUDE_RE"));
 
 pub struct CAnalyzer;
 

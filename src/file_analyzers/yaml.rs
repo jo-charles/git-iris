@@ -13,13 +13,11 @@ static YAML_TOP_LEVEL_KEY_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?m)^[+-]\s*(\w+):(?:\s|$)").expect("Should compile: YAML_TOP_LEVEL_KEY_RE")
 });
 // Regex for checking YAML list changes
-static YAML_LIST_CHANGE_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?m)^[+-]\s*-\s+").expect("Should compile: YAML_LIST_CHANGE_RE")
-});
+static YAML_LIST_CHANGE_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?m)^[+-]\s*-\s+").expect("Should compile: YAML_LIST_CHANGE_RE"));
 // Regex for checking nested YAML changes (indented keys)
-static YAML_NESTED_CHANGE_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?m)^[+-]\s+\w+:").expect("Should compile: YAML_NESTED_CHANGE_RE")
-});
+static YAML_NESTED_CHANGE_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?m)^[+-]\s+\w+:").expect("Should compile: YAML_NESTED_CHANGE_RE"));
 
 pub struct YamlAnalyzer;
 

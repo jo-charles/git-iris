@@ -10,9 +10,8 @@ use crate::mcp::config::{MCPServerConfig, MCPTransportType};
 use crate::mcp::tools::GitIrisToolbox;
 
 use anyhow::{Context, Result};
-use rmcp::tool;
+use rmcp::ServiceExt;
 use rmcp::transport::sse_server::SseServer;
-use rmcp::{ServerHandler, ServiceExt, model::ServerInfo};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::io::{stdin, stdout};
@@ -26,7 +25,7 @@ pub async fn serve(config: MCPServerConfig) -> Result<()> {
         if let Err(e) = crate::logger::set_log_file(&log_path) {
             // For non-stdio transports, we can print this error
             if config.transport != MCPTransportType::StdIO {
-                eprintln!("Failed to set up log file: {}", e);
+                eprintln!("Failed to set up log file: {e}");
             }
             // Continue without file logging
         }
@@ -51,10 +50,10 @@ pub async fn serve(config: MCPServerConfig) -> Result<()> {
             config.transport
         ));
         if let Some(port) = config.port {
-            ui::print_info(&format!("Port: {}", port));
+            ui::print_info(&format!("Port: {port}"));
         }
         if let Some(addr) = &config.listen_address {
-            ui::print_info(&format!("Listening on: {}", addr));
+            ui::print_info(&format!("Listening on: {addr}"));
         }
         ui::print_info(&format!(
             "Development mode: {}",
@@ -84,7 +83,7 @@ pub async fn serve(config: MCPServerConfig) -> Result<()> {
             serve_sse(toolbox, socket_addr).await
         }
         MCPTransportType::WebSocket => {
-            let port = config
+            let _port = config
                 .port
                 .context("Port is required for WebSocket transport")?;
             Err(anyhow::anyhow!("WebSocket transport not yet implemented"))
@@ -92,7 +91,7 @@ pub async fn serve(config: MCPServerConfig) -> Result<()> {
     }
 }
 
-/// Start the MCP server using StdIO transport
+/// Start the MCP server using `StdIO` transport
 async fn serve_stdio(toolbox: GitIrisToolbox, _dev_mode: bool) -> Result<()> {
     log_debug!("Starting MCP server with StdIO transport");
 
@@ -141,7 +140,7 @@ fn get_socket_addr(config: &MCPServerConfig) -> Result<SocketAddr> {
     let port = config.port.context("Port is required for SSE transport")?;
 
     // Parse the socket address
-    let socket_addr: SocketAddr = format!("{}:{}", listen_address, port)
+    let socket_addr: SocketAddr = format!("{listen_address}:{port}")
         .parse()
         .context("Failed to parse socket address")?;
 

@@ -23,9 +23,8 @@ static KOTLIN_FUNCTION_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?m)^[+-]\s*(fun)\s+(\w+)").expect("Should compile: KOTLIN_FUNCTION_RE")
 });
 // Regex for checking Kotlin import changes
-static KOTLIN_IMPORT_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?m)^[+-]\s*import\s+").expect("Should compile: KOTLIN_IMPORT_RE")
-});
+static KOTLIN_IMPORT_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?m)^[+-]\s*import\s+").expect("Should compile: KOTLIN_IMPORT_RE"));
 
 pub struct KotlinAnalyzer;
 

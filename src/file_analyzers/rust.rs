@@ -13,9 +13,8 @@ static CARGO_DEPS_SECTION_RE: Lazy<Regex> = Lazy::new(|| {
         .expect("Should compile: CARGO_DEPS_SECTION_RE")
 });
 // Regex for extracting modified Rust functions
-static RUST_FN_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"[+-]\s*(?:pub\s+)?fn\s+(\w+)").expect("Should compile: RUST_FN_RE")
-});
+static RUST_FN_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"[+-]\s*(?:pub\s+)?fn\s+(\w+)").expect("Should compile: RUST_FN_RE"));
 // Regex for extracting modified Rust structs
 static RUST_STRUCT_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"[+-]\s*(?:pub\s+)?struct\s+(\w+)").expect("Should compile: RUST_STRUCT_RE")
@@ -25,9 +24,8 @@ static RUST_TRAIT_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"[+-]\s*(?:pub\s+)?trait\s+(\w+)").expect("Should compile: RUST_TRAIT_RE")
 });
 // Regex for checking Rust import changes (use/extern crate)
-static RUST_IMPORT_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"[+-]\s*(use|extern crate)").expect("Should compile: RUST_IMPORT_RE")
-});
+static RUST_IMPORT_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"[+-]\s*(use|extern crate)").expect("Should compile: RUST_IMPORT_RE"));
 
 /// Analyzer for Rust source files
 pub struct RustAnalyzer;

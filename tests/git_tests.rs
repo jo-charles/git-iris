@@ -678,7 +678,9 @@ async fn test_remote_repository_support() {
         );
 
         // The error message should indicate it's a remote repository
-        let error_message = result.unwrap_err().to_string();
+        let error_message = result
+            .expect_err("Expected an error when committing to a remote repository")
+            .to_string();
         assert!(
             error_message.contains("Cannot commit to a remote repository"),
             "Error message should indicate it's a remote repository"

@@ -66,7 +66,9 @@ impl GitRepo {
     ///
     /// A Result containing the `GitRepo` instance or an error.
     pub fn new_from_url(repository_url: Option<String>) -> Result<Self> {
-        if let Some(url) = repository_url { Self::clone_remote_repository(&url) } else {
+        if let Some(url) = repository_url {
+            Self::clone_remote_repository(&url)
+        } else {
             let current_dir = env::current_dir()?;
             Self::new(&current_dir)
         }

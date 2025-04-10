@@ -16,13 +16,11 @@ static GRADLE_PLUGIN_CHANGE_RE: Lazy<Regex> = Lazy::new(|| {
 });
 // Regex for checking task changes in Gradle diff
 static GRADLE_TASK_CHANGE_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?m)^[+-]\s*task\s+")
-        .expect("Should compile: GRADLE_TASK_CHANGE_RE")
+    Regex::new(r"(?m)^[+-]\s*task\s+").expect("Should compile: GRADLE_TASK_CHANGE_RE")
 });
 // Regex for extracting Gradle project version
 static GRADLE_VERSION_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"version\s*=\s*['"](.*?)['"]"#)
-        .expect("Should compile: GRADLE_VERSION_RE")
+    Regex::new(r#"version\s*=\s*['"](.*?)['"]"#).expect("Should compile: GRADLE_VERSION_RE")
 });
 // Regex for extracting Gradle dependencies
 static GRADLE_DEPENDENCY_RE: Lazy<Regex> = Lazy::new(|| {
@@ -30,10 +28,8 @@ static GRADLE_DEPENDENCY_RE: Lazy<Regex> = Lazy::new(|| {
         .expect("Should compile: GRADLE_DEPENDENCY_RE")
 });
 // Regex for extracting Gradle plugins
-static GRADLE_PLUGIN_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"id\s+['"](.+?)['"]"#)
-        .expect("Should compile: GRADLE_PLUGIN_RE")
-});
+static GRADLE_PLUGIN_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"id\s+['"](.+?)['"]"#).expect("Should compile: GRADLE_PLUGIN_RE"));
 
 pub struct GradleAnalyzer;
 

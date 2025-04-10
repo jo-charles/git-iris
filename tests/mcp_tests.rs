@@ -2,27 +2,22 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::config::Config;
-    use crate::git::GitRepo;
-    use crate::log_debug;
-    use crate::mcp::tools::GitIrisToolbox;
-    use crate::mcp::tools::releasenotes::ReleaseNotesRequest;
-    use rmcp::model::CallToolRequestParam;
-    use rmcp::service::RequestContext;
-    use rmcp::{RoleServer, ServerHandler};
+    use git_iris::config::Config;
+    use git_iris::git::GitRepo;
+    use git_iris::mcp::tools::GitIrisToolbox;
+    use git_iris::mcp::tools::releasenotes::ReleaseNotesRequest;
     use serde_json::json;
-    use std::borrow::Cow;
     use std::sync::Arc;
 
     // Unit test is disabled for now due to API incompatibilities
     // Will be re-enabled once the MCP API stabilizes
     #[allow(dead_code)]
-    async fn test_release_notes_tool() {
+    fn test_release_notes_tool() {
         // Initialize dependencies
         let git_repo = match GitRepo::new_from_url(None) {
             Ok(repo) => Arc::new(repo),
             Err(e) => {
-                log_debug!("Error creating git repo for test: {}", e);
+                println!("Error creating git repo for test: {e}");
                 return;
             }
         };
@@ -30,14 +25,14 @@ mod tests {
         let config = Config::default();
 
         // Create the toolbox
-        let toolbox = GitIrisToolbox::new(git_repo, config);
+        let _toolbox = GitIrisToolbox::new(git_repo, config);
 
         // Create a request for release notes
         let request = ReleaseNotesRequest {
             from: "HEAD~5".to_string(), // Last 5 commits
-            to: Some("HEAD".to_string()),
-            detail_level: Some("minimal".to_string()),
-            custom_instructions: Some("Keep it brief".to_string()),
+            to: "HEAD".to_string(),
+            detail_level: "minimal".to_string(),
+            custom_instructions: "Keep it brief".to_string(),
         };
 
         // Convert to JSON and create an arguments object
@@ -48,8 +43,8 @@ mod tests {
             "custom_instructions": "Keep it brief"
         });
 
-        log_debug!("Test parameters: {:?}", args);
-        log_debug!("Test request: {:?}", request);
+        println!("Test parameters: {args:?}");
+        println!("Test request: {request:?}");
 
         // The rest of the test is commented out until we can properly
         // integrate with the latest RMCP API
@@ -75,7 +70,7 @@ mod tests {
         // Check the result
         match result {
             Ok(res) => {
-                log_debug!("Tool call result: {:?}", res);
+                println!("Tool call result: {:?}", res);
                 assert!(!res.content.is_empty(), "Expected non-empty content in response");
                 assert!(res.is_error.unwrap_or(false) == false, "Expected successful result");
             }
@@ -92,10 +87,10 @@ mod tests {
         // This test is temporarily disabled due to API compatibility issues
         // with RequestContext construction
         /*
-        use crate::git::GitRepo;
-        use crate::config::Config as GitIrisConfig;
-        use crate::mcp::tools::releasenotes::ReleaseNotesRequest;
-        use crate::mcp::tools::GitIrisToolbox;
+        use git_iris::git::GitRepo;
+        use git_iris::config::Config as GitIrisConfig;
+        use git_iris::mcp::tools::releasenotes::ReleaseNotesRequest;
+        use git_iris::mcp::tools::GitIrisToolbox;
         use rmcp::{ServerHandler, RoleServer};
         use rmcp::model::{CallToolRequestParam, JsonObject};
         use rmcp::service::RequestContext;
@@ -106,7 +101,7 @@ mod tests {
         let git_repo = match GitRepo::new_from_url(None) {
             Ok(repo) => Arc::new(repo),
             Err(e) => {
-                log_debug!("Error creating git repo for test: {}", e);
+                println!("Error creating git repo for test: {}", e);
                 return;
             }
         };
@@ -122,7 +117,7 @@ mod tests {
             "custom_instructions": "Keep it brief"
         });
 
-        log_debug!("Test parameters: {:?}", args_value);
+        println!("Test parameters: {:?}", args_value);
 
         // Convert to JsonObject for the CallToolRequestParam
         let args: JsonObject = serde_json::from_value(args_value)

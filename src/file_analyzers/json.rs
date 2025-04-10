@@ -6,9 +6,8 @@ use regex::Regex;
 use std::collections::HashSet;
 
 // Regex for extracting modified top-level JSON keys
-static JSON_TOP_LEVEL_KEY_RE: Lazy<Result<Regex, regex::Error>> = Lazy::new(|| {
-    Regex::new(r#"^[+-]\s*"(\w+)"\s*:"#)
-});
+static JSON_TOP_LEVEL_KEY_RE: Lazy<Result<Regex, regex::Error>> =
+    Lazy::new(|| Regex::new(r#"^[+-]\s*"(\w+)"\s*:"#));
 // Regex for checking JSON array changes
 static JSON_ARRAY_CHANGE_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r#"(?m)^[+-]\s*(?:"[^"]+"\s*:\s*)?\[|\s*[+-]\s*"[^"]+","#)

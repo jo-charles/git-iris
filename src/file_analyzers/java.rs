@@ -19,7 +19,8 @@ static GRADLE_VERSION_RE: Lazy<Regex> = Lazy::new(|| {
 });
 // Regex for extracting Gradle dependencies from build.gradle
 static GRADLE_DEPENDENCY_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"implementation\s+['"](.+?):(.+?):"#).expect("Should compile: GRADLE_DEPENDENCY_RE")
+    Regex::new(r#"implementation\s+['"](.+?):(.+?):"#)
+        .expect("Should compile: GRADLE_DEPENDENCY_RE")
 });
 // Regex for extracting modified Java classes
 static JAVA_CLASS_RE: Lazy<Regex> = Lazy::new(|| {
@@ -32,9 +33,8 @@ static JAVA_METHOD_RE: Lazy<Regex> = Lazy::new(|| {
         .expect("Should compile: JAVA_METHOD_RE")
 });
 // Regex for checking Java import changes
-static JAVA_IMPORT_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?m)^[+-]\s*import\s+").expect("Should compile: JAVA_IMPORT_RE")
-});
+static JAVA_IMPORT_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?m)^[+-]\s*import\s+").expect("Should compile: JAVA_IMPORT_RE"));
 
 pub struct JavaAnalyzer;
 

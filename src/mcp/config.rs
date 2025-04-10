@@ -39,26 +39,30 @@ impl Default for MCPServerConfig {
 
 impl MCPServerConfig {
     /// Create a new configuration with development mode enabled
+    #[must_use]
     pub fn with_dev_mode(mut self) -> Self {
         self.dev_mode = true;
         self
     }
 
     /// Create a new configuration with the specified transport
+    #[must_use]
     pub fn with_transport(mut self, transport: MCPTransportType) -> Self {
         self.transport = transport;
         self
     }
 
     /// Create a new configuration with the specified port
+    #[must_use]
     pub fn with_port(mut self, port: u16) -> Self {
         self.port = Some(port);
         self
     }
-    
+
     /// Create a new configuration with the specified listen address
+    #[must_use]
     pub fn with_listen_address(mut self, listen_address: impl Into<String>) -> Self {
         self.listen_address = Some(listen_address.into());
         self
     }
-} 
+}

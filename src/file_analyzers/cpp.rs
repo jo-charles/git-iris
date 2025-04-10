@@ -6,13 +6,11 @@ use std::collections::HashSet;
 
 // Regex for extracting CMake project version
 static CMAKE_VERSION_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"project\([^)]+\s+VERSION\s+([^\s)]+)")
-        .expect("Should compile: CMAKE_VERSION_RE")
+    Regex::new(r"project\([^)]+\s+VERSION\s+([^\s)]+)").expect("Should compile: CMAKE_VERSION_RE")
 });
 // Regex for extracting CMake dependencies (find_package)
 static CMAKE_DEPENDENCY_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"find_package\(([^)]+)\)")
-        .expect("Should compile: CMAKE_DEPENDENCY_RE")
+    Regex::new(r"find_package\(([^)]+)\)").expect("Should compile: CMAKE_DEPENDENCY_RE")
 });
 // Regex for extracting modified C++ functions
 static CPP_FUNCTION_RE: Lazy<Regex> = Lazy::new(|| {
@@ -20,15 +18,11 @@ static CPP_FUNCTION_RE: Lazy<Regex> = Lazy::new(|| {
         .expect("Should compile: CPP_FUNCTION_RE")
 });
 // Regex for extracting modified C++ classes
-static CPP_CLASS_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?m)^[+-]\s*class\s+(\w+)")
-        .expect("Should compile: CPP_CLASS_RE")
-});
+static CPP_CLASS_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?m)^[+-]\s*class\s+(\w+)").expect("Should compile: CPP_CLASS_RE"));
 // Regex for checking C++ include changes
-static CPP_INCLUDE_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?m)^[+-]\s*#include")
-        .expect("Should compile: CPP_INCLUDE_RE")
-});
+static CPP_INCLUDE_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?m)^[+-]\s*#include").expect("Should compile: CPP_INCLUDE_RE"));
 
 pub struct CppAnalyzer;
 
