@@ -4,132 +4,105 @@
 mod tests {
     use git_iris::config::Config;
     use git_iris::git::GitRepo;
-    use git_iris::mcp::tools::GitIrisToolbox;
-    use git_iris::mcp::tools::releasenotes::ReleaseNotesRequest;
-    use serde_json::json;
+    use git_iris::mcp::tools::GitIrisTools;
+    use git_iris::mcp::tools::ReleaseNotesTool;
+    use rmcp::model::{Content, RawContent};
+    use serde_json::{Map, Value, json};
     use std::sync::Arc;
 
-    // Unit test is disabled for now due to API incompatibilities
-    // Will be re-enabled once the MCP API stabilizes
-    #[allow(dead_code)]
-    fn test_release_notes_tool() {
+    // Helper function to create a Map<String, Value> from a JSON object
+    fn create_params_map(json_value: Value) -> Map<String, Value> {
+        json_value
+            .as_object()
+            .expect("JSON value must be an object")
+            .clone()
+    }
+
+    // Helper function to extract text from Content
+    fn get_text_from_content(content: &Content) -> String {
+        match &content.raw {
+            RawContent::Text(text_content) => text_content.text.clone(),
+            _ => panic!("Expected text content"),
+        }
+    }
+
+    #[tokio::test]
+    #[ignore = "Run manually when testing MCP functionality"]
+    async fn test_release_notes_tool_direct() {
         // Initialize dependencies
         let git_repo = match GitRepo::new_from_url(None) {
             Ok(repo) => Arc::new(repo),
             Err(e) => {
-                println!("Error creating git repo for test: {e}");
+                eprintln!("Error creating git repo for test: {e}");
                 return;
             }
         };
 
         let config = Config::default();
 
-        // Create the toolbox
-        let _toolbox = GitIrisToolbox::new(git_repo, config);
-
-        // Create a request for release notes
-        let request = ReleaseNotesRequest {
+        // Create the release notes tool instance
+        let tool = ReleaseNotesTool {
             from: "HEAD~5".to_string(), // Last 5 commits
             to: "HEAD".to_string(),
             detail_level: "minimal".to_string(),
             custom_instructions: "Keep it brief".to_string(),
         };
 
-        // Convert to JSON and create an arguments object
-        let args = json!({
-            "from": "HEAD~5",
-            "to": "HEAD",
-            "detail_level": "minimal",
-            "custom_instructions": "Keep it brief"
-        });
+        // Execute the tool directly
+        match tool.execute(git_repo, config).await {
+            Ok(result) => {
+                let content = &result.content[0];
+                let text = get_text_from_content(content);
 
-        println!("Test parameters: {args:?}");
-        println!("Test request: {request:?}");
+                println!(
+                    "Release notes content (first 200 chars): {}",
+                    text.chars().take(200).collect::<String>()
+                );
 
-        // The rest of the test is commented out until we can properly
-        // integrate with the latest RMCP API
-        /*
-        let args_map = serde_json::from_value(args)
-            .expect("Failed to convert to JsonObject");
-
-        // Create tool params
-        let params = CallToolRequestParam {
-            name: Cow::Borrowed("git_iris_release_notes"),
-            arguments: Some(args_map),
-        };
-
-        // Create a dummy context - no need for a real context in tests
-        let context = RequestContext::<RoleServer> {
-            id: None,
-            peer: rmcp::Peer::default(),
-        };
-
-        // Call the tool
-        let result = toolbox.call_tool(params, context).await;
-
-        // Check the result
-        match result {
-            Ok(res) => {
-                println!("Tool call result: {:?}", res);
-                assert!(!res.content.is_empty(), "Expected non-empty content in response");
-                assert!(res.is_error.unwrap_or(false) == false, "Expected successful result");
+                assert!(!text.is_empty(), "Release notes should not be empty");
             }
             Err(e) => {
-                panic!("Tool call failed: {}", e);
+                panic!("Tool execution failed: {e}");
             }
         }
-        */
     }
 
     #[tokio::test]
-    #[ignore = "API incompatibilities"]
-    async fn test_generate_release_notes() {
-        // This test is temporarily disabled due to API compatibility issues
-        // with RequestContext construction
-        /*
-        use git_iris::git::GitRepo;
-        use git_iris::config::Config as GitIrisConfig;
-        use git_iris::mcp::tools::releasenotes::ReleaseNotesRequest;
-        use git_iris::mcp::tools::GitIrisToolbox;
-        use rmcp::{ServerHandler, RoleServer};
-        use rmcp::model::{CallToolRequestParam, JsonObject};
-        use rmcp::service::RequestContext;
-        use std::borrow::Cow;
-        use serde_json::json;
-
-        // Initialize dependencies
-        let git_repo = match GitRepo::new_from_url(None) {
-            Ok(repo) => Arc::new(repo),
-            Err(e) => {
-                println!("Error creating git repo for test: {}", e);
-                return;
-            }
-        };
-
-        let config = GitIrisConfig::load().unwrap_or_default();
-        let toolbox = GitIrisToolbox::new(git_repo, config);
-
-        // Create request parameters
-        let args_value = json!({
+    #[ignore = "Run manually when testing MCP functionality"]
+    async fn test_tools_conversion() {
+        // Create parameters for the release notes tool
+        let args = create_params_map(json!({
             "from": "HEAD~5",
             "to": "HEAD",
             "detail_level": "minimal",
             "custom_instructions": "Keep it brief"
-        });
+        }));
 
-        println!("Test parameters: {:?}", args_value);
+        // Add tool name to parameters for GitIrisTools::try_from
+        let mut params = args.clone();
+        params.insert(
+            "name".to_string(),
+            Value::String("git_iris_release_notes".to_string()),
+        );
 
-        // Convert to JsonObject for the CallToolRequestParam
-        let args: JsonObject = serde_json::from_value(args_value)
-            .expect("Failed to convert to JsonObject");
+        // Convert to our GitIrisTools enum
+        let tool_params =
+            GitIrisTools::try_from(params).expect("Failed to convert parameters to GitIrisTools");
 
-        // Create the call tool request
-        let request = CallToolRequestParam {
-            name: Cow::<'static, str>::Borrowed("git_iris_release_notes"),
-            arguments: Some(args),
-        };
-
-        // TODO: Fix context creation and re-enable this test
-        */
+        // Verify the tool was created correctly
+        match tool_params {
+            GitIrisTools::ReleaseNotesTool(tool) => {
+                assert_eq!(tool.from, "HEAD~5", "From field not set correctly");
+                assert_eq!(tool.to, "HEAD", "To field not set correctly");
+                assert_eq!(
+                    tool.detail_level, "minimal",
+                    "Detail level not set correctly"
+                );
+                assert_eq!(
+                    tool.custom_instructions, "Keep it brief",
+                    "Custom instructions not set correctly"
+                );
+            }
+        }
     }
 }

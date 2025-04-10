@@ -7,7 +7,7 @@ use crate::config::Config as GitIrisConfig;
 use crate::git::GitRepo;
 use crate::log_debug;
 use crate::mcp::config::{MCPServerConfig, MCPTransportType};
-use crate::mcp::tools::GitIrisToolbox;
+use crate::mcp::tools::GitIrisHandler;
 
 use anyhow::{Context, Result};
 use rmcp::ServiceExt;
@@ -71,16 +71,16 @@ pub async fn serve(config: MCPServerConfig) -> Result<()> {
     // Load Git-Iris configuration
     let git_iris_config = GitIrisConfig::load()?;
 
-    // Create the toolbox with necessary dependencies
-    let toolbox = GitIrisToolbox::new(git_repo, git_iris_config);
+    // Create the handler with necessary dependencies
+    let handler = GitIrisHandler::new(git_repo, git_iris_config);
 
     // Start the appropriate transport
     match config.transport {
-        MCPTransportType::StdIO => serve_stdio(toolbox, config.dev_mode).await,
+        MCPTransportType::StdIO => serve_stdio(handler, config.dev_mode).await,
         MCPTransportType::SSE => {
             // Get socket address for the server
             let socket_addr = get_socket_addr(&config)?;
-            serve_sse(toolbox, socket_addr).await
+            serve_sse(handler, socket_addr).await
         }
         MCPTransportType::WebSocket => {
             let _port = config
@@ -92,12 +92,12 @@ pub async fn serve(config: MCPServerConfig) -> Result<()> {
 }
 
 /// Start the MCP server using `StdIO` transport
-async fn serve_stdio(toolbox: GitIrisToolbox, _dev_mode: bool) -> Result<()> {
+async fn serve_stdio(handler: GitIrisHandler, _dev_mode: bool) -> Result<()> {
     log_debug!("Starting MCP server with StdIO transport");
 
     let transport = (stdin(), stdout());
 
-    let server = toolbox.serve(transport).await?;
+    let server = handler.serve(transport).await?;
 
     // Wait for the server to finish
     log_debug!("MCP server initialized, waiting for completion");
@@ -108,16 +108,16 @@ async fn serve_stdio(toolbox: GitIrisToolbox, _dev_mode: bool) -> Result<()> {
 }
 
 /// Start the MCP server using SSE transport
-async fn serve_sse(toolbox: GitIrisToolbox, socket_addr: SocketAddr) -> Result<()> {
+async fn serve_sse(handler: GitIrisHandler, socket_addr: SocketAddr) -> Result<()> {
     log_debug!("Starting MCP server with SSE transport on {}", socket_addr);
 
     // Create and start the SSE server
     let server = SseServer::serve(socket_addr).await?;
 
-    // Set up the service with our toolbox
+    // Set up the service with our handler
     let control = server.with_service(move || {
-        // Return a clone of the toolbox directly as it implements ServerHandler
-        toolbox.clone()
+        // Return a clone of the handler directly as it implements ServerHandler
+        handler.clone()
     });
 
     // Wait for Ctrl+C signal

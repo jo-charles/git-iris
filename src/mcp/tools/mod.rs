@@ -5,8 +5,6 @@
 
 pub mod releasenotes;
 
-use crate::changes::ReleaseNotesGenerator;
-use crate::common::DetailLevel;
 use crate::config::Config as GitIrisConfig;
 use crate::git::GitRepo;
 use crate::log_debug;
@@ -14,22 +12,64 @@ use crate::log_debug;
 use rmcp::Error;
 use rmcp::RoleServer;
 use rmcp::model::{
-    Annotated, CallToolRequestParam, CallToolResult, Content, ListToolsResult,
-    PaginatedRequestParam, RawContent, RawTextContent, ServerCapabilities, Tool,
+    CallToolRequestParam, CallToolResult, ListToolsResult, PaginatedRequestParam,
+    ServerCapabilities, Tool,
 };
 use rmcp::service::RequestContext;
 use rmcp::{ServerHandler, model::ServerInfo};
 
-use serde_json::Value;
-use std::borrow::Cow;
+use serde_json::{Map, Value};
 use std::future::Future;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-/// The main toolbox for Git-Iris, providing all MCP tools
+// Re-export all tools for easy importing
+pub use self::releasenotes::ReleaseNotesTool;
+
+// Define our tools for the Git-Iris toolbox
+#[derive(Debug)]
+pub enum GitIrisTools {
+    ReleaseNotesTool(ReleaseNotesTool),
+}
+
+impl GitIrisTools {
+    /// Get all tools available in Git-Iris
+    pub fn get_tools() -> Vec<Tool> {
+        vec![ReleaseNotesTool::get_tool_definition()]
+    }
+
+    /// Try to convert a parameter map into a `GitIrisTools` enum
+    pub fn try_from(params: Map<String, Value>) -> Result<Self, Error> {
+        // Check the tool name and convert to the appropriate variant
+        let tool_name = params
+            .get("name")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| Error::invalid_params("Tool name not specified", None))?;
+
+        match tool_name {
+            "git_iris_release_notes" => {
+                // Convert params to ReleaseNotesTool
+                let tool: ReleaseNotesTool = serde_json::from_value(Value::Object(params))
+                    .map_err(|e| Error::invalid_params(format!("Invalid parameters: {e}"), None))?;
+                Ok(GitIrisTools::ReleaseNotesTool(tool))
+            }
+            _ => Err(Error::invalid_params(
+                format!("Unknown tool: {tool_name}"),
+                None,
+            )),
+        }
+    }
+}
+
+/// Common error handling for Git-Iris tools
+pub fn handle_tool_error(e: &anyhow::Error) -> Error {
+    Error::invalid_params(format!("Tool execution failed: {e}"), None)
+}
+
+/// The main handler for Git-Iris, providing all MCP tools
 #[derive(Clone)]
-pub struct GitIrisToolbox {
+pub struct GitIrisHandler {
     /// Git repository instance
     pub git_repo: Arc<GitRepo>,
     /// Git-Iris configuration
@@ -38,8 +78,8 @@ pub struct GitIrisToolbox {
     pub workspace_roots: Arc<Mutex<Vec<PathBuf>>>,
 }
 
-impl GitIrisToolbox {
-    /// Create a new Git-Iris toolbox with the provided dependencies
+impl GitIrisHandler {
+    /// Create a new Git-Iris handler with the provided dependencies
     pub fn new(git_repo: Arc<GitRepo>, config: GitIrisConfig) -> Self {
         Self {
             git_repo,
@@ -57,63 +97,14 @@ impl GitIrisToolbox {
         // Use the first workspace root if available
         roots.first().cloned()
     }
-
-    /// Generate release notes between two Git references
-    async fn git_iris_release_notes(
-        &self,
-        request: releasenotes::ReleaseNotesRequest,
-    ) -> anyhow::Result<String> {
-        log_debug!("Generating release notes with request: {:?}", request);
-
-        // Parse detail level with robust empty string handling
-        let detail_level = if request.detail_level.trim().is_empty() {
-            log_debug!("Empty detail level, using Standard");
-            DetailLevel::Standard
-        } else {
-            match request.detail_level.trim().to_lowercase().as_str() {
-                "minimal" => DetailLevel::Minimal,
-                "detailed" => DetailLevel::Detailed,
-                "standard" => DetailLevel::Standard,
-                other => {
-                    log_debug!("Unknown detail level '{}', defaulting to Standard", other);
-                    DetailLevel::Standard
-                }
-            }
-        };
-
-        // Set up config with custom instructions if provided and not empty
-        let mut config = self.config.clone();
-        if !request.custom_instructions.trim().is_empty() {
-            config.set_temp_instructions(Some(request.custom_instructions));
-        }
-
-        // Default to HEAD if to is empty
-        let to = if request.to.trim().is_empty() {
-            "HEAD".to_string()
-        } else {
-            request.to
-        };
-
-        // Generate the release notes using the publicly re-exported generator
-        ReleaseNotesGenerator::generate(
-            self.git_repo.clone(),
-            &request.from,
-            &to,
-            &config,
-            detail_level,
-        )
-        .await
-    }
 }
 
-impl ServerHandler for GitIrisToolbox {
+impl ServerHandler for GitIrisHandler {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
             instructions: Some("Git-Iris is an AI-powered Git workflow assistant. You can use it to generate commit messages, review code, create changelogs and release notes.".to_string()),
             capabilities: ServerCapabilities::builder()
                 .enable_tools()
-                // Note: We can't enable roots directly in the server capabilities
-                // as that's a client-side feature. The client provides workspace info to us.
                 .build(),
             ..Default::default()
         }
@@ -122,8 +113,6 @@ impl ServerHandler for GitIrisToolbox {
     // Handle notification when client workspace roots change
     fn on_roots_list_changed(&self) -> impl Future<Output = ()> + Send + '_ {
         log_debug!("Client workspace roots changed");
-        // We could retrieve information about the workspace from the client
-        // and update our git repository path here if needed
         std::future::ready(())
     }
 
@@ -132,21 +121,12 @@ impl ServerHandler for GitIrisToolbox {
         _: Option<PaginatedRequestParam>,
         _: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, Error> {
-        // Create tool for release notes
-        let tool = Tool {
-            name: Cow::<'static, str>::Borrowed("git_iris_release_notes"),
-            description: Some(Cow::<'static, str>::Borrowed(
-                "Generate comprehensive release notes between two Git references",
-            )),
-            input_schema: rmcp::handler::server::tool::cached_schema_for_type::<
-                releasenotes::ReleaseNotesRequest,
-            >(),
-            annotations: None,
-        };
+        // Use our custom method to get all tools
+        let tools = GitIrisTools::get_tools();
 
         Ok(ListToolsResult {
             next_cursor: None,
-            tools: vec![tool],
+            tools,
         })
     }
 
@@ -155,57 +135,36 @@ impl ServerHandler for GitIrisToolbox {
         request: CallToolRequestParam,
         _: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, Error> {
-        // Compare the name field directly
-        if request.name == "git_iris_release_notes" {
-            let params: releasenotes::ReleaseNotesRequest = match &request.arguments {
-                Some(args) => serde_json::from_value(Value::Object(args.clone()))
-                    .map_err(|e| Error::invalid_params(format!("Invalid parameters: {e}"), None))?,
-                None => {
-                    return Err(Error::invalid_params(
-                        String::from("Missing arguments"),
-                        None,
-                    ));
-                }
-            };
-
-            match self.git_iris_release_notes(params).await {
-                Ok(content) => {
-                    // Create content
-                    let raw_text = RawTextContent { text: content };
-                    let raw_content = RawContent::Text(raw_text);
-                    let annotated_content = Annotated {
-                        raw: raw_content,
-                        annotations: None,
-                    };
-                    let content_item = Content::from(annotated_content);
-
-                    Ok(CallToolResult {
-                        content: vec![content_item],
-                        is_error: None,
-                    })
-                }
-                Err(e) => {
-                    // Create error content
-                    let error_msg = format!("Error generating release notes: {e}");
-                    let error_text = RawTextContent { text: error_msg };
-                    let error_raw = RawContent::Text(error_text);
-                    let annotated_error = Annotated {
-                        raw: error_raw,
-                        annotations: None,
-                    };
-                    let error_content = Content::from(annotated_error);
-
-                    Ok(CallToolResult {
-                        content: vec![error_content],
-                        is_error: Some(true),
-                    })
-                }
+        // Get the arguments as a Map
+        let args = match &request.arguments {
+            Some(args) => args.clone(),
+            None => {
+                return Err(Error::invalid_params(
+                    String::from("Missing arguments"),
+                    None,
+                ));
             }
-        } else {
-            Err(Error::invalid_params(
-                format!("Unknown tool: {}", request.name),
-                None,
-            ))
+        };
+
+        // Add the tool name to the parameters
+        let mut params = args.clone();
+        params.insert("name".to_string(), Value::String(request.name.to_string()));
+
+        // Try to convert to our GitIrisTools enum
+        let tool_params = GitIrisTools::try_from(params)?;
+
+        // Match the tool variant and execute the corresponding logic
+        match tool_params {
+            GitIrisTools::ReleaseNotesTool(tool) => {
+                // Get required dependencies for this tool
+                let git_repo = Arc::clone(&self.git_repo);
+                let config = self.config.clone();
+
+                // Execute the tool
+                tool.execute(git_repo, config)
+                    .await
+                    .map_err(|e| handle_tool_error(&e))
+            } // Add additional tools here as they're implemented
         }
     }
 }
