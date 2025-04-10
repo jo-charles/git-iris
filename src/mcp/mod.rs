@@ -10,3 +10,4 @@ pub mod tools;
 
 // Re-export main components
 pub use server::serve;
+pub use tools::{ChangelogTool, ReleaseNotesTool};
