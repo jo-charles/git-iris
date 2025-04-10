@@ -4,6 +4,7 @@
 //! that expose Git-Iris functionality to MCP clients.
 
 pub mod changelog;
+pub mod commit;
 pub mod releasenotes;
 
 use crate::config::Config as GitIrisConfig;
@@ -27,6 +28,7 @@ use std::sync::Mutex;
 
 // Re-export all tools for easy importing
 pub use self::changelog::ChangelogTool;
+pub use self::commit::CommitTool;
 pub use self::releasenotes::ReleaseNotesTool;
 
 // Define our tools for the Git-Iris toolbox
@@ -34,6 +36,7 @@ pub use self::releasenotes::ReleaseNotesTool;
 pub enum GitIrisTools {
     ReleaseNotesTool(ReleaseNotesTool),
     ChangelogTool(ChangelogTool),
+    CommitTool(CommitTool),
 }
 
 impl GitIrisTools {
@@ -42,6 +45,7 @@ impl GitIrisTools {
         vec![
             ReleaseNotesTool::get_tool_definition(),
             ChangelogTool::get_tool_definition(),
+            CommitTool::get_tool_definition(),
         ]
     }
 
@@ -65,6 +69,12 @@ impl GitIrisTools {
                 let tool: ChangelogTool = serde_json::from_value(Value::Object(params))
                     .map_err(|e| Error::invalid_params(format!("Invalid parameters: {e}"), None))?;
                 Ok(GitIrisTools::ChangelogTool(tool))
+            }
+            "git_iris_commit" => {
+                // Convert params to CommitTool
+                let tool: CommitTool = serde_json::from_value(Value::Object(params))
+                    .map_err(|e| Error::invalid_params(format!("Invalid parameters: {e}"), None))?;
+                Ok(GitIrisTools::CommitTool(tool))
             }
             _ => Err(Error::invalid_params(
                 format!("Unknown tool: {tool_name}"),
@@ -178,6 +188,16 @@ impl ServerHandler for GitIrisHandler {
                     .map_err(|e| handle_tool_error(&e))
             }
             GitIrisTools::ChangelogTool(tool) => {
+                // Get required dependencies for this tool
+                let git_repo = Arc::clone(&self.git_repo);
+                let config = self.config.clone();
+
+                // Execute the tool
+                tool.execute(git_repo, config)
+                    .await
+                    .map_err(|e| handle_tool_error(&e))
+            }
+            GitIrisTools::CommitTool(tool) => {
                 // Get required dependencies for this tool
                 let git_repo = Arc::clone(&self.git_repo);
                 let config = self.config.clone();
