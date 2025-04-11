@@ -140,7 +140,8 @@ impl ChangelogGenerator {
 
             if version_line.contains("## [") && version_line.contains(']') {
                 // Insert the date right after the closing bracket
-                let bracket_pos = version_line.rfind(']')
+                let bracket_pos = version_line
+                    .rfind(']')
                     .expect("Failed to find closing bracket in version line");
                 version_content = format!(
                     "{} - {}{}",
@@ -173,9 +174,7 @@ impl ChangelogGenerator {
                     // Combine header with new version content and existing versions
                     if parts.len() > 1 {
                         let existing_versions = parts[1..].join("## [");
-                        format!(
-                            "{header}{version_content_with_separator}## [{existing_versions}"
-                        )
+                        format!("{header}{version_content_with_separator}## [{existing_versions}")
                     } else {
                         format!("{header}{version_content_with_separator}")
                     }

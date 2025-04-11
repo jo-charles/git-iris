@@ -216,6 +216,35 @@ pub enum Commands {
         param: Option<Vec<String>>,
     },
 
+    /// Create or update a project-specific configuration file
+    #[command(
+        about = "Manage project-specific configuration",
+        long_about = "Create or update a project-specific .irisconfig file in the repository root."
+    )]
+    ProjectConfig {
+        #[command(flatten)]
+        common: CommonParams,
+
+        /// Set model for the specified provider
+        #[arg(long, help = "Set model for the specified provider")]
+        model: Option<String>,
+
+        /// Set token limit for the specified provider
+        #[arg(long, help = "Set token limit for the specified provider")]
+        token_limit: Option<usize>,
+
+        /// Set additional parameters for the specified provider
+        #[arg(
+            long,
+            help = "Set additional parameters for the specified provider (key=value)"
+        )]
+        param: Option<Vec<String>>,
+
+        /// Print the current project configuration
+        #[arg(short, long, help = "Print the current project configuration")]
+        print: bool,
+    },
+
     /// List available instruction presets
     #[command(about = "List available instruction presets")]
     ListPresets,
@@ -317,7 +346,7 @@ async fn handle_gen(
 
 /// Handle the `Config` command
 fn handle_config(
-    common: CommonParams,
+    common: &CommonParams,
     api_key: Option<String>,
     model: Option<String>,
     token_limit: Option<usize>,
@@ -436,7 +465,7 @@ pub async fn handle_command(
             token_limit,
             param,
         } => {
-            handle_config(common, api_key, model, token_limit, param)?;
+            handle_config(&common, api_key, model, token_limit, param)?;
         }
         Commands::ListPresets => {
             log_debug!("Handling 'list_presets' command");
@@ -469,6 +498,15 @@ pub async fn handle_command(
             listen_address,
         } => {
             handle_serve(dev, transport, port, listen_address).await?;
+        }
+        Commands::ProjectConfig {
+            common,
+            model,
+            token_limit,
+            param,
+            print,
+        } => {
+            commands::handle_project_config_command(&common, model, token_limit, param, print)?;
         }
     }
 

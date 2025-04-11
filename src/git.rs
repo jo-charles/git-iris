@@ -728,24 +728,50 @@ impl GitRepo {
     ///
     /// A Result containing a boolean indicating if inside a work tree or an error.
     pub fn is_inside_work_tree() -> Result<bool> {
-        log_debug!("Checking if inside Git work tree");
-        match Repository::discover(env::current_dir()?) {
-            Ok(repo) => {
-                if repo.is_bare() {
-                    log_debug!("Not inside Git work tree (bare repository)");
-                    Ok(false)
-                } else {
-                    log_debug!("Inside Git work tree");
-                    Ok(true)
-                }
-            }
-            Err(e) => {
-                log_debug!("Error discovering Git repository: {}", e);
-                Err(anyhow!("Not in a Git repository: {}", e))
-            }
+        let status = Command::new("git")
+            .args(["rev-parse", "--is-inside-work-tree"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+
+        match status {
+            Ok(exit) => Ok(exit.success()),
+            Err(_) => Ok(false),
         }
     }
 
+    /// Get the root directory of the current git repository
+    pub fn get_repo_root() -> Result<PathBuf> {
+        // Check if we're in a git repository
+        if !Self::is_inside_work_tree()? {
+            return Err(anyhow!(
+                "Not in a Git repository. Please run this command from within a Git repository."
+            ));
+        }
+
+        // Use git rev-parse to find the repository root
+        let output = Command::new("git")
+            .args(["rev-parse", "--show-toplevel"])
+            .output()
+            .context("Failed to execute git command")?;
+
+        if !output.status.success() {
+            return Err(anyhow!(
+                "Failed to get repository root: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+
+        // Convert the output to a path
+        let root = String::from_utf8(output.stdout)
+            .context("Invalid UTF-8 output from git command")?
+            .trim()
+            .to_string();
+
+        Ok(PathBuf::from(root))
+    }
+
+    /// Determines if the given diff represents a binary file.
     fn is_binary_diff(diff: &str) -> bool {
         diff.contains("Binary files")
             || diff.contains("GIT binary patch")

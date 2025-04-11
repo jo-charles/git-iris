@@ -31,6 +31,9 @@ pub struct Config {
     pub temp_instructions: Option<String>,
     #[serde(skip)]
     pub temp_preset: Option<String>,
+    /// Flag indicating if this config is from a project file
+    #[serde(skip)]
+    pub is_project_config: bool,
 }
 
 /// Provider-specific configuration structure
@@ -57,16 +60,111 @@ fn default_instruction_preset() -> String {
     "default".to_string()
 }
 
+/// Project configuration filename
+pub const PROJECT_CONFIG_FILENAME: &str = ".irisconfig";
+
 impl Config {
     /// Load the configuration from the file
     pub fn load() -> Result<Self> {
+        // First load personal config
         let config_path = Self::get_config_path()?;
-        if !config_path.exists() {
-            return Ok(Self::default());
-        }
-        let config_content = fs::read_to_string(config_path)?;
-        let mut config: Self = toml::from_str(&config_content)?;
+        let mut config = if config_path.exists() {
+            let config_content = fs::read_to_string(&config_path)?;
+            let config: Self = toml::from_str(&config_content)?;
+            Self::migrate_if_needed(config)
+        } else {
+            Self::default()
+        };
 
+        // Then try to load and merge project config if available
+        if let Ok(project_config) = Self::load_project_config() {
+            config.merge_with_project_config(project_config);
+        }
+
+        log_debug!("Configuration loaded: {:?}", config);
+        Ok(config)
+    }
+
+    /// Load project-specific configuration
+    pub fn load_project_config() -> Result<Self, anyhow::Error> {
+        let config_path = Self::get_project_config_path()?;
+        if !config_path.exists() {
+            return Err(anyhow::anyhow!("Project configuration file not found"));
+        }
+
+        // Read the config file with improved error handling
+        let config_str = match fs::read_to_string(&config_path) {
+            Ok(content) => content,
+            Err(e) => return Err(anyhow::anyhow!("Failed to read project config file: {}", e)),
+        };
+
+        // Parse the TOML with improved error handling
+        let mut config: Self = match toml::from_str(&config_str) {
+            Ok(config) => config,
+            Err(e) => {
+                return Err(anyhow::anyhow!(
+                    "Invalid project configuration file format: {}. Please check your {} file for syntax errors.",
+                    e,
+                    PROJECT_CONFIG_FILENAME
+                ));
+            }
+        };
+
+        config.is_project_config = true;
+        Ok(config)
+    }
+
+    /// Get the path to the project configuration file
+    pub fn get_project_config_path() -> Result<PathBuf, anyhow::Error> {
+        // Use the static method to get repo root
+        let repo_root = crate::git::GitRepo::get_repo_root()?;
+        Ok(repo_root.join(PROJECT_CONFIG_FILENAME))
+    }
+
+    /// Merge this config with project-specific config, with project config taking precedence
+    /// But never allow API keys from project config
+    pub fn merge_with_project_config(&mut self, project_config: Self) {
+        log_debug!("Merging with project configuration");
+
+        // Override default provider if set in project config
+        if project_config.default_provider != Self::default().default_provider {
+            self.default_provider = project_config.default_provider;
+        }
+
+        // Merge provider configs, but never allow API keys from project config
+        for (provider, proj_provider_config) in project_config.providers {
+            let entry = self.providers.entry(provider).or_default();
+
+            // Don't override API keys from project config (security)
+            if !proj_provider_config.model.is_empty() {
+                entry.model = proj_provider_config.model;
+            }
+
+            // Merge additional params
+            entry
+                .additional_params
+                .extend(proj_provider_config.additional_params);
+
+            // Override token limit if set in project config
+            if proj_provider_config.token_limit.is_some() {
+                entry.token_limit = proj_provider_config.token_limit;
+            }
+        }
+
+        // Override other settings
+        self.use_gitmoji = project_config.use_gitmoji;
+
+        // Always override instructions field if set in project config
+        self.instructions = project_config.instructions.clone();
+
+        // Override preset
+        if project_config.instruction_preset != default_instruction_preset() {
+            self.instruction_preset = project_config.instruction_preset;
+        }
+    }
+
+    /// Migrate older config formats if needed
+    fn migrate_if_needed(mut config: Self) -> Self {
         // Migration: rename "claude" provider to "anthropic" if it exists
         let mut migration_performed = false;
         if config.providers.contains_key("claude") {
@@ -93,16 +191,44 @@ impl Config {
             }
         }
 
-        log_debug!("Configuration loaded: {:?}", config);
-        Ok(config)
+        config
     }
 
     /// Save the configuration to the file
     pub fn save(&self) -> Result<()> {
+        // Don't save project configs to personal config file
+        if self.is_project_config {
+            return Ok(());
+        }
+
         let config_path = Self::get_config_path()?;
         let config_content = toml::to_string(self)?;
         fs::write(config_path, config_content)?;
         log_debug!("Configuration saved: {:?}", self);
+        Ok(())
+    }
+
+    /// Save the configuration as a project-specific configuration
+    pub fn save_as_project_config(&self) -> Result<(), anyhow::Error> {
+        let config_path = Self::get_project_config_path()?;
+
+        // Before saving, create a copy that excludes API keys
+        let mut project_config = self.clone();
+
+        // Remove API keys from all providers
+        for provider_config in project_config.providers.values_mut() {
+            provider_config.api_key.clear();
+        }
+
+        // Mark as project config
+        project_config.is_project_config = true;
+
+        // Convert to TOML string
+        let config_str = toml::to_string_pretty(&project_config)?;
+
+        // Write to file
+        fs::write(config_path, config_str)?;
+
         Ok(())
     }
 
@@ -236,6 +362,16 @@ impl Config {
             })
         })
     }
+
+    /// Set whether this config is a project config
+    pub fn set_project_config(&mut self, is_project: bool) {
+        self.is_project_config = is_project;
+    }
+
+    /// Check if this is a project config
+    pub fn is_project_config(&self) -> bool {
+        self.is_project_config
+    }
 }
 
 impl Default for Config {
@@ -263,6 +399,7 @@ impl Default for Config {
             instruction_preset: default_instruction_preset(),
             temp_instructions: None,
             temp_preset: None,
+            is_project_config: false,
         }
     }
 }

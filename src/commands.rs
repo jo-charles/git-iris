@@ -14,10 +14,128 @@ use anyhow::{Result, anyhow};
 use colored::Colorize;
 use std::collections::HashMap;
 
+/// Apply common configuration changes to a config object
+/// Returns true if any changes were made
+///
+/// This centralized function handles changes to configuration objects, used by both
+/// personal and project configuration commands.
+///
+/// # Arguments
+///
+/// * `config` - The configuration object to modify
+/// * `common` - Common parameters from command line
+/// * `model` - Optional model to set for the selected provider
+/// * `token_limit` - Optional token limit to set
+/// * `param` - Optional additional parameters to set
+/// * `api_key` - Optional API key to set (ignored in project configs)
+///
+/// # Returns
+///
+/// Boolean indicating if any changes were made to the configuration
+fn apply_config_changes(
+    config: &mut Config,
+    common: &CommonParams,
+    model: Option<String>,
+    token_limit: Option<usize>,
+    param: Option<Vec<String>>,
+    api_key: Option<String>,
+) -> anyhow::Result<bool> {
+    let mut changes_made = false;
+
+    // Apply common parameters to the config
+    common.apply_to_config(config)?;
+
+    // Handle provider change
+    if let Some(provider) = &common.provider {
+        if !get_available_provider_names().iter().any(|p| p == provider) {
+            return Err(anyhow!("Invalid provider: {}", provider));
+        }
+        if config.default_provider != *provider {
+            config.default_provider.clone_from(provider);
+            changes_made = true;
+        }
+        if !config.providers.contains_key(provider) {
+            config
+                .providers
+                .insert(provider.clone(), ProviderConfig::default());
+            changes_made = true;
+        }
+    }
+
+    let provider_config = config
+        .providers
+        .get_mut(&config.default_provider)
+        .context("Could not get default provider")?;
+
+    // Apply API key if provided
+    if let Some(key) = api_key {
+        if provider_config.api_key != key {
+            provider_config.api_key = key;
+            changes_made = true;
+        }
+    }
+
+    // Apply model change
+    if let Some(model) = model {
+        if provider_config.model != model {
+            provider_config.model = model;
+            changes_made = true;
+        }
+    }
+
+    // Apply parameter changes
+    if let Some(params) = param {
+        let additional_params = parse_additional_params(&params);
+        if provider_config.additional_params != additional_params {
+            provider_config.additional_params = additional_params;
+            changes_made = true;
+        }
+    }
+
+    // Apply gitmoji setting
+    if let Some(use_gitmoji) = common.gitmoji {
+        if config.use_gitmoji != use_gitmoji {
+            config.use_gitmoji = use_gitmoji;
+            changes_made = true;
+        }
+    }
+
+    // Apply instructions
+    if let Some(instr) = &common.instructions {
+        if config.instructions != *instr {
+            config.instructions.clone_from(instr);
+            changes_made = true;
+        }
+    }
+
+    // Apply token limit
+    if let Some(limit) = token_limit {
+        if provider_config.token_limit != Some(limit) {
+            provider_config.token_limit = Some(limit);
+            changes_made = true;
+        }
+    }
+
+    // Apply preset
+    if let Some(preset) = &common.preset {
+        let preset_library = get_instruction_preset_library();
+        if preset_library.get_preset(preset).is_some() {
+            if config.instruction_preset != *preset {
+                config.instruction_preset.clone_from(preset);
+                changes_made = true;
+            }
+        } else {
+            return Err(anyhow!("Invalid preset: {}", preset));
+        }
+    }
+
+    Ok(changes_made)
+}
+
 /// Handle the 'config' command
 #[allow(clippy::too_many_lines)]
 pub fn handle_config_command(
-    common: CommonParams,
+    common: &CommonParams,
     api_key: Option<String>,
     model: Option<String>,
     token_limit: Option<usize>,
@@ -33,81 +151,10 @@ pub fn handle_config_command(
     );
 
     let mut config = Config::load()?;
-    common.apply_to_config(&mut config)?;
-    let mut changes_made = false;
 
-    if let Some(provider) = common.provider {
-        if !get_available_provider_names()
-            .iter()
-            .any(|p| p == &provider)
-        {
-            return Err(anyhow!("Invalid provider: {}", provider));
-        }
-        if config.default_provider != provider {
-            config.default_provider.clone_from(&provider);
-            changes_made = true;
-        }
-        if !config.providers.contains_key(&provider) {
-            config
-                .providers
-                .insert(provider.clone(), ProviderConfig::default());
-            changes_made = true;
-        }
-    }
-
-    let provider_config = config
-        .providers
-        .get_mut(&config.default_provider)
-        .context("Could not get default provider")?;
-
-    if let Some(key) = api_key {
-        if provider_config.api_key != key {
-            provider_config.api_key = key;
-            changes_made = true;
-        }
-    }
-    if let Some(model) = model {
-        if provider_config.model != model {
-            provider_config.model = model;
-            changes_made = true;
-        }
-    }
-    if let Some(params) = param {
-        let additional_params = parse_additional_params(&params);
-        if provider_config.additional_params != additional_params {
-            provider_config.additional_params = additional_params;
-            changes_made = true;
-        }
-    }
-    if let Some(use_gitmoji) = common.gitmoji {
-        if config.use_gitmoji != use_gitmoji {
-            config.use_gitmoji = use_gitmoji;
-            changes_made = true;
-        }
-    }
-    if let Some(instr) = common.instructions {
-        if config.instructions != instr {
-            config.instructions = instr;
-            changes_made = true;
-        }
-    }
-    if let Some(limit) = token_limit {
-        if provider_config.token_limit != Some(limit) {
-            provider_config.token_limit = Some(limit);
-            changes_made = true;
-        }
-    }
-    if let Some(preset) = common.preset {
-        let preset_library = get_instruction_preset_library();
-        if preset_library.get_preset(&preset).is_some() {
-            if config.instruction_preset != preset {
-                config.instruction_preset = preset;
-                changes_made = true;
-            }
-        } else {
-            return Err(anyhow!("Invalid preset: {}", preset));
-        }
-    }
+    // Apply configuration changes
+    let changes_made =
+        apply_config_changes(&mut config, common, model, token_limit, param, api_key)?;
 
     if changes_made {
         config.save()?;
@@ -117,6 +164,143 @@ pub fn handle_config_command(
 
     // Print the configuration with beautiful styling
     print_configuration(&config);
+
+    Ok(())
+}
+
+/// Process and apply configuration changes to a config object for project configs
+///
+/// This is a specialized wrapper around the `apply_config_changes` function that ensures
+/// API keys are never passed to project configuration files.
+///
+/// # Arguments
+///
+/// * `config` - The configuration object to modify
+/// * `common` - Common parameters from command line
+/// * `model` - Optional model to set for the selected provider
+/// * `token_limit` - Optional token limit to set
+/// * `param` - Optional additional parameters to set
+///
+/// # Returns
+///
+/// Boolean indicating if any changes were made to the configuration
+fn apply_project_config_changes(
+    config: &mut Config,
+    common: &CommonParams,
+    model: Option<String>,
+    token_limit: Option<usize>,
+    param: Option<Vec<String>>,
+) -> anyhow::Result<bool> {
+    // Use the shared function but don't pass an API key (never stored in project configs)
+    apply_config_changes(config, common, model, token_limit, param, None)
+}
+
+/// Handle printing current project configuration
+///
+/// Loads and displays the current project configuration if it exists,
+/// or shows a message if no project configuration is found.
+fn print_project_config() {
+    if let Ok(project_config) = Config::load_project_config() {
+        println!(
+            "\n{}",
+            "Current project configuration:".bright_cyan().bold()
+        );
+        print_configuration(&project_config);
+    } else {
+        println!("\n{}", "No project configuration file found.".yellow());
+        println!("You can create one with the project-config command.");
+    }
+}
+
+/// Handle the 'project-config' command
+///
+/// Creates or updates a project-specific configuration file (.irisconfig)
+/// in the repository root. Project configurations allow teams to share
+/// common settings without sharing sensitive data like API keys.
+///
+/// # Security
+///
+/// API keys are never stored in project configuration files, ensuring that
+/// sensitive credentials are not accidentally committed to version control.
+///
+/// # Arguments
+///
+/// * `common` - Common parameters from command line
+/// * `model` - Optional model to set for the selected provider
+/// * `token_limit` - Optional token limit to set  
+/// * `param` - Optional additional parameters to set
+/// * `print` - Whether to just print the current project config
+///
+/// # Returns
+///
+/// Result indicating success or an error
+pub fn handle_project_config_command(
+    common: &CommonParams,
+    model: Option<String>,
+    token_limit: Option<usize>,
+    param: Option<Vec<String>>,
+    print: bool,
+) -> anyhow::Result<()> {
+    log_debug!(
+        "Starting 'project-config' command with common: {:?}, model: {:?}, token_limit: {:?}, param: {:?}, print: {}",
+        common,
+        model,
+        token_limit,
+        param,
+        print
+    );
+
+    // Load the global config first
+    let mut config = Config::load()?;
+
+    // Set up a header to explain what's happening
+    println!("\n{}", "✨ Project Configuration".bright_magenta().bold());
+
+    // If print-only mode, just display the current project config if it exists
+    if print {
+        print_project_config();
+        return Ok(());
+    }
+
+    // Apply changes and track if any were made
+    let changes_made =
+        apply_project_config_changes(&mut config, common, model, token_limit, param)?;
+
+    if changes_made {
+        // Save to project config file
+        config.save_as_project_config()?;
+        ui::print_success("Project configuration created/updated successfully.");
+        println!();
+
+        // Print a notice about API keys not being stored in project config
+        println!(
+            "{}",
+            "Note: API keys are never stored in project configuration files."
+                .yellow()
+                .italic()
+        );
+        println!();
+
+        // Print the newly created/updated config
+        println!("{}", "Current project configuration:".bright_cyan().bold());
+        print_configuration(&config);
+    } else {
+        println!("{}", "No changes made to project configuration.".yellow());
+        println!();
+
+        // Check if a project config exists and show it if found
+        if let Ok(project_config) = Config::load_project_config() {
+            println!("{}", "Current project configuration:".bright_cyan().bold());
+            print_configuration(&project_config);
+        } else {
+            println!("{}", "No project configuration exists yet.".bright_yellow());
+            println!(
+                "{}",
+                "Use this command with options like --model or --provider to create one."
+                    .bright_white()
+            );
+        }
+    }
 
     Ok(())
 }
