@@ -542,11 +542,11 @@ fn test_generic_text_analyzer() {
     let change = StagedFile {
         path: "config.txt".to_string(),
         change_type: ChangeType::Modified,
-        diff: r#"
+        diff: r"
 +New line added
 -Old line removed
  Unchanged line
-        "#
+        "
         .to_string(),
         analysis: Vec::new(),
         content: None,
@@ -569,12 +569,12 @@ fn test_generic_text_analyzer() {
     let config_change = StagedFile {
         path: "app.config".to_string(),
         change_type: ChangeType::Modified,
-        diff: r#"
+        diff: r"
 +server.host=localhost
 -server.port=8080
 +server.port=9000
  log.level=info
-        "#
+        "
         .to_string(),
         analysis: Vec::new(),
         content: None,
@@ -596,14 +596,14 @@ fn test_generic_text_analyzer() {
     let xml_change = StagedFile {
         path: "web.xml".to_string(),
         change_type: ChangeType::Modified,
-        diff: r#"
+        diff: r"
 +  <servlet>
 +    <servlet-name>MyServlet</servlet-name>
 +  </servlet>
 -  <filter>
 -    <filter-name>OldFilter</filter-name>
 -  </filter>
-        "#
+        "
         .to_string(),
         analysis: Vec::new(),
         content: None,

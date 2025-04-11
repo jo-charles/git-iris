@@ -129,6 +129,14 @@ pub enum Commands {
         /// Ending Git reference (commit hash, tag, or branch name). Defaults to HEAD if not specified.
         #[arg(long)]
         to: Option<String>,
+
+        /// Update the changelog file with the new changes
+        #[arg(long, help = "Update the changelog file with the new changes")]
+        update: bool,
+
+        /// Path to the changelog file
+        #[arg(long, help = "Path to the changelog file (defaults to CHANGELOG.md)")]
+        file: Option<String>,
     },
 
     /// Generate release notes
@@ -353,14 +361,18 @@ async fn handle_changelog(
     from: String,
     to: Option<String>,
     repository_url: Option<String>,
+    update: bool,
+    file: Option<String>,
 ) -> anyhow::Result<()> {
     log_debug!(
-        "Handling 'changelog' command with common: {:?}, from: {}, to: {:?}",
+        "Handling 'changelog' command with common: {:?}, from: {}, to: {:?}, update: {}, file: {:?}",
         common,
         from,
-        to
+        to,
+        update,
+        file
     );
-    changes::handle_changelog_command(common, from, to, repository_url).await
+    changes::handle_changelog_command(common, from, to, repository_url, update, file).await
 }
 
 /// Handle the `ReleaseNotes` command
@@ -430,8 +442,14 @@ pub async fn handle_command(
             log_debug!("Handling 'list_presets' command");
             commands::handle_list_presets_command()?;
         }
-        Commands::Changelog { common, from, to } => {
-            handle_changelog(common, from, to, repository_url).await?;
+        Commands::Changelog {
+            common,
+            from,
+            to,
+            update,
+            file,
+        } => {
+            handle_changelog(common, from, to, repository_url, update, file).await?;
         }
         Commands::ReleaseNotes { common, from, to } => {
             handle_release_notes(common, from, to, repository_url).await?;

@@ -3,6 +3,7 @@ use crate::context::{ChangeType, CommitContext, ProjectMetadata, RecentCommit, S
 use crate::file_analyzers::{self, FileAnalyzer, should_exclude_file};
 use crate::log_debug;
 use anyhow::{Context, Result, anyhow};
+use chrono;
 use futures::future::join_all;
 use git2::{DiffOptions, FileMode, Repository, Status, StatusOptions, Tree};
 use std::env;
@@ -1163,6 +1164,33 @@ impl GitRepo {
         )?;
 
         Ok(file_paths)
+    }
+
+    /// Gets the date of a commit in YYYY-MM-DD format
+    ///
+    /// # Arguments
+    ///
+    /// * `commit_ish` - A commit-ish reference (hash, tag, branch, etc.)
+    ///
+    /// # Returns
+    ///
+    /// A Result containing the formatted date string or an error
+    pub fn get_commit_date(&self, commit_ish: &str) -> Result<String> {
+        let repo = self.open_repo()?;
+
+        // Resolve the commit-ish to an actual commit
+        let obj = repo.revparse_single(commit_ish)?;
+        let commit = obj.peel_to_commit()?;
+
+        // Get the commit time
+        let time = commit.time();
+
+        // Convert to a chrono::DateTime for easier formatting
+        let datetime = chrono::DateTime::<chrono::Utc>::from_timestamp(time.seconds(), 0)
+            .ok_or_else(|| anyhow!("Invalid timestamp"))?;
+
+        // Format as YYYY-MM-DD
+        Ok(datetime.format("%Y-%m-%d").to_string())
     }
 }
 

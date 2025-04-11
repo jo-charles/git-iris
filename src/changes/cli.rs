@@ -22,6 +22,8 @@ use std::sync::Arc;
 /// * `from` - The starting point (commit or tag) for the changelog.
 /// * `to` - The ending point for the changelog. Defaults to "HEAD" if not provided.
 /// * `repository_url` - Optional URL of the remote repository to use.
+/// * `update_file` - Whether to update the changelog file.
+/// * `changelog_path` - Optional path to the changelog file.
 ///
 /// # Returns
 ///
@@ -31,6 +33,8 @@ pub async fn handle_changelog_command(
     from: String,
     to: Option<String>,
     repository_url: Option<String>,
+    update_file: bool,
+    changelog_path: Option<String>,
 ) -> Result<()> {
     // Load and apply configuration
     let mut config = Config::load()?;
@@ -62,6 +66,9 @@ pub async fn handle_changelog_command(
         Arc::new(GitRepo::new(&repo_path).context("Failed to create GitRepo")?)
     };
 
+    // Keep a clone of the Arc for updating the changelog later if needed
+    let git_repo_for_update = Arc::clone(&git_repo);
+
     // Set the default 'to' reference if not provided
     let to = to.unwrap_or_else(|| "HEAD".to_string());
 
@@ -78,6 +85,31 @@ pub async fn handle_changelog_command(
     println!("{}", "━".repeat(50).bright_purple());
     println!("{}", &changelog);
     println!("{}", "━".repeat(50).bright_purple());
+
+    // Update the changelog file if requested
+    if update_file {
+        let path = changelog_path.unwrap_or_else(|| "CHANGELOG.md".to_string());
+        let update_spinner = ui::create_spinner(&format!("Updating changelog file at {path}..."));
+
+        match ChangelogGenerator::update_changelog_file(
+            &changelog,
+            &path,
+            &git_repo_for_update,
+            &to,
+        ) {
+            Ok(()) => {
+                update_spinner.finish_and_clear();
+                ui::print_success(&format!(
+                    "✨ Changelog successfully updated at {}",
+                    path.bright_green()
+                ));
+            }
+            Err(e) => {
+                update_spinner.finish_and_clear();
+                ui::print_error(&format!("Failed to update changelog file: {e}"));
+            }
+        }
+    }
 
     Ok(())
 }
