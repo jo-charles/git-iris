@@ -6,6 +6,125 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2025-03-30
+
+### ✨ Added
+
+- ✨ Implement comprehensive 10-dimension code quality analysis system with severity levels, specific locations, detailed explanations, and actionable recommendations (0a29915)
+- ✨ Add dedicated waiting messages with cosmic and analytical themes for code reviews (37c921a)
+- 🔍 Create QualityDimension enum with new "Best Practices" dimension for centralized quality analysis (e75a648)
+- 📝 Add comprehensive documentation for all 11 code quality dimensions (5d7d394)
+- 💄 Enhance code review UI with modern styling, decorative Unicode characters, and improved readability (95cd3d5)
+
+### 🔄 Changed
+
+- ⚡️ Optimize regex patterns with Lazy static initialization, eliminating redundant compilations (08debd3)
+- ♻️ Refactor code types into dedicated modules for better organization and maintainability (78c6cca)
+- ♻️ Refactor JSON parsing with JsonSchema implementation for improved type safety and validation (e77a442)
+- 🚀 Release version 1.0.1 (98978d2)
+
+### 🗑️ Removed
+
+- 🔥 Remove String conversion implementations for response types in favor of more robust approaches (e77a442)
+
+### 📊 Metrics
+
+- Total Commits: 9
+- Files Changed: 47
+- Insertions: 1941
+- Deletions: 908
+
+<!-- -------------------------------------------------------------- -->
+
+## [1.0.0] - 2025-03-25
+
+### ✨ Added
+
+- ✨ Add AI-powered code review functionality with structured feedback for staged changes (76bdf31)
+- ✨ Add preset type categorization (Commit, Review, Both) for command-specific instruction presets (b8bd6b4)
+- 🔄 Migrate to external llm crate for standardized provider handling, supporting additional providers like Groq, XAI, DeepSeek, and Phind (0cbfc40)
+- 🎨 Improve commit prompt formatting with statistical summary and better organization of file changes (6fc706a)
+- 📝 Add comprehensive documentation for code review and changelog features (3fb5c28)
+- 🛡️ Improve error handling with defensive programming patterns throughout the codebase (61cf6c7)
+- ⬆️ Update dependencies to latest versions including git2, dirs, colored, rand, and ratatui (46fbe7b)
+- ✨ Enhance Git hooks with improved execution environment and proper repository context (88f9f80)
+- 💄 Enhance config command with beautifully formatted, colorized output (55bf071)
+- 🔧 Modernize CI/CD pipeline with updated GitHub Actions (3388590)
+- ⚡️ Set default max_tokens (4096) for LLM requests when not specified (4bb34b6)
+- 📝 Update man page with comprehensive documentation for all commands and features (3a67fe9)
+- 🎨 Improve CLI interface with better organization and styled provider list (023b8b7)
+- 🔄 Add backward compatibility for Claude provider naming (claude → anthropic) (f657841)
+- 📝 Add GitHub funding configuration (9098e9f)
+- 🔧 Update Rust edition from 2021 to 2024 (c81cd1c)
+
+### 🔄 Changed
+
+- ♻️ Improve config display to preserve instruction formatting with line-by-line output (ff76709)
+- 🔍️ Update review prompt to focus on staged changes rather than historical context (ee9de53)
+- 🔄 Reorder instruction sections to place user instructions before preset instructions (e74ab66)
+- ♻️ Rename LLM interface function from get_refined_message to get_message for simplicity (93abf18)
+- 🎨 Reorganize import statements for consistent ordering across the codebase (d3799cb)
+
+### 🐛 Fixed
+
+- 🐛 Fix file content handling for deleted files in review and commit generation (f1d04aa)
+- 🔧 Simplify token limit handling across providers for more consistent behavior (c6dbfd1)
+
+### 📊 Metrics
+
+- Total Commits: 27
+- Files Changed: 122
+- Insertions: 4217
+- Deletions: 2083
+
+<!-- -------------------------------------------------------------- -->
+
+## [0.9.0] - 2025-02-24
+
+### ✨ Added
+
+- 🚀 Upgrade to Claude 3.7 Sonnet model with backward compatibility (e4e806c7)
+- ✨ Add Python script (scripts/lint.py) to enhance Rust linting and code quality (f6ad5f0e)
+- ⚡️ Improve token optimization efficiency with integration in commit service (4e893818)
+- ✨ Add Conventional Commits preset to InstructionPresetLibrary (7507a413)
+- 📝 Create CHANGELOG.md file to track project history (2cbc567f)
+- ♻️ Implement GitRepo struct to encapsulate Git operations (c1f4e5b1)
+- 🐛 Add early return for empty input text in apply_gradient function (f66e4ffd)
+- 🐛 Improve robustness of parent commit handling in analyze_commit (d895bde1)
+- 🚨 Enable Clippy lints for unwrap_used with TODOs for future fixes (ee65a1cc)
+- 🚨 Add additional Clippy lints to improve code quality (32f3002f)
+
+### 🔄 Changed
+
+- 🔧 Fine-tune Clippy lint settings for better code clarity and standards (6283d48b)
+- 🔧 Update Claude model from 'claude-3-5-sonnet-20240620' to 'claude-3-5-sonnet-20241022' (b4a45bc6)
+- ⬆️ Upgrade GitHub Actions artifact handling to v4 (76fca7fa)
+- ♻️ Refactor commit message generation process for better readability (e161211a)
+- ✅ Replace unwrap() with expect() in test files for better error messages (5be93820)
+- 🎨 Apply rustfmt to standardize code style across the project (62a043ed)
+- ♻️ Refactor apply_gradient function for better readability (c0e5250a)
+- 🔧 Update .gitignore to exclude log files (df9446c9)
+- 📝 Update TODO list to reflect current project priorities (44582a00)
+
+### 🐛 Fixed
+
+- 🐛 Fix Clippy lints across multiple files (db008c9b)
+- 🚨 Fix Clippy warnings in test files with improved error handling (2196464058)
+- ✨ Improve issue and PR extraction with enhanced regex patterns (82b61d3e)
+
+### 🗑️ Removed
+
+- 🔥 Remove unused crates to streamline dependencies (f9fdb81d)
+
+### 📊 Metrics
+
+- Total Commits: 26
+- Files Changed: 171
+- Insertions: 2565
+- Deletions: 1661
+
+<!-- -------------------------------------------------------------- -->
+
 ## [0.7.0] - 
 
 ### 🗑️ Removed
