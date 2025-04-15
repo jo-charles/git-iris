@@ -7,7 +7,9 @@ use crate::commit::types::format_commit_message;
 use crate::config::Config as GitIrisConfig;
 use crate::git::GitRepo;
 use crate::log_debug;
-use crate::mcp::tools::utils::{GitIrisTool, create_text_result, resolve_git_repo};
+use crate::mcp::tools::utils::{
+    GitIrisTool, create_text_result, resolve_git_repo, validate_repository_parameter,
+};
 
 use rmcp::handler::server::tool::cached_schema_for_type;
 use rmcp::model::{CallToolResult, Tool};
@@ -40,8 +42,7 @@ pub struct CommitTool {
     #[serde(default)]
     pub custom_instructions: String,
 
-    /// Repository path or URL (optional)
-    #[serde(default)]
+    /// Repository path (local) or URL (remote). Required.
     pub repository: String,
 }
 
@@ -69,13 +70,9 @@ impl GitIrisTool for CommitTool {
     ) -> Result<CallToolResult, anyhow::Error> {
         log_debug!("Processing commit request with: {:?}", self);
 
-        // Resolve repository based on the repository parameter
-        let repo_path = if self.repository.trim().is_empty() {
-            None
-        } else {
-            Some(self.repository.as_str())
-        };
-        let git_repo = resolve_git_repo(repo_path, git_repo)?;
+        // Validate repository parameter
+        validate_repository_parameter(&self.repository)?;
+        let git_repo = resolve_git_repo(Some(self.repository.as_str()), git_repo)?;
         log_debug!("Using repository: {}", git_repo.repo_path().display());
 
         // Check if we can perform the operation on this repository

@@ -6,7 +6,6 @@ use crate::common::DetailLevel;
 use crate::config::Config as GitIrisConfig;
 use crate::git::GitRepo;
 use rmcp::model::{Annotated, CallToolResult, Content, RawContent, RawTextContent};
-use std::path::Path;
 use std::sync::Arc;
 
 /// Common trait for all Git-Iris MCP tools
@@ -57,13 +56,38 @@ pub fn apply_custom_instructions(config: &mut crate::config::Config, custom_inst
     }
 }
 
-/// Resolves a Git repository from an optional `repo_path` parameter
+/// Validates the repository parameter: must be non-empty, and if local, must exist and be a git repo
+pub fn validate_repository_parameter(repo: &str) -> Result<(), anyhow::Error> {
+    if repo.trim().is_empty() {
+        return Err(anyhow::anyhow!(
+            "The `repository` parameter is required and must be a valid local path or remote URL."
+        ));
+    }
+    if !(repo.starts_with("http://") || repo.starts_with("https://") || repo.starts_with("git@")) {
+        let path = std::path::Path::new(repo);
+        if !path.exists() {
+            return Err(anyhow::anyhow!(format!(
+                "The specified repository path does not exist: {}",
+                repo
+            )));
+        }
+        if !path.join(".git").exists() {
+            return Err(anyhow::anyhow!(format!(
+                "The specified path is not a git repository: {}",
+                repo
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// Resolves a Git repository from a `repo_path` parameter
 ///
 /// If `repo_path` is provided, creates a new `GitRepo` for that path/URL.
-/// Otherwise, falls back to the default `git_repo` provided by the handler.
+/// Assumes the parameter has already been validated.
 pub fn resolve_git_repo(
     repo_path: Option<&str>,
-    default_git_repo: Arc<GitRepo>,
+    _default_git_repo: Arc<GitRepo>,
 ) -> Result<Arc<GitRepo>, anyhow::Error> {
     match repo_path {
         Some(path) if !path.trim().is_empty() => {
@@ -75,10 +99,12 @@ pub fn resolve_git_repo(
                 Ok(Arc::new(GitRepo::new_from_url(Some(path.to_string()))?))
             } else {
                 // Handle local repository path
-                let path = Path::new(path);
+                let path = std::path::Path::new(path);
                 Ok(Arc::new(GitRepo::new(path)?))
             }
         }
-        _ => Ok(default_git_repo),
+        _ => Err(anyhow::anyhow!(
+            "The `repository` parameter is required and must be a valid local path or remote URL."
+        )),
     }
 }

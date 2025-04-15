@@ -9,6 +9,7 @@ use crate::git::GitRepo;
 use crate::log_debug;
 use crate::mcp::tools::utils::{
     GitIrisTool, apply_custom_instructions, create_text_result, resolve_git_repo,
+    validate_repository_parameter,
 };
 
 use rmcp::handler::server::tool::cached_schema_for_type;
@@ -38,8 +39,7 @@ pub struct CodeReviewTool {
     #[serde(default)]
     pub custom_instructions: String,
 
-    /// Repository path or URL (optional)
-    #[serde(default)]
+    /// Repository path (local) or URL (remote). Required.
     pub repository: String,
 }
 
@@ -67,13 +67,9 @@ impl GitIrisTool for CodeReviewTool {
     ) -> Result<CallToolResult, anyhow::Error> {
         log_debug!("Generating code review with: {:?}", self);
 
-        // Resolve repository based on the repository parameter
-        let repo_path = if self.repository.trim().is_empty() {
-            None
-        } else {
-            Some(self.repository.as_str())
-        };
-        let git_repo = resolve_git_repo(repo_path, git_repo)?;
+        // Validate repository parameter
+        validate_repository_parameter(&self.repository)?;
+        let git_repo = resolve_git_repo(Some(self.repository.as_str()), git_repo)?;
         log_debug!("Using repository: {}", git_repo.repo_path().display());
 
         // Check if local operations are required without a specific commit

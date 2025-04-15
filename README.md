@@ -281,6 +281,34 @@ git-iris serve --transport sse --port 3077
 
 This allows you to use Git-Iris features directly from Claude, Cursor, VSCode, and other MCP-compatible tools. See [MCP.md](docs/MCP.md) for detailed documentation.
 
+#### MCP Tool Parameters
+
+All MCP tools **require** the `repository` parameter, which must be a local project path or a remote repository URL. This is necessary because some clients (like Cursor) do not reliably provide the project root.
+
+**Example (local path):**
+```json
+{
+  "from": "v1.0.0",
+  "to": "v2.0.0",
+  "detail_level": "detailed",
+  "repository": "/home/bliss/dev/myproject"
+}
+```
+
+**Example (remote URL):**
+```json
+{
+  "from": "v1.0.0",
+  "to": "v2.0.0",
+  "detail_level": "detailed",
+  "repository": "https://github.com/example/repo.git"
+}
+```
+
+**Why is `repository` required?**
+
+> Due to limitations in some MCP clients, the server cannot reliably infer the project root or repository path. To ensure Git-Iris always operates on the correct repository, you must explicitly specify the `repository` parameter for every tool call. This eliminates ambiguity and ensures your commands are always precise and predictable.
+
 ### Interactive Commit Process
 
 The interactive CLI allows you to refine and perfect your commit messages:

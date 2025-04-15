@@ -43,16 +43,29 @@ Generate commit messages and perform Git commits.
 - `no_verify`: (boolean) Skip verification for commit action
 - `preset`: (string) Instruction preset to use
 - `custom_instructions`: (string) Custom instructions for the AI
-- `repository`: (string, optional) Repository path or URL
+- `repository`: (string, required) Repository path (local) or URL (remote). **Required.**
 
-Example:
+Example (local path):
 
 ```json
 {
   "auto_commit": true,
   "use_gitmoji": true,
   "preset": "conventional",
-  "custom_instructions": "Include the ticket number from JIRA"
+  "custom_instructions": "Include the ticket number from JIRA",
+  "repository": "/home/bliss/dev/myproject"
+}
+```
+
+Example (remote URL):
+
+```json
+{
+  "auto_commit": true,
+  "use_gitmoji": true,
+  "preset": "conventional",
+  "custom_instructions": "Include the ticket number from JIRA",
+  "repository": "https://github.com/example/repo.git"
 }
 ```
 
@@ -66,15 +79,27 @@ Generate comprehensive code reviews with options for staged changes, unstaged ch
 - `commit_id`: (string) Specific commit to review (hash, branch name, or reference)
 - `preset`: (string) Preset instruction set to use for the review
 - `custom_instructions`: (string) Custom instructions for the AI
-- `repository`: (string, optional) Repository path or URL
+- `repository`: (string, required) Repository path (local) or URL (remote). **Required.**
 
-Example:
+Example (local path):
 
 ```json
 {
   "preset": "security",
   "custom_instructions": "Focus on performance issues",
-  "include_unstaged": true
+  "include_unstaged": true,
+  "repository": "/home/bliss/dev/myproject"
+}
+```
+
+Example (remote URL):
+
+```json
+{
+  "preset": "security",
+  "custom_instructions": "Focus on performance issues",
+  "include_unstaged": true,
+  "repository": "https://github.com/example/repo.git"
 }
 ```
 
@@ -88,16 +113,29 @@ Generate a detailed changelog between two Git references.
 - `to`: (string) Ending reference (defaults to HEAD if not specified)
 - `detail_level`: (string) Level of detail for the changelog (minimal, standard, detailed)
 - `custom_instructions`: (string) Custom instructions for the AI
-- `repository`: (string, optional) Repository path or URL
+- `repository`: (string, required) Repository path (local) or URL (remote). **Required.**
 
-Example:
+Example (local path):
 
 ```json
 {
   "from": "v1.0.0",
   "to": "v2.0.0",
   "detail_level": "detailed",
-  "custom_instructions": "Group changes by component"
+  "custom_instructions": "Group changes by component",
+  "repository": "/home/bliss/dev/myproject"
+}
+```
+
+Example (remote URL):
+
+```json
+{
+  "from": "v1.0.0",
+  "to": "v2.0.0",
+  "detail_level": "detailed",
+  "custom_instructions": "Group changes by component",
+  "repository": "https://github.com/example/repo.git"
 }
 ```
 
@@ -111,18 +149,35 @@ Generate comprehensive release notes between two Git references.
 - `to`: (string) Ending reference (defaults to HEAD if not specified)
 - `detail_level`: (string) Level of detail for the release notes (minimal, standard, detailed)
 - `custom_instructions`: (string) Custom instructions for the AI
-- `repository`: (string, optional) Repository path or URL
+- `repository`: (string, required) Repository path (local) or URL (remote). **Required.**
 
-Example:
+Example (local path):
 
 ```json
 {
   "from": "v1.0.0",
   "to": "v2.0.0",
   "detail_level": "standard",
-  "custom_instructions": "Highlight breaking changes"
+  "custom_instructions": "Highlight breaking changes",
+  "repository": "/home/bliss/dev/myproject"
 }
 ```
+
+Example (remote URL):
+
+```json
+{
+  "from": "v1.0.0",
+  "to": "v2.0.0",
+  "detail_level": "standard",
+  "custom_instructions": "Highlight breaking changes",
+  "repository": "https://github.com/example/repo.git"
+}
+```
+
+## Why is `repository` required?
+
+Due to limitations in some MCP clients (such as Cursor and others), the server cannot reliably infer the project root or repository path. To ensure Git-Iris always operates on the correct repository, you must explicitly specify the `repository` parameter for every tool call. This can be either a local filesystem path (for local projects) or a remote repository URL (for remote operations). This eliminates ambiguity and ensures your commands are always precise and predictable.
 
 ## Using Git-Iris with Claude
 
