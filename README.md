@@ -39,6 +39,7 @@ Git-Iris offers a suite of AI-powered tools to enhance your Git workflow:
 - **Dynamic Changelog Generation**: Create structured changelogs between any Git references
 - **Comprehensive Release Notes**: Generate release notes with summaries and key changes
 - **MCP Integration**: Connect directly with Claude, Cursor, VSCode and other compatible AI tools
+- **Project-Specific Configuration**: Maintain shared project settings in version control
 
 ### 💪 Advanced Capabilities
 
@@ -153,7 +154,11 @@ For detailed instructions, examples, and CI/CD integration, see our [Docker Usag
 
 ## ⚙️ Configuration
 
-Git-Iris uses a configuration file located at `~/.config/git-iris/config.toml`. Set up your preferred AI provider:
+Git-Iris offers both global configuration and project-specific configuration options.
+
+### Global Configuration
+
+Global settings are stored in `~/.config/git-iris/config.toml` and apply across all repositories:
 
 ```bash
 # For OpenAI
@@ -173,6 +178,26 @@ git-iris config --provider ollama
 git-iris config --provider <provider> --api-key YOUR_API_KEY
 ```
 
+### Project-Specific Configuration
+
+Project settings are stored in `.irisconfig` in your repository root and can be shared with your team without sharing sensitive credentials:
+
+```bash
+# Set project-specific LLM provider
+git-iris project-config --provider anthropic
+
+# Configure project-specific preset
+git-iris project-config --preset conventional
+
+# Set model for the project
+git-iris project-config --model claude-3-7-sonnet-20250219
+
+# View current project configuration
+git-iris project-config --print
+```
+
+Project configuration files do not store API keys for security reasons but can store other settings like models, presets, and custom instructions.
+
 ### Supported LLM Providers
 
 Git-Iris supports the following LLM providers:
@@ -191,9 +216,6 @@ Git-Iris supports the following LLM providers:
 Additional configuration options:
 
 ```bash
-# Set default provider
-git-iris config --default-provider openai
-
 # Enable/Disable Gitmoji
 git-iris config --gitmoji true
 
@@ -217,6 +239,18 @@ For more detailed configuration information, please refer to our [Configuration 
 
 ## 📖 Usage
 
+### Global Options
+
+These options apply to all commands:
+
+- `-l`, `--log`: Log debug messages to a file
+- `--log-file`: Specify a custom log file path
+- `-q`, `--quiet`: Suppress non-essential output (spinners, waiting messages, etc.)
+- `-v`, `--version`: Display version information
+- `-r`, `--repo`: Use a remote repository URL instead of local repository
+
+### Generate Commit Messages
+
 Generate an AI-powered commit message:
 
 ```bash
@@ -227,13 +261,11 @@ Options:
 
 - `-a`, `--auto-commit`: Automatically commit with the generated message
 - `-i`, `--instructions`: Provide custom instructions for this commit
-- `--provider`: Specify an LLM provider (supports multiple providers through the llm crate)
+- `--provider`: Specify an LLM provider
 - `--preset`: Use a specific instruction preset
 - `--no-gitmoji`: Disable Gitmoji for this commit
-- `-l`, `--log`: Enable logging to file
 - `-p`, `--print`: Print the generated message to stdout and exit
 - `--no-verify`: Skip verification steps (pre/post commit hooks)
-- `-r`, `--repo`: Specify a remote repository URL instead of using the local repository
 
 Example:
 
@@ -245,6 +277,102 @@ To generate a commit message and print it to stdout without starting the interac
 
 ```bash
 git-iris gen --print
+```
+
+### AI-Powered Code Reviews
+
+Get a comprehensive analysis of your staged changes:
+
+```bash
+git-iris review
+```
+
+Options:
+
+- `-i`, `--instructions`: Provide custom instructions for this review
+- `--provider`: Specify an LLM provider
+- `--preset`: Use a specific instruction preset
+- `-p`, `--print`: Print the generated review to stdout and exit
+- `--include-unstaged`: Include unstaged changes in the review
+- `--commit`: Review a specific commit by ID (hash, branch, or reference)
+
+Example:
+
+```bash
+git-iris review -i "Focus on security" --preset security --include-unstaged
+```
+
+### Generate Changelogs
+
+Create a detailed changelog between Git references:
+
+```bash
+git-iris changelog --from <from-ref> --to <to-ref>
+```
+
+Options:
+
+- `--from`: Starting Git reference (commit hash, tag, or branch name)
+- `--to`: Ending Git reference (defaults to HEAD if not specified)
+- `-i`, `--instructions`: Custom instructions for changelog generation
+- `--preset`: Select an instruction preset for changelog generation
+- `--detail-level`: Set the detail level (minimal, standard, detailed)
+- `--gitmoji`: Enable or disable Gitmoji in the changelog
+- `--update`: Update the changelog file with the new changes
+- `--file`: Path to the changelog file (defaults to CHANGELOG.md)
+
+Example:
+
+```bash
+git-iris changelog --from v1.0.0 --to v1.1.0 --detail-level detailed --update
+```
+
+### Generate Release Notes
+
+Create comprehensive release notes:
+
+```bash
+git-iris release-notes --from <from-ref> --to <to-ref>
+```
+
+Options:
+
+- `--from`: Starting Git reference (commit hash, tag, or branch name)
+- `--to`: Ending Git reference (defaults to HEAD if not specified)
+- `-i`, `--instructions`: Custom instructions for release notes generation
+- `--preset`: Select an instruction preset for release notes generation
+- `--detail-level`: Set the detail level (minimal, standard, detailed)
+- `--gitmoji`: Enable or disable Gitmoji in the release notes
+
+Example:
+
+```bash
+git-iris release-notes --from v1.0.0 --to v1.1.0 --preset conventional
+```
+
+### Project Configuration
+
+Create or update project-specific settings:
+
+```bash
+git-iris project-config
+```
+
+Options:
+
+- `--provider`: Set default LLM provider for this project
+- `--model`: Set model for the specified provider
+- `--token-limit`: Set token limit for the specified provider
+- `--param`: Set additional parameters for the specified provider
+- `-p`, `--print`: Print the current project configuration
+- `--gitmoji`: Enable or disable Gitmoji for this project
+- `-i`, `--instructions`: Set instructions for message generation
+- `--preset`: Set default instruction preset for this project
+
+Example:
+
+```bash
+git-iris project-config --provider anthropic --preset security --model claude-3-7-sonnet-20250219
 ```
 
 ### Working with Remote Repositories
@@ -267,16 +395,25 @@ git-iris gen --repo https://github.com/example/repo.git --print
 
 Note: When working with remote repositories, Git-Iris operates in read-only mode. You can't commit changes directly to remote repositories.
 
-### Using MCP with AI Tools
+### MCP Server for AI Integration
 
-Git-Iris can be integrated with AI assistants and editors via the Model Context Protocol (MCP):
+Start an MCP (Model Context Protocol) server for integration with AI tools:
 
 ```bash
-# Start MCP server (default stdio transport)
 git-iris serve
+```
 
-# Start with SSE transport for editor integration
-git-iris serve --transport sse --port 3077
+Options:
+
+- `--dev`: Enable development mode with more verbose logging
+- `-t`, `--transport`: Transport type to use (stdio, sse)
+- `-p`, `--port`: Port to use for network transports
+- `--listen-address`: Listen address for network transports
+
+Example:
+
+```bash
+git-iris serve --transport sse --port 3077 --listen-address 127.0.0.1
 ```
 
 This allows you to use Git-Iris features directly from Claude, Cursor, VSCode, and other MCP-compatible tools. See [MCP.md](docs/MCP.md) for detailed documentation.
@@ -286,6 +423,7 @@ This allows you to use Git-Iris features directly from Claude, Cursor, VSCode, a
 All MCP tools **require** the `repository` parameter, which must be a local project path or a remote repository URL. This is necessary because some clients (like Cursor) do not reliably provide the project root.
 
 **Example (local path):**
+
 ```json
 {
   "from": "v1.0.0",
@@ -296,6 +434,7 @@ All MCP tools **require** the `repository` parameter, which must be a local proj
 ```
 
 **Example (remote URL):**
+
 ```json
 {
   "from": "v1.0.0",
@@ -350,71 +489,6 @@ The review includes:
   - Error Handling - Evaluates completeness of error recovery strategies
   - Test Coverage - Analyzes test coverage gaps or brittle tests
   - Best Practices - Checks adherence to language-specific conventions and design guidelines
-
-Options:
-
-- `-i`, `--instructions`: Provide custom instructions for this review
-- `--provider`: Specify an LLM provider (supports multiple providers through the llm crate)
-- `--preset`: Use a specific instruction preset
-- `-p`, `--print`: Print the generated review to stdout and exit
-
-Example:
-
-```bash
-git-iris review -i "Pay special attention to error handling" --provider anthropic
-```
-
-This allows you to get valuable feedback on your code before committing it, improving code quality and catching potential issues early.
-
-### Generating a Changelog
-
-Git-Iris can generate changelogs between two Git references:
-
-```bash
-git-iris changelog --from <from-ref> --to <to-ref>
-```
-
-Options:
-
-- `--from`: Starting Git reference (commit hash, tag, or branch name)
-- `--to`: Ending Git reference (defaults to HEAD if not specified)
-- `--instructions`: Custom instructions for changelog generation
-- `--preset`: Select an instruction preset for changelog generation
-- `--detail-level`: Set the detail level (minimal, standard, detailed)
-- `--gitmoji`: Enable or disable Gitmoji in the changelog
-
-Example:
-
-```bash
-git-iris changelog --from v1.0.0 --to v1.1.0 --detail-level detailed --gitmoji true
-```
-
-This command generates a detailed changelog of changes between versions 1.0.0 and 1.1.0, including Gitmoji.
-
-### Generating Release Notes
-
-Git-Iris can also generate comprehensive release notes:
-
-```bash
-git-iris release-notes --from <from-ref> --to <to-ref>
-```
-
-Options:
-
-- `--from`: Starting Git reference (commit hash, tag, or branch name)
-- `--to`: Ending Git reference (defaults to HEAD if not specified)
-- `--instructions`: Custom instructions for release notes generation
-- `--preset`: Select an instruction preset for release notes generation
-- `--detail-level`: Set the detail level (minimal, standard, detailed)
-- `--gitmoji`: Enable or disable Gitmoji in the release notes
-
-Example:
-
-```bash
-git-iris release-notes --from v1.0.0 --to v1.1.0 --preset conventional --detail-level standard
-```
-
-This command generates standard-level release notes between versions 1.0.0 and 1.1.0 using the conventional commits preset.
 
 ## 🎛️ Custom Instructions and Presets
 

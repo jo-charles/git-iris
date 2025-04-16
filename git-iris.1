@@ -13,15 +13,24 @@ is a comprehensive AI-powered Git workflow assistant that enhances your developm
 .BR \-l ", " \-\-log
 Log debug messages to a file
 .TP
+.BR \-\-log-file
+Specify a custom log file path
+.TP
+.BR \-q ", " \-\-quiet
+Suppress non-essential output (spinners, waiting messages, etc.)
+.TP
 .BR \-v ", " \-\-version
 Display the version
+.TP
+.BR \-r ", " \-\-repo
+Repository URL to use instead of local repository
 .SH COMMANDS
 .TP
 .B gen
 Generate a commit message using AI
 .TP
 .B review
-Get an AI-powered code review for your staged changes
+Review staged changes and provide feedback
 .TP
 .B changelog
 Generate a changelog between two Git references
@@ -32,8 +41,14 @@ Generate comprehensive release notes
 .B config
 Configure the AI-assisted Git workflow assistant
 .TP
+.B project-config
+Create or update a project-specific configuration file
+.TP
 .B list-presets
 List available instruction presets
+.TP
+.B serve
+Start an MCP server to provide Git-Iris functionality to AI tools
 .SH "GEN COMMAND OPTIONS"
 .TP
 .BR \-a ", " \-\-auto-commit
@@ -69,6 +84,12 @@ Use a specific instruction preset
 .TP
 .BR \-p ", " \-\-print
 Print the generated review to stdout and exit
+.TP
+.BR \-\-include-unstaged
+Include unstaged changes in the review
+.TP
+.BR \-\-commit =\fICOMMIT_ID\fR
+Review a specific commit by ID (hash, branch, or reference)
 .SH "CHANGELOG COMMAND OPTIONS"
 .TP
 .BR \-\-from =\fIREF\fR
@@ -88,6 +109,12 @@ Set the detail level (minimal, standard, detailed)
 .TP
 .BR \-\-gitmoji =\fIBOOL\fR
 Enable or disable Gitmoji in the changelog
+.TP
+.BR \-\-update
+Update the changelog file with the new changes
+.TP
+.BR \-\-file =\fIFILE\fR
+Path to the changelog file (defaults to CHANGELOG.md)
 .SH "RELEASE-NOTES COMMAND OPTIONS"
 .TP
 .BR \-\-from =\fIREF\fR
@@ -132,9 +159,44 @@ Set instructions for the commit message generation
 .TP
 .BR \-\-preset =\fIPRESET\fR
 Set default instruction preset
+.SH "PROJECT-CONFIG COMMAND OPTIONS"
 .TP
-.BR \-\-default-provider =\fIPROVIDER\fR
-Set the default LLM provider
+.BR \-\-provider =\fIPROVIDER\fR
+Set default LLM provider for this project
+.TP
+.BR \-\-model =\fIMODEL\fR
+Set model for the specified provider
+.TP
+.BR \-\-token-limit =\fILIMIT\fR
+Set token limit for the specified provider
+.TP
+.BR \-\-param =\fIKEY\fR=\fIVALUE\fR
+Set additional parameters for the specified provider
+.TP
+.BR \-p ", " \-\-print
+Print the current project configuration
+.TP
+.BR \-\-gitmoji =\fIBOOL\fR
+Enable or disable Gitmoji for this project
+.TP
+.BR \-i ", " \-\-instructions =\fIINSTR\fR
+Set instructions for message generation and reviews
+.TP
+.BR \-\-preset =\fIPRESET\fR
+Set default instruction preset for this project
+.SH "SERVE COMMAND OPTIONS"
+.TP
+.BR \-\-dev
+Enable development mode with more verbose logging
+.TP
+.BR \-t ", " \-\-transport =\fITYPE\fR
+Transport type to use (stdio, sse)
+.TP
+.BR \-p ", " \-\-port =\fIPORT\fR
+Port to use for network transports
+.TP
+.BR \-\-listen-address =\fIADDRESS\fR
+Listen address for network transports (e.g., '127.0.0.1', '0.0.0.0')
 .SH "SUPPORTED LLM PROVIDERS"
 Git-Iris supports multiple LLM providers:
 .TP
@@ -218,11 +280,19 @@ git-iris config --provider openai --api-key YOUR_API_KEY
 .RE
 .fi
 .PP
-Configure the Anthropic provider:
+Create or update project-specific configuration:
 .PP
 .nf
 .RS
-git-iris config --provider anthropic --api-key YOUR_API_KEY
+git-iris project-config --provider anthropic --preset security
+.RE
+.fi
+.PP
+Start an MCP server for AI tool integration:
+.PP
+.nf
+.RS
+git-iris serve --transport sse --port 3077
 .RE
 .fi
 .PP
@@ -244,7 +314,10 @@ git-iris list-presets
 .SH FILES
 .TP
 .I ~/.config/git-iris/config.toml
-Configuration file for Git-Iris
+Global configuration file for Git-Iris
+.TP
+.I .irisconfig
+Project-specific configuration file (stored in repository root)
 .SH ENVIRONMENT
 .TP
 .B EDITOR
