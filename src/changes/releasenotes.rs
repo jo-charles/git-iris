@@ -23,6 +23,7 @@ impl ReleaseNotesGenerator {
     /// * `to` - Ending point for the release notes (e.g., a commit hash, tag, or "HEAD")
     /// * `config` - Configuration object containing LLM settings
     /// * `detail_level` - Level of detail for the release notes (Minimal, Standard, or Detailed)
+    /// * `version_name` - Optional explicit version name to use instead of detecting from Git
     ///
     /// # Returns
     ///
@@ -33,6 +34,7 @@ impl ReleaseNotesGenerator {
         to: &str,
         config: &Config,
         detail_level: DetailLevel,
+        version_name: Option<String>,
     ) -> Result<String> {
         let release_notes: ReleaseNotesResponse = generate_changes_content::<ReleaseNotesResponse>(
             git_repo,
@@ -45,23 +47,29 @@ impl ReleaseNotesGenerator {
         )
         .await?;
 
-        Ok(format_release_notes_response(&release_notes))
+        Ok(format_release_notes_response(
+            &release_notes,
+            version_name.as_deref(),
+        ))
     }
 }
 
 /// Formats the `ReleaseNotesResponse` into human-readable release notes
-fn format_release_notes_response(response: &ReleaseNotesResponse) -> String {
+fn format_release_notes_response(
+    response: &ReleaseNotesResponse,
+    version_name: Option<&str>,
+) -> String {
     let mut formatted = String::new();
 
     // Add header
+    let version = match version_name {
+        Some(name) => name.to_string(),
+        None => response.version.clone().unwrap_or_default(),
+    };
+
     formatted.push_str(&format!(
         "# Release Notes - v{}\n\n",
-        response
-            .version
-            .clone()
-            .unwrap_or_default()
-            .bright_green()
-            .bold()
+        version.bright_green().bold()
     ));
     formatted.push_str(&format!(
         "Release Date: {}\n\n",

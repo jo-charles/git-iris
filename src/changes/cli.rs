@@ -24,6 +24,7 @@ use std::sync::Arc;
 /// * `repository_url` - Optional URL of the remote repository to use.
 /// * `update_file` - Whether to update the changelog file.
 /// * `changelog_path` - Optional path to the changelog file.
+/// * `version_name` - Optional version name to use instead of extracting from Git refs.
 ///
 /// # Returns
 ///
@@ -35,6 +36,7 @@ pub async fn handle_changelog_command(
     repository_url: Option<String>,
     update_file: bool,
     changelog_path: Option<String>,
+    version_name: Option<String>,
 ) -> Result<()> {
     // Load and apply configuration
     let mut config = Config::load()?;
@@ -96,6 +98,7 @@ pub async fn handle_changelog_command(
             &path,
             &git_repo_for_update,
             &to,
+            version_name,
         ) {
             Ok(()) => {
                 update_spinner.finish_and_clear();
@@ -126,6 +129,7 @@ pub async fn handle_changelog_command(
 /// * `from` - The starting point (commit or tag) for the release notes.
 /// * `to` - The ending point for the release notes. Defaults to "HEAD" if not provided.
 /// * `repository_url` - Optional URL of the remote repository to use.
+/// * `version_name` - Optional version name to use instead of extracting from Git refs.
 ///
 /// # Returns
 ///
@@ -135,6 +139,7 @@ pub async fn handle_release_notes_command(
     from: String,
     to: Option<String>,
     repository_url: Option<String>,
+    version_name: Option<String>,
 ) -> Result<()> {
     // Load and apply configuration
     let mut config = Config::load()?;
@@ -174,7 +179,8 @@ pub async fn handle_release_notes_command(
 
     // Generate the release notes
     let release_notes =
-        ReleaseNotesGenerator::generate(git_repo, &from, &to, &config, detail_level).await?;
+        ReleaseNotesGenerator::generate(git_repo, &from, &to, &config, detail_level, version_name)
+            .await?;
 
     // Clear the spinner and display the result
     spinner.finish_and_clear();

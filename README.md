@@ -320,11 +320,18 @@ Options:
 - `--gitmoji`: Enable or disable Gitmoji in the changelog
 - `--update`: Update the changelog file with the new changes
 - `--file`: Path to the changelog file (defaults to CHANGELOG.md)
+- `--version-name`: Explicit version name to use in the changelog instead of getting it from Git
 
 Example:
 
 ```bash
 git-iris changelog --from v1.0.0 --to v1.1.0 --detail-level detailed --update
+```
+
+Example using explicit version name (useful in release workflows):
+
+```bash
+git-iris changelog --from v1.0.0 --to HEAD --update --version-name v1.1.0
 ```
 
 ### Generate Release Notes
@@ -343,11 +350,18 @@ Options:
 - `--preset`: Select an instruction preset for release notes generation
 - `--detail-level`: Set the detail level (minimal, standard, detailed)
 - `--gitmoji`: Enable or disable Gitmoji in the release notes
+- `--version-name`: Explicit version name to use in the release notes instead of getting it from Git
 
 Example:
 
 ```bash
 git-iris release-notes --from v1.0.0 --to v1.1.0 --preset conventional
+```
+
+Example using explicit version name:
+
+```bash
+git-iris release-notes --from v1.0.0 --to HEAD --version-name v1.1.0
 ```
 
 ### Project Configuration

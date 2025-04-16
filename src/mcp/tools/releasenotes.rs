@@ -39,6 +39,10 @@ pub struct ReleaseNotesTool {
 
     /// Repository path (local) or URL (remote). Required.
     pub repository: String,
+
+    /// Explicit version name to use (optional)
+    #[serde(default)]
+    pub version_name: String,
 }
 
 impl ReleaseNotesTool {
@@ -91,6 +95,11 @@ impl GitIrisTool for ReleaseNotesTool {
             &to,
             &config,
             detail_level,
+            if self.version_name.is_empty() {
+                None
+            } else {
+                Some(self.version_name.clone())
+            },
         )
         .await?;
 

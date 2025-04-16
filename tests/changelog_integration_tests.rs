@@ -176,3 +176,71 @@ async fn test_release_notes_generation() -> Result<()> {
 
     Ok(())
 }
+
+#[tokio::test]
+async fn test_changelog_generation_with_custom_version() -> Result<()> {
+    let (temp_dir, _repo) = setup_test_repo()?;
+    let config = setup_config()?;
+    let custom_version = "v2.0.0-beta";
+
+    // We need to provide a path to GitRepo for this integration test
+    let repo_path = std::sync::Arc::new(git_iris::git::GitRepo::new(temp_dir.path())?);
+
+    // Generate changelog with custom version name
+    let changelog = ChangelogGenerator::generate(
+        repo_path.clone(),
+        "v1.0.0",
+        "v1.1.0",
+        &config,
+        DetailLevel::Standard,
+    )
+    .await?;
+
+    // Generate a temporary changelog file using the custom version
+    let changelog_path = temp_dir.path().join("CHANGELOG.md");
+    ChangelogGenerator::update_changelog_file(
+        &changelog,
+        changelog_path.to_str().unwrap(),
+        &repo_path,
+        "HEAD",
+        Some(custom_version.to_string()),
+    )?;
+
+    // Read the content to verify the custom version was used
+    let content = std::fs::read_to_string(&changelog_path)?;
+    assert!(
+        content.contains(&format!("## [{}]", custom_version)),
+        "Changelog should contain the custom version name"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_release_notes_generation_with_custom_version() -> Result<()> {
+    let (temp_dir, _repo) = setup_test_repo()?;
+    let config = setup_config()?;
+    let custom_version = "v2.0.0-rc1";
+
+    // We need to provide a path to GitRepo for this integration test
+    let repo_path = std::sync::Arc::new(git_iris::git::GitRepo::new(temp_dir.path())?);
+
+    // Generate release notes with custom version name
+    let release_notes = ReleaseNotesGenerator::generate(
+        repo_path,
+        "v1.0.0",
+        "v1.1.0",
+        &config,
+        DetailLevel::Standard,
+        Some(custom_version.to_string()),
+    )
+    .await?;
+
+    // Verify the custom version was used
+    assert!(
+        release_notes.contains(&format!("Release Notes - v{}", custom_version)),
+        "Release notes should contain the custom version name"
+    );
+
+    Ok(())
+}

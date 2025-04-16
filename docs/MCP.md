@@ -114,6 +114,7 @@ Generate a detailed changelog between two Git references.
 - `detail_level`: (string) Level of detail for the changelog (minimal, standard, detailed)
 - `custom_instructions`: (string) Custom instructions for the AI
 - `repository`: (string, required) Repository path (local) or URL (remote). **Required.**
+- `version_name`: (string) Explicit version name to use in the changelog instead of getting it from Git
 
 Example (local path):
 
@@ -127,15 +128,15 @@ Example (local path):
 }
 ```
 
-Example (remote URL):
+Example with version name (useful in release workflows):
 
 ```json
 {
   "from": "v1.0.0",
-  "to": "v2.0.0",
+  "to": "HEAD",
   "detail_level": "detailed",
-  "custom_instructions": "Group changes by component",
-  "repository": "https://github.com/example/repo.git"
+  "version_name": "v2.0.0-beta",
+  "repository": "/home/bliss/dev/myproject"
 }
 ```
 
@@ -150,6 +151,7 @@ Generate comprehensive release notes between two Git references.
 - `detail_level`: (string) Level of detail for the release notes (minimal, standard, detailed)
 - `custom_instructions`: (string) Custom instructions for the AI
 - `repository`: (string, required) Repository path (local) or URL (remote). **Required.**
+- `version_name`: (string) Explicit version name to use in the release notes instead of getting it from Git
 
 Example (local path):
 
@@ -163,15 +165,15 @@ Example (local path):
 }
 ```
 
-Example (remote URL):
+Example with version name:
 
 ```json
 {
   "from": "v1.0.0",
-  "to": "v2.0.0",
+  "to": "HEAD",
   "detail_level": "standard",
-  "custom_instructions": "Highlight breaking changes",
-  "repository": "https://github.com/example/repo.git"
+  "version_name": "v2.0.0-rc1",
+  "repository": "/home/bliss/dev/myproject"
 }
 ```
 

@@ -154,6 +154,10 @@ pub enum Commands {
         /// Path to the changelog file
         #[arg(long, help = "Path to the changelog file (defaults to CHANGELOG.md)")]
         file: Option<String>,
+
+        /// Explicit version name to use in the changelog instead of getting it from Git
+        #[arg(long, help = "Explicit version name to use in the changelog")]
+        version_name: Option<String>,
     },
 
     /// Generate release notes
@@ -172,6 +176,10 @@ pub enum Commands {
         /// Ending Git reference (commit hash, tag, or branch name). Defaults to HEAD if not specified.
         #[arg(long)]
         to: Option<String>,
+
+        /// Explicit version name to use in the release notes instead of getting it from Git
+        #[arg(long, help = "Explicit version name to use in the release notes")]
+        version_name: Option<String>,
     },
 
     /// Start an MCP server to provide Git-Iris functionality to AI tools
@@ -415,16 +423,19 @@ async fn handle_changelog(
     repository_url: Option<String>,
     update: bool,
     file: Option<String>,
+    version_name: Option<String>,
 ) -> anyhow::Result<()> {
     log_debug!(
-        "Handling 'changelog' command with common: {:?}, from: {}, to: {:?}, update: {}, file: {:?}",
+        "Handling 'changelog' command with common: {:?}, from: {}, to: {:?}, update: {}, file: {:?}, version_name: {:?}",
         common,
         from,
         to,
         update,
-        file
+        file,
+        version_name
     );
-    changes::handle_changelog_command(common, from, to, repository_url, update, file).await
+    changes::handle_changelog_command(common, from, to, repository_url, update, file, version_name)
+        .await
 }
 
 /// Handle the `ReleaseNotes` command
@@ -433,14 +444,16 @@ async fn handle_release_notes(
     from: String,
     to: Option<String>,
     repository_url: Option<String>,
+    version_name: Option<String>,
 ) -> anyhow::Result<()> {
     log_debug!(
-        "Handling 'release-notes' command with common: {:?}, from: {}, to: {:?}",
+        "Handling 'release-notes' command with common: {:?}, from: {}, to: {:?}, version_name: {:?}",
         common,
         from,
-        to
+        to,
+        version_name
     );
-    changes::handle_release_notes_command(common, from, to, repository_url).await
+    changes::handle_release_notes_command(common, from, to, repository_url, version_name).await
 }
 
 /// Handle the `Serve` command
@@ -473,13 +486,17 @@ pub async fn handle_command(
             print,
             no_verify,
         } => {
-            let config = GenConfig {
-                auto_commit,
-                use_gitmoji: !no_gitmoji,
-                print_only: print,
-                verify: !no_verify,
-            };
-            handle_gen(common, config, repository_url).await?;
+            handle_gen(
+                common,
+                GenConfig {
+                    auto_commit,
+                    use_gitmoji: !no_gitmoji,
+                    print_only: print,
+                    verify: !no_verify,
+                },
+                repository_url,
+            )
+            .await
         }
         Commands::Config {
             common,
@@ -487,51 +504,40 @@ pub async fn handle_command(
             model,
             token_limit,
             param,
-        } => {
-            handle_config(&common, api_key, model, token_limit, param)?;
-        }
-        Commands::ListPresets => {
-            log_debug!("Handling 'list_presets' command");
-            commands::handle_list_presets_command()?;
-        }
+        } => handle_config(&common, api_key, model, token_limit, param),
+        Commands::Review {
+            common,
+            print,
+            include_unstaged,
+            commit,
+        } => handle_review(common, print, repository_url, include_unstaged, commit).await,
         Commands::Changelog {
             common,
             from,
             to,
             update,
             file,
-        } => {
-            handle_changelog(common, from, to, repository_url, update, file).await?;
-        }
-        Commands::ReleaseNotes { common, from, to } => {
-            handle_release_notes(common, from, to, repository_url).await?;
-        }
-        Commands::Review {
+            version_name,
+        } => handle_changelog(common, from, to, repository_url, update, file, version_name).await,
+        Commands::ReleaseNotes {
             common,
-            print,
-            include_unstaged,
-            commit,
-        } => {
-            handle_review(common, print, repository_url, include_unstaged, commit).await?;
-        }
+            from,
+            to,
+            version_name,
+        } => handle_release_notes(common, from, to, repository_url, version_name).await,
         Commands::Serve {
             dev,
             transport,
             port,
             listen_address,
-        } => {
-            handle_serve(dev, transport, port, listen_address).await?;
-        }
+        } => handle_serve(dev, transport, port, listen_address).await,
         Commands::ProjectConfig {
             common,
             model,
             token_limit,
             param,
             print,
-        } => {
-            commands::handle_project_config_command(&common, model, token_limit, param, print)?;
-        }
+        } => commands::handle_project_config_command(&common, model, token_limit, param, print),
+        Commands::ListPresets => commands::handle_list_presets_command(),
     }
-
-    Ok(())
 }

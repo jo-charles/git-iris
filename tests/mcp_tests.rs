@@ -48,6 +48,7 @@ mod tests {
             detail_level: "minimal".to_string(),
             custom_instructions: "Keep it brief".to_string(),
             repository: String::new(),
+            version_name: String::new(),
         };
 
         // Execute the tool directly
@@ -77,7 +78,8 @@ mod tests {
             "from": "HEAD~5",
             "to": "HEAD",
             "detail_level": "minimal",
-            "custom_instructions": "Keep it brief"
+            "custom_instructions": "Keep it brief",
+            "version_name": ""
         }));
 
         // Add tool name to parameters for GitIrisTools::try_from
@@ -104,6 +106,7 @@ mod tests {
                     tool.custom_instructions, "Keep it brief",
                     "Custom instructions not set correctly"
                 );
+                assert_eq!(tool.version_name, "", "Version name not set correctly");
             }
             GitIrisTools::ChangelogTool(_) => {
                 // Not testing this variant in this test

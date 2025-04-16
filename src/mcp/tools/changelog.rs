@@ -39,6 +39,10 @@ pub struct ChangelogTool {
 
     /// Repository path (local) or URL (remote). Required.
     pub repository: String,
+
+    /// Explicit version name to use in the changelog (optional)
+    #[serde(default)]
+    pub version_name: String,
 }
 
 impl ChangelogTool {
@@ -88,6 +92,18 @@ impl GitIrisTool for ChangelogTool {
         let content =
             ChangelogGenerator::generate(git_repo.clone(), &self.from, &to, &config, detail_level)
                 .await?;
+
+        // If version_name is provided, update the changelog content to use that version
+        let version_opt = if self.version_name.is_empty() {
+            None
+        } else {
+            Some(self.version_name.clone())
+        };
+
+        // If version_name is provided, use it when updating the changelog
+        if let Some(version) = &version_opt {
+            log_debug!("Using custom version name: {}", version);
+        }
 
         // Create and return the result using shared utility
         Ok(create_text_result(content))

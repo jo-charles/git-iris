@@ -63,15 +63,18 @@ impl ChangelogGenerator {
     /// * `changelog_path` - Path to the changelog file
     /// * `git_repo` - `GitRepo` instance to use for retrieving commit dates
     /// * `to_ref` - The "to" Git reference (commit/tag) to extract the date from
+    /// * `version_name` - Optional custom version name to use instead of version from Git
     ///
     /// # Returns
     ///
     /// A Result indicating success or an error
+    #[allow(clippy::too_many_lines)]
     pub fn update_changelog_file(
         changelog_content: &str,
         changelog_path: &str,
         git_repo: &Arc<GitRepo>,
         to_ref: &str,
+        version_name: Option<String>,
     ) -> Result<()> {
         let path = Path::new(changelog_path);
         let default_header = "# Changelog\n\nAll notable changes to this project will be documented in this file.\n\nThe format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),\nand this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).\n\n";
@@ -115,6 +118,19 @@ impl ChangelogGenerator {
         } else {
             clean_content
         };
+
+        // If version_name is provided, override the existing version
+        if let Some(version) = version_name {
+            if version_content.contains("## [") {
+                let re = regex::Regex::new(r"## \[([^\]]+)\]").expect("Failed to compile regex");
+                version_content = re
+                    .replace(&version_content, &format!("## [{version}]"))
+                    .to_string();
+                log_debug!("Replaced version with user-provided version: {}", version);
+            } else {
+                log_debug!("Could not find version header to replace in changelog content");
+            }
+        }
 
         // Ensure version content has a date
         if version_content.contains(" - \n") {
