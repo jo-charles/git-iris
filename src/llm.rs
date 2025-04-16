@@ -237,14 +237,14 @@ pub fn get_available_provider_names() -> Vec<String> {
 /// Returns the default model for a given provider
 pub fn get_default_model_for_provider(provider_type: &str) -> &'static str {
     match provider_type.to_lowercase().as_str() {
-        "anthropic" => "claude-3-7-sonnet-20250219",
+        "anthropic" => "claude-3-7-sonnet-latest",
         "ollama" => "llama3",
         "google" => "gemini-2.0-flash",
         "groq" => "llama-3.1-70b-versatile",
         "xai" => "grok-2-beta",
         "deepseek" => "deepseek-chat",
         "phind" => "phind-v2",
-        _ => "gpt-4o", // Default to OpenAI's model
+        _ => "gpt-4.1", // Default to OpenAI's model
     }
 }
 

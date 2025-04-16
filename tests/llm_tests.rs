@@ -29,16 +29,16 @@ fn test_get_available_providers() {
 #[test]
 fn test_get_default_model_for_provider() {
     // Test known providers
-    assert_eq!(get_default_model_for_provider("openai"), "gpt-4o");
+    assert_eq!(get_default_model_for_provider("openai"), "gpt-4.1");
     assert_eq!(
         get_default_model_for_provider("anthropic"),
-        "claude-3-7-sonnet-20250219"
+        "claude-3-7-sonnet-latest"
     );
     assert_eq!(get_default_model_for_provider("google"), "gemini-2.0-flash");
     assert_eq!(get_default_model_for_provider("xai"), "grok-2-beta");
 
     // Test fallback for unknown provider
-    assert_eq!(get_default_model_for_provider("unknown"), "gpt-4o");
+    assert_eq!(get_default_model_for_provider("unknown"), "gpt-4.1");
 }
 
 #[test]
