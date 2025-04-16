@@ -36,6 +36,23 @@ pub struct Cli {
     )]
     pub log: bool,
 
+    /// Specify a custom log file path
+    #[arg(
+        long = "log-file",
+        global = true,
+        help = "Specify a custom log file path"
+    )]
+    pub log_file: Option<String>,
+
+    /// Suppress non-essential output (spinners, waiting messages, etc.)
+    #[arg(
+        short = 'q',
+        long = "quiet",
+        global = true,
+        help = "Suppress non-essential output"
+    )]
+    pub quiet: bool,
+
     /// Display the version
     #[arg(
         short = 'v',
@@ -292,9 +309,15 @@ pub async fn main() -> anyhow::Result<()> {
 
     if cli.log {
         crate::logger::enable_logging();
-        crate::logger::set_log_file(LOG_FILE)?;
+        let log_file = cli.log_file.as_deref().unwrap_or(LOG_FILE);
+        crate::logger::set_log_file(log_file)?;
     } else {
         crate::logger::disable_logging();
+    }
+
+    // Set quiet mode in the UI module
+    if cli.quiet {
+        crate::ui::set_quiet_mode(true);
     }
 
     if let Some(command) = cli.command {

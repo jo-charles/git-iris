@@ -1,6 +1,8 @@
 use colored::Colorize;
 use console::Term;
 use indicatif::{ProgressBar, ProgressStyle};
+use once_cell::sync::Lazy;
+use parking_lot::Mutex;
 use ratatui::style::Color;
 use std::fmt::Write;
 use std::time::Duration;
@@ -16,7 +18,26 @@ pub const GALAXY_PINK: Color = Color::Rgb(255, 162, 213);
 pub const COMET_ORANGE: Color = Color::Rgb(255, 165, 0);
 pub const BLACK_HOLE: Color = Color::Rgb(0, 0, 0);
 
+/// Track quiet mode state
+static QUIET_MODE: Lazy<Mutex<bool>> = Lazy::new(|| Mutex::new(false));
+
+/// Enable or disable quiet mode
+pub fn set_quiet_mode(enabled: bool) {
+    let mut quiet_mode = QUIET_MODE.lock();
+    *quiet_mode = enabled;
+}
+
+/// Check if quiet mode is enabled
+pub fn is_quiet_mode() -> bool {
+    *QUIET_MODE.lock()
+}
+
 pub fn create_spinner(message: &str) -> ProgressBar {
+    // Don't create a spinner in quiet mode
+    if is_quiet_mode() {
+        return ProgressBar::hidden();
+    }
+
     let pb = ProgressBar::new_spinner();
     pb.set_style(
         ProgressStyle::default_spinner()
@@ -30,28 +51,37 @@ pub fn create_spinner(message: &str) -> ProgressBar {
 }
 
 pub fn print_info(message: &str) {
-    println!("{}", message.cyan().bold());
+    if !is_quiet_mode() {
+        println!("{}", message.cyan().bold());
+    }
 }
 
 pub fn print_warning(message: &str) {
-    println!("{}", message.yellow().bold());
+    if !is_quiet_mode() {
+        println!("{}", message.yellow().bold());
+    }
 }
 
 pub fn print_error(message: &str) {
+    // Always print errors, even in quiet mode
     eprintln!("{}", message.red().bold());
 }
 
 pub fn print_success(message: &str) {
-    println!("{}", message.green().bold());
+    if !is_quiet_mode() {
+        println!("{}", message.green().bold());
+    }
 }
 
 pub fn print_version(version: &str) {
-    println!(
-        "{} {} {}",
-        "🔮 Git-Iris".magenta().bold(),
-        "version".cyan(),
-        version.green()
-    );
+    if !is_quiet_mode() {
+        println!(
+            "{} {} {}",
+            "🔮 Git-Iris".magenta().bold(),
+            "version".cyan(),
+            version.green()
+        );
+    }
 }
 
 pub fn create_gradient_text(text: &str) -> String {
