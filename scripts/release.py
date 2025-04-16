@@ -36,33 +36,39 @@ COLOR_WARNING = "\033[38;2;255;165;0m"  # Orange
 # Gradient colors for the banner
 GRADIENT_COLORS = [
     (138, 43, 226),  # BlueViolet
-    (75, 0, 130),    # Indigo
-    (0, 191, 255),   # DeepSkyBlue
+    (75, 0, 130),  # Indigo
+    (0, 191, 255),  # DeepSkyBlue
     (30, 144, 255),  # DodgerBlue
     (138, 43, 226),  # BlueViolet
-    (75, 0, 130),    # Indigo
-    (0, 191, 255),   # DeepSkyBlue
+    (75, 0, 130),  # Indigo
+    (0, 191, 255),  # DeepSkyBlue
 ]
+
 
 def print_colored(message: str, color: str) -> None:
     """Print a message with a specific color."""
     print(f"{color}{message}{COLOR_RESET}")
 
+
 def print_step(step: str) -> None:
     """Print a step in the process with a specific color."""
     print_colored(f"\n✨ {step}", COLOR_STEP)
+
 
 def print_error(message: str) -> None:
     """Print an error message with a specific color."""
     print_colored(f"❌ Error: {message}", COLOR_ERROR)
 
+
 def print_success(message: str) -> None:
     """Print a success message with a specific color."""
     print_colored(f"✅ {message}", COLOR_SUCCESS)
 
+
 def print_warning(message: str) -> None:
     """Print a warning message with a specific color."""
     print_colored(f"⚠️  {message}", COLOR_WARNING)
+
 
 def generate_gradient(colors: List[Tuple[int, int, int]], steps: int) -> List[str]:
     """Generate a list of color codes for a smooth multi-color gradient."""
@@ -82,10 +88,12 @@ def generate_gradient(colors: List[Tuple[int, int, int]], steps: int) -> List[st
 
     return gradient
 
+
 def strip_ansi(text: str) -> str:
     """Remove ANSI color codes from a string."""
     ansi_escape = re.compile(r"\x1B[@-_][0-?]*[ -/]*[@-~]")
     return ansi_escape.sub("", text)
+
 
 def apply_gradient(text: str, gradient: List[str], line_number: int) -> str:
     """Apply gradient colors diagonally to text."""
@@ -94,15 +102,18 @@ def apply_gradient(text: str, gradient: List[str], line_number: int) -> str:
         for i, char in enumerate(text)
     )
 
+
 def center_text(text: str, width: int) -> str:
     """Center text, accounting for ANSI color codes and Unicode widths."""
     visible_length = wcswidth(strip_ansi(text))
     padding = (width - visible_length) // 2
     return f"{' ' * padding}{text}{' ' * (width - padding - visible_length)}"
 
+
 def center_block(block: List[str], width: int) -> List[str]:
     """Center a block of text within a given width."""
     return [center_text(line, width) for line in block]
+
 
 def create_banner() -> str:
     """Create a beautiful cosmic-themed banner with diagonal gradient."""
@@ -133,17 +144,26 @@ def create_banner() -> str:
 
     release_manager_text = COLOR_STEP + "Release Manager"
 
-    banner.extend([
-        f"{COLOR_BORDER}╰{'─' * (banner_width - 2)}╯",
-        center_text(f"{COLOR_STAR}∴｡　　･ﾟ*｡☆ {release_manager_text}{COLOR_STAR} ☆｡*ﾟ･　 ｡∴", banner_width),
-        center_text(f"{COLOR_STAR}･ ｡ ☆ ∴｡　　･ﾟ*｡★･ ∴｡　　･ﾟ*｡☆ ･ ｡ ☆ ∴｡", banner_width),
-    ])
+    banner.extend(
+        [
+            f"{COLOR_BORDER}╰{'─' * (banner_width - 2)}╯",
+            center_text(
+                f"{COLOR_STAR}∴｡　　･ﾟ*｡☆ {release_manager_text}{COLOR_STAR} ☆｡*ﾟ･　 ｡∴",
+                banner_width,
+            ),
+            center_text(
+                f"{COLOR_STAR}･ ｡ ☆ ∴｡　　･ﾟ*｡★･ ∴｡　　･ﾟ*｡☆ ･ ｡ ☆ ∴｡", banner_width
+            ),
+        ]
+    )
 
     return "\n".join(banner)
+
 
 def print_logo() -> None:
     """Print the banner/logo for the release manager."""
     print(create_banner())
+
 
 def check_tool_installed(tool_name: str) -> None:
     """Check if a tool is installed."""
@@ -151,23 +171,34 @@ def check_tool_installed(tool_name: str) -> None:
         print_error(f"{tool_name} is not installed. Please install it and try again.")
         sys.exit(1)
 
+
 def check_branch() -> None:
     """Ensure we're on the main branch."""
-    current_branch = subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"]).decode().strip()
+    current_branch = (
+        subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"])
+        .decode()
+        .strip()
+    )
     if current_branch != "main":
         print_error("You must be on the main branch to release.")
         sys.exit(1)
 
+
 def check_uncommitted_changes() -> None:
     """Check for uncommitted changes."""
-    result = subprocess.run(["git", "diff-index", "--quiet", "HEAD", "--"], capture_output=True)
+    result = subprocess.run(
+        ["git", "diff-index", "--quiet", "HEAD", "--"], capture_output=True, check=False
+    )
     if result.returncode != 0:
-        print_error("You have uncommitted changes. Please commit or stash them before releasing.")
+        print_error(
+            "You have uncommitted changes. Please commit or stash them before releasing."
+        )
         sys.exit(1)
+
 
 def get_current_version() -> str:
     """Get the current version from Cargo.toml."""
-    with open("Cargo.toml", "r") as f:
+    with open("Cargo.toml", "r", encoding="utf-8") as f:
         content = f.read()
     match = re.search(r'version\s*=\s*"(\d+\.\d+\.\d+)"', content)
     if match:
@@ -175,14 +206,21 @@ def get_current_version() -> str:
     print_error("Could not find version in Cargo.toml")
     sys.exit(1)
 
+
 def update_version(new_version: str) -> None:
     """Update the version in Cargo.toml."""
-    with open("Cargo.toml", "r") as f:
+    with open("Cargo.toml", "r", encoding="utf-8") as f:
         content = f.read()
-    updated_content = re.sub(r'^(version\s*=\s*)"(\d+\.\d+\.\d+)"', f'\\1"{new_version}"', content, flags=re.MULTILINE)
-    with open("Cargo.toml", "w") as f:
+    updated_content = re.sub(
+        r'^(version\s*=\s*)"(\d+\.\d+\.\d+)"',
+        f'\\1"{new_version}"',
+        content,
+        flags=re.MULTILINE,
+    )
+    with open("Cargo.toml", "w", encoding="utf-8") as f:
         f.write(updated_content)
     print_success(f"Updated version in Cargo.toml to {new_version}")
+
 
 def run_checks() -> None:
     """Run cargo check and cargo test."""
@@ -192,19 +230,56 @@ def run_checks() -> None:
     subprocess.run(["cargo", "test"], check=True)
     print_success("All checks passed")
 
+
+def generate_changelog(original_version: str, new_version: str) -> None:
+    """Generate changelog using git-iris."""
+    print_step("Generating changelog with git-iris")
+    from_tag = f"v{original_version}"
+
+    try:
+        print_step(
+            f"Updating changelog from {from_tag} to HEAD with version {new_version}"
+        )
+        subprocess.run(
+            [
+                "cargo",
+                "run",
+                "--",
+                "changelog",
+                "--from",
+                from_tag,
+                "--to",
+                "HEAD",
+                "--update",
+                "--version-name",
+                new_version,
+            ],
+            check=True,
+        )
+        print_success("Changelog updated successfully")
+    except subprocess.CalledProcessError as e:
+        print_error(f"Failed to generate changelog: {str(e)}")
+        sys.exit(1)
+
+
 def show_changes() -> bool:
     """Show changes and ask for confirmation."""
     print_warning("The following files will be modified:")
-    subprocess.run(["git", "status", "--porcelain"])
-    confirmation = input(f"{COLOR_VERSION_PROMPT}Do you want to proceed with these changes? (y/N): {COLOR_RESET}").lower()
+    subprocess.run(["git", "status", "--porcelain"], check=False)
+    confirmation = input(
+        f"{COLOR_VERSION_PROMPT}Do you want to proceed with these changes? (y/N): {COLOR_RESET}"
+    ).lower()
     return confirmation == "y"
+
 
 def commit_and_push(version: str) -> None:
     """Commit and push changes to the repository."""
     print_step("Committing and pushing changes")
     try:
-        subprocess.run(["git", "add", "Cargo.*"], check=True)
-        subprocess.run(["git", "commit", "-m", f":rocket: Release version {version}"], check=True)
+        subprocess.run(["git", "add", "Cargo.*", "CHANGELOG.md"], check=True)
+        subprocess.run(
+            ["git", "commit", "-m", f":rocket: Release version {version}"], check=True
+        )
         subprocess.run(["git", "push"], check=True)
         subprocess.run(["git", "tag", f"v{version}"], check=True)
         subprocess.run(["git", "push", "--tags"], check=True)
@@ -213,9 +288,11 @@ def commit_and_push(version: str) -> None:
         print_error(f"Git operations failed: {str(e)}")
         sys.exit(1)
 
+
 def is_valid_version(version: str) -> bool:
     """Validate version format."""
     return re.match(r"^\d+\.\d+\.\d+$", version) is not None
+
 
 def main() -> None:
     """Main function to handle the release process."""
@@ -229,14 +306,20 @@ def main() -> None:
     check_uncommitted_changes()
 
     current_version = get_current_version()
-    new_version = input(f"{COLOR_VERSION_PROMPT}Current version is {current_version}. What should the new version be? {COLOR_RESET}")
+    new_version = input(
+        f"{COLOR_VERSION_PROMPT}Current version is {current_version}. What should the new version be? {COLOR_RESET}"
+    )
 
     if not is_valid_version(new_version):
-        print_error("Invalid version format. Please use semantic versioning (e.g., 1.2.3).")
+        print_error(
+            "Invalid version format. Please use semantic versioning (e.g., 1.2.3)."
+        )
         sys.exit(1)
 
     update_version(new_version)
     run_checks()
+
+    generate_changelog(current_version, new_version)
 
     if not show_changes():
         print_error("Release cancelled.")
@@ -244,7 +327,10 @@ def main() -> None:
 
     commit_and_push(new_version)
 
-    print_success(f"\n🎉✨ {PROJECT_NAME} v{new_version} has been successfully released! ✨🎉")
+    print_success(
+        f"\n🎉✨ {PROJECT_NAME} v{new_version} has been successfully released! ✨🎉"
+    )
+
 
 if __name__ == "__main__":
     main()
