@@ -3,12 +3,12 @@ name = "git-iris"
 version = "1.0.1"
 edition = "2024"
 authors = ["Stefanie Jane <stef@hyperbliss.tech>"]
-description = "AI-assisted Git workflow"
+description = "AI-powered Git workflow assistant for smart commits, code reviews, changelogs, and release notes"
 readme = "README.md"
 homepage = "https://github.com/hyperb1iss/git-iris"
 repository = "https://github.com/hyperb1iss/git-iris"
 license = "Apache-2.0"
-keywords = ["git", "commit", "ai", "cli", "code review", "release notes", "changelog", "generative ai"]
+keywords = ["git", "ai", "cli", "devtools", "productivity"]
 categories = ["command-line-utilities", "development-tools"]
 
 [lib]
