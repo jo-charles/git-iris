@@ -51,11 +51,8 @@ impl CommitTool {
     pub fn get_tool_definition() -> Tool {
         Tool {
             name: Cow::Borrowed("git_iris_commit"),
-            description: Some(Cow::Borrowed(
-                "Generate commit messages and perform Git commits",
-            )),
+            description: Cow::Borrowed("Generate commit messages and perform Git commits"),
             input_schema: cached_schema_for_type::<Self>(),
-            annotations: None,
         }
     }
 }

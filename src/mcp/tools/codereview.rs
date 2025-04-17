@@ -48,11 +48,10 @@ impl CodeReviewTool {
     pub fn get_tool_definition() -> Tool {
         Tool {
             name: Cow::Borrowed("git_iris_code_review"),
-            description: Some(Cow::Borrowed(
+            description: Cow::Borrowed(
                 "Generate a comprehensive code review with options for staged changes, unstaged changes, or specific commits",
-            )),
+            ),
             input_schema: cached_schema_for_type::<Self>(),
-            annotations: None,
         }
     }
 }

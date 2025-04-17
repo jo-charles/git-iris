@@ -50,11 +50,10 @@ impl ReleaseNotesTool {
     pub fn get_tool_definition() -> Tool {
         Tool {
             name: Cow::Borrowed("git_iris_release_notes"),
-            description: Some(Cow::Borrowed(
+            description: Cow::Borrowed(
                 "Generate comprehensive release notes between two Git references",
-            )),
+            ),
             input_schema: cached_schema_for_type::<Self>(),
-            annotations: None,
         }
     }
 }

@@ -172,7 +172,7 @@ impl ServerHandler for GitIrisHandler {
 
     async fn list_tools(
         &self,
-        _: Option<PaginatedRequestParam>,
+        _: PaginatedRequestParam,
         _: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, Error> {
         // Use our custom method to get all tools
