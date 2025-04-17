@@ -6,6 +6,45 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2025-04-17
+
+### ✨ Added
+
+- ✨ Support explicit version name for changelog and release notes with new --version-name option (67d9ead)
+- ✨ Add Model Context Protocol (MCP) server integration with stdio and SSE transport options (22cabd4, 72c1651)
+- ✨ Implement MCP tools for commit messages, code reviews, changelogs, and release notes (251b070, f64ba1f, 67d0b8d, 891c416)
+- ✨ Add remote repository support for working with Git repos without manual checkout (3800d04)
+- ✨ Add project configuration command for team-shared settings via .irisconfig files (873c63a)
+- ✨ Add changelog file update functionality with --update and --file flags (0bc59d8)
+- ✨ Add GenericTextAnalyzer for improved text file support (e2ecaca)
+- ✨ Add quiet mode (--quiet/-q) and custom log file options (--log-file) (48db0ca)
+- 🐳 Add Docker support with multi-stage build for containerized usage (3db4460)
+- 🚀 Add publish workflow to Docker Hub and crates.io in CI/CD pipeline (37007eb)
+- 📝 Add project-specific configuration documentation (43d6611)
+- 📝 Add detailed changelog entries for versions 0.9.0 through 1.0.1 (46e4ad6)
+- ♻️ Refactor git module into specialized submodules for better organization (62e698f)
+
+### 🔄 Changed
+
+- 🔧 Make repository parameter required in MCP tools for improved reliability (c875ece)
+- 🔧 Reorganize Cargo.toml structure for better readability and discoverability (b33b61e)
+- 📝 Improve package description and keywords in Cargo.toml (d77fd02)
+- ♻️ Update RMCP dependency to use released version 0.1.5 instead of git dependency (2273811)
+
+### 🐛 Fixed
+
+- ⬆️ Update dependencies to their latest compatible versions (aff5be1)
+- 🔄 Update default LLM models to latest versions (OpenAI gpt-4.1, Anthropic claude-3-7-sonnet-latest) (2a5baf9)
+
+### 📊 Metrics
+
+- Total Commits: 30
+- Files Changed: 171
+- Insertions: 10405
+- Deletions: 2825
+
+<!-- -------------------------------------------------------------- -->
+
 ## [1.0.1] - 2025-03-30
 
 ### ✨ Added
