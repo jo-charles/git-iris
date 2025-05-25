@@ -97,11 +97,29 @@ enum_glob_use = { level = "deny", priority = 30 }
 unwrap_used = { level = "deny", priority = 30 }
 undocumented_unsafe_blocks = { level = "deny", priority = 30 }
 
+# Development/debugging lints
+dbg_macro = { level = "warn", priority = 31 }
+todo = { level = "warn", priority = 31 }
+#print_stdout = { level = "warn", priority = 31 }  # CLI should use proper output mechanisms
+
+# Async-specific lints (important for tokio-heavy codebase)
+future_not_send = { level = "warn", priority = 32 }
+async_yields_async = { level = "warn", priority = 32 }
+
+# String and collection efficiency 
+implicit_clone = { level = "warn", priority = 33 }
+inefficient_to_string = { level = "warn", priority = 33 }
+string_lit_as_bytes = { level = "warn", priority = 33 }
+
+# Code complexity (helpful for maintainability)
+too_many_lines = { level = "warn", priority = 34 }
+cognitive_complexity = { level = "warn", priority = 34 }
+
+# Error handling improvements
+result_large_err = { level = "warn", priority = 35 }
+
 # Future considerations
 #expect_used = { level = "deny", priority = 30 }
-#todo = { level = "warn", priority = 20 }           # Consider warning on TODOs
-#dbg_macro = { level = "warn", priority = 30 }      # Consider warning on dbg! macro usage
-#print_stdout = { level = "warn", priority = 30 }   # Consider warning on print!/println! usage
 
 [package.metadata.docs.rs]
 all-features = true
