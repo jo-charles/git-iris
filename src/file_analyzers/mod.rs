@@ -171,7 +171,7 @@ impl FileAnalyzer for DefaultAnalyzer {
 pub fn should_exclude_file(path: &str) -> bool {
     log_debug!("Checking if file should be excluded: {}", path);
     let exclude_patterns = vec![
-        (String::from(r"\.git"), false),
+        (String::from(r"(^|/)\.git(/|$)"), false), // Only exclude .git directory, not .github
         (String::from(r"\.svn"), false),
         (String::from(r"\.hg"), false),
         (String::from(r"\.DS_Store"), false),

@@ -1,5 +1,6 @@
 use git_iris::context::{ChangeType, StagedFile};
 use git_iris::file_analyzers::get_analyzer;
+use git_iris::file_analyzers::should_exclude_file;
 
 #[test]
 fn test_rust_analyzer() {
@@ -621,4 +622,23 @@ fn test_generic_text_analyzer() {
     // Only check for the main tags, not the nested ones
     assert!(tags_analysis.contains("servlet"));
     assert!(tags_analysis.contains("filter"));
+}
+
+#[test]
+fn test_github_files_not_excluded() {
+    // .github files should NOT be excluded
+    assert!(!should_exclude_file(".github/workflows/ci.yml"));
+    assert!(!should_exclude_file(".github/cicd.yml"));
+    assert!(!should_exclude_file(".github/ISSUE_TEMPLATE.md"));
+    assert!(!should_exclude_file("project/.github/workflows/test.yml"));
+
+    // .git directory should still be excluded
+    assert!(should_exclude_file(".git/config"));
+    assert!(should_exclude_file(".git/objects/abc123"));
+    assert!(should_exclude_file("project/.git/HEAD"));
+
+    // Other git-containing paths should not be excluded
+    assert!(!should_exclude_file("my-git-project/file.txt"));
+    assert!(!should_exclude_file("gitignore.txt"));
+    assert!(!should_exclude_file("digital-art.png"));
 }
