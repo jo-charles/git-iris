@@ -3,18 +3,17 @@ use crate::context::{ChangeType, RecentCommit};
 use crate::git::GitRepo;
 use anyhow::Result;
 use git2::{Diff, Oid};
-use once_cell::sync::Lazy;
 use regex::Regex;
 use std::sync::Arc;
 
 // Regex for extracting issue numbers (e.g., #123, GH-123)
-static ISSUE_RE: Lazy<Regex> = Lazy::new(|| {
+static ISSUE_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
     Regex::new(r"(?:#|GH-)(\d+)")
         .expect("Failed to compile issue number regex pattern - this is a bug")
 });
 
 // Regex for extracting pull request numbers (e.g., PR #123, pull request 123)
-static PR_RE: Lazy<Regex> = Lazy::new(|| {
+static PR_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
     Regex::new(r"(?i)(?:pull request|PR)\s*#?(\d+)")
         .expect("Failed to compile pull request regex pattern - this is a bug")
 });

@@ -1,31 +1,30 @@
 use super::{FileAnalyzer, ProjectMetadata};
 use crate::context::StagedFile;
-use once_cell::sync::Lazy;
 use regex::Regex;
 
 // Regex for extracting version from setup.py
-static SETUP_PY_VERSION_RE: Lazy<Regex> = Lazy::new(|| {
+static SETUP_PY_VERSION_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
     Regex::new(r#"version\s*=\s*['"]([^'"]+)['"]"#).expect("Should compile: SETUP_PY_VERSION_RE")
 });
 // Regex for extracting install_requires from setup.py
-static SETUP_PY_INSTALL_REQUIRES_RE: Lazy<Regex> = Lazy::new(|| {
+static SETUP_PY_INSTALL_REQUIRES_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
     Regex::new(r"install_requires\s*=\s*\[(.*?)\]")
         .expect("Should compile: SETUP_PY_INSTALL_REQUIRES_RE")
 });
 // Regex for extracting modified Python functions
-static PY_FUNCTION_RE: Lazy<Regex> = Lazy::new(|| {
+static PY_FUNCTION_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
     Regex::new(r"(?m)^[+-](?:(?:\s*@\w+\s*\n)+)?\s*def\s+(\w+)")
         .expect("Should compile: PY_FUNCTION_RE")
 });
 // Regex for extracting modified Python classes
-static PY_CLASS_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?m)^[+-]\s*class\s+(\w+)").expect("Should compile: PY_CLASS_RE"));
+static PY_CLASS_RE: std::sync::LazyLock<Regex> =
+    std::sync::LazyLock::new(|| Regex::new(r"(?m)^[+-]\s*class\s+(\w+)").expect("Should compile: PY_CLASS_RE"));
 // Regex for checking Python import changes
-static PY_IMPORT_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?m)^[+-]\s*(import|from)").expect("Should compile: PY_IMPORT_RE"));
+static PY_IMPORT_RE: std::sync::LazyLock<Regex> =
+    std::sync::LazyLock::new(|| Regex::new(r"(?m)^[+-]\s*(import|from)").expect("Should compile: PY_IMPORT_RE"));
 // Regex for extracting modified Python decorators
-static PY_DECORATOR_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?m)^[+-]\s*@(\w+)").expect("Should compile: PY_DECORATOR_RE"));
+static PY_DECORATOR_RE: std::sync::LazyLock<Regex> =
+    std::sync::LazyLock::new(|| Regex::new(r"(?m)^[+-]\s*@(\w+)").expect("Should compile: PY_DECORATOR_RE"));
 
 pub struct PythonAnalyzer;
 

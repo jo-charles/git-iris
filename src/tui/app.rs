@@ -100,7 +100,7 @@ impl TuiCommit {
             },
             Err(e) => {
                 eprintln!("An unexpected error occurred: {e}");
-                return Err(io::Error::new(io::ErrorKind::Other, e.to_string()));
+                return Err(io::Error::other(e.to_string()));
             }
         }
 

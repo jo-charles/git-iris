@@ -260,7 +260,7 @@ fn handle_selecting_preset(app: &mut TuiCommit, key: KeyEvent) -> InputResult {
         }
         KeyCode::PageUp => {
             let selected = app.state.preset_list_state.selected().unwrap_or(0);
-            let new_selected = if selected > 10 { selected - 10 } else { 0 };
+            let new_selected = selected.saturating_sub(10);
             app.state.preset_list_state.select(Some(new_selected));
             InputResult::Continue
         }

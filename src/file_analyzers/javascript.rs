@@ -1,28 +1,27 @@
 use super::{FileAnalyzer, ProjectMetadata};
 use crate::context::StagedFile;
-use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::HashSet;
 
 // Regex for extracting modified JS/TS functions (function keyword or const arrow func)
-static JS_FUNCTION_RE: Lazy<Regex> = Lazy::new(|| {
+static JS_FUNCTION_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
     Regex::new(r"(?m)^[+-]\s*(function\s+(\w+)|const\s+(\w+)\s*=\s*(\([^)]*\)\s*=>|\function))")
         .expect("Should compile: JS_FUNCTION_RE")
 });
 // Regex for extracting modified JS/TS classes
-static JS_CLASS_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?m)^[+-]\s*class\s+(\w+)").expect("Should compile: JS_CLASS_RE"));
+static JS_CLASS_RE: std::sync::LazyLock<Regex> =
+    std::sync::LazyLock::new(|| Regex::new(r"(?m)^[+-]\s*class\s+(\w+)").expect("Should compile: JS_CLASS_RE"));
 // Regex for checking JS/TS import/export changes
-static JS_IMPORT_EXPORT_RE: Lazy<Regex> = Lazy::new(|| {
+static JS_IMPORT_EXPORT_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
     Regex::new(r"(?m)^[+-]\s*(import|export)").expect("Should compile: JS_IMPORT_EXPORT_RE")
 });
 // Regex for extracting modified React class components
-static REACT_CLASS_COMPONENT_RE: Lazy<Regex> = Lazy::new(|| {
+static REACT_CLASS_COMPONENT_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
     Regex::new(r"(?m)^[+-]\s*class\s+(\w+)\s+extends\s+React\.Component")
         .expect("Should compile: REACT_CLASS_COMPONENT_RE")
 });
 // Regex for extracting modified React functional components
-static REACT_FUNC_COMPONENT_RE: Lazy<Regex> = Lazy::new(|| {
+static REACT_FUNC_COMPONENT_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
     Regex::new(r"(?m)^[+-]\s*(?:function\s+(\w+)|const\s+(\w+)\s*=)(?:\s*\([^)]*\))?\s*(?:=>)?\s*(?:\{[^}]*return|=>)\s*(?:<|\()").expect("Should compile: REACT_FUNC_COMPONENT_RE")
 });
 

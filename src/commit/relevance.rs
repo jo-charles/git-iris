@@ -14,7 +14,7 @@ impl Scorer for FileTypeScorer {
     fn score(&self, context: &CommitContext) -> HashMap<String, f32> {
         let mut scores = HashMap::new();
         for file in &context.staged_files {
-            let score = match file.path.split('.').last() {
+            let score = match file.path.split('.').next_back() {
                 Some("rs") => 1.0,
                 Some("js" | "ts") => 0.9,
                 Some("py") => 0.8,

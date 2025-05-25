@@ -1,30 +1,29 @@
 use super::{FileAnalyzer, ProjectMetadata};
 use crate::context::StagedFile;
-use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::HashSet;
 
 // Regex for extracting Gradle version from build.gradle.kts
-static GRADLE_KTS_VERSION_RE: Lazy<Regex> = Lazy::new(|| {
+static GRADLE_KTS_VERSION_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
     Regex::new(r#"version\s*=\s*['"](.*?)['"]"#).expect("Should compile: GRADLE_KTS_VERSION_RE")
 });
 // Regex for extracting Gradle dependencies from build.gradle.kts
-static GRADLE_KTS_DEPENDENCY_RE: Lazy<Regex> = Lazy::new(|| {
+static GRADLE_KTS_DEPENDENCY_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
     Regex::new(r#"implementation\s*\(\s*["'](.+?):(.+?):(.+?)["']\)"#)
         .expect("Should compile: GRADLE_KTS_DEPENDENCY_RE")
 });
 // Regex for extracting modified Kotlin classes/interfaces/objects
-static KOTLIN_CLASS_RE: Lazy<Regex> = Lazy::new(|| {
+static KOTLIN_CLASS_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
     Regex::new(r"(?m)^[+-]\s*(class|interface|object)\s+(\w+)")
         .expect("Should compile: KOTLIN_CLASS_RE")
 });
 // Regex for extracting modified Kotlin functions
-static KOTLIN_FUNCTION_RE: Lazy<Regex> = Lazy::new(|| {
+static KOTLIN_FUNCTION_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
     Regex::new(r"(?m)^[+-]\s*(fun)\s+(\w+)").expect("Should compile: KOTLIN_FUNCTION_RE")
 });
 // Regex for checking Kotlin import changes
-static KOTLIN_IMPORT_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?m)^[+-]\s*import\s+").expect("Should compile: KOTLIN_IMPORT_RE"));
+static KOTLIN_IMPORT_RE: std::sync::LazyLock<Regex> =
+    std::sync::LazyLock::new(|| Regex::new(r"(?m)^[+-]\s*import\s+").expect("Should compile: KOTLIN_IMPORT_RE"));
 
 pub struct KotlinAnalyzer;
 

@@ -1,20 +1,19 @@
 use super::{FileAnalyzer, ProjectMetadata};
 use crate::context::StagedFile;
 use crate::log_debug;
-use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::HashSet;
 
 // Regex for extracting modified top-level JSON keys
-static JSON_TOP_LEVEL_KEY_RE: Lazy<Result<Regex, regex::Error>> =
-    Lazy::new(|| Regex::new(r#"^[+-]\s*"(\w+)"\s*:"#));
+static JSON_TOP_LEVEL_KEY_RE: std::sync::LazyLock<Result<Regex, regex::Error>> =
+    std::sync::LazyLock::new(|| Regex::new(r#"^[+-]\s*"(\w+)"\s*:"#));
 // Regex for checking JSON array changes
-static JSON_ARRAY_CHANGE_RE: Lazy<Regex> = Lazy::new(|| {
+static JSON_ARRAY_CHANGE_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
     Regex::new(r#"(?m)^[+-]\s*(?:"[^"]+"\s*:\s*)?\[|\s*[+-]\s*"[^"]+","#)
         .expect("Should compile: JSON_ARRAY_CHANGE_RE")
 });
 // Regex for checking nested JSON object changes
-static JSON_NESTED_OBJECT_CHANGE_RE: Lazy<Regex> = Lazy::new(|| {
+static JSON_NESTED_OBJECT_CHANGE_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
     Regex::new(r#"(?m)^[+-]\s*"[^"]+"\s*:\s*\{|\s*[+-]\s*"[^"]+"\s*:"#)
         .expect("Should compile: JSON_NESTED_OBJECT_CHANGE_RE")
 });

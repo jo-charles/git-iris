@@ -1,40 +1,39 @@
 use super::{FileAnalyzer, ProjectMetadata};
 use crate::context::StagedFile;
-use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::HashSet;
 
 // Regex for extracting Maven version from pom.xml
-static MAVEN_VERSION_RE: Lazy<Regex> = Lazy::new(|| {
+static MAVEN_VERSION_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
     Regex::new(r"<version>(.+?)</version>").expect("Should compile: MAVEN_VERSION_RE")
 });
 // Regex for extracting Maven dependencies from pom.xml
-static MAVEN_DEPENDENCY_RE: Lazy<Regex> = Lazy::new(|| {
+static MAVEN_DEPENDENCY_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
     Regex::new(r"<dependency>\s*<groupId>(.+?)</groupId>\s*<artifactId>(.+?)</artifactId>")
         .expect("Should compile: MAVEN_DEPENDENCY_RE")
 });
 // Regex for extracting Gradle version from build.gradle
-static GRADLE_VERSION_RE: Lazy<Regex> = Lazy::new(|| {
+static GRADLE_VERSION_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
     Regex::new(r#"version\s*=\s*['"](.*?)['"]"#).expect("Should compile: GRADLE_VERSION_RE")
 });
 // Regex for extracting Gradle dependencies from build.gradle
-static GRADLE_DEPENDENCY_RE: Lazy<Regex> = Lazy::new(|| {
+static GRADLE_DEPENDENCY_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
     Regex::new(r#"implementation\s+['"](.+?):(.+?):"#)
         .expect("Should compile: GRADLE_DEPENDENCY_RE")
 });
 // Regex for extracting modified Java classes
-static JAVA_CLASS_RE: Lazy<Regex> = Lazy::new(|| {
+static JAVA_CLASS_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
     Regex::new(r"(?m)^[+-]\s*(public\s+|private\s+)?(class|interface|enum)\s+(\w+)")
         .expect("Should compile: JAVA_CLASS_RE")
 });
 // Regex for extracting modified Java methods
-static JAVA_METHOD_RE: Lazy<Regex> = Lazy::new(|| {
+static JAVA_METHOD_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
     Regex::new(r"(?m)^[+-]\s*(public|protected|private)?\s*\w+\s+(\w+)\s*\([^\)]*\)")
         .expect("Should compile: JAVA_METHOD_RE")
 });
 // Regex for checking Java import changes
-static JAVA_IMPORT_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?m)^[+-]\s*import\s+").expect("Should compile: JAVA_IMPORT_RE"));
+static JAVA_IMPORT_RE: std::sync::LazyLock<Regex> =
+    std::sync::LazyLock::new(|| Regex::new(r"(?m)^[+-]\s*import\s+").expect("Should compile: JAVA_IMPORT_RE"));
 
 pub struct JavaAnalyzer;
 

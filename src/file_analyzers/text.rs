@@ -1,23 +1,22 @@
 use super::{FileAnalyzer, ProjectMetadata};
 use crate::context::StagedFile;
-use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::HashSet;
 use std::path::Path;
 
 // Regex for detecting line additions/removals in diffs
-static DIFF_ADDED_REMOVED_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?m)^[+-][^+-]").expect("Should compile: DIFF_ADDED_REMOVED_RE"));
+static DIFF_ADDED_REMOVED_RE: std::sync::LazyLock<Regex> =
+    std::sync::LazyLock::new(|| Regex::new(r"(?m)^[+-][^+-]").expect("Should compile: DIFF_ADDED_REMOVED_RE"));
 
 // Regex for detecting key-value pairs in config-like files
-static CONFIG_KV_RE: Lazy<Regex> = Lazy::new(|| {
+static CONFIG_KV_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
     Regex::new(r"(?m)^[+-]?\s*(\w+[\w\.\-]*)\s*[=:]\s*(.+?)$")
         .expect("Should compile: CONFIG_KV_RE")
 });
 
 // Regex for detecting XML/HTML-like tags
-static TAG_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"</?(\w+)[\s>]").expect("Should compile: TAG_RE"));
+static TAG_RE: std::sync::LazyLock<Regex> =
+    std::sync::LazyLock::new(|| Regex::new(r"</?(\w+)[\s>]").expect("Should compile: TAG_RE"));
 
 /// Generic analyzer for text-based files without specialized analyzers
 pub struct GenericTextAnalyzer;

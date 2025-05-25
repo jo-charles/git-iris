@@ -1,7 +1,6 @@
 use colored::Colorize;
 use console::Term;
 use indicatif::{ProgressBar, ProgressStyle};
-use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use ratatui::style::Color;
 use std::fmt::Write;
@@ -19,7 +18,7 @@ pub const COMET_ORANGE: Color = Color::Rgb(255, 165, 0);
 pub const BLACK_HOLE: Color = Color::Rgb(0, 0, 0);
 
 /// Track quiet mode state
-static QUIET_MODE: Lazy<Mutex<bool>> = Lazy::new(|| Mutex::new(false));
+static QUIET_MODE: std::sync::LazyLock<Mutex<bool>> = std::sync::LazyLock::new(|| Mutex::new(false));
 
 /// Enable or disable quiet mode
 pub fn set_quiet_mode(enabled: bool) {

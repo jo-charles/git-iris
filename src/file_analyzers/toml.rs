@@ -1,24 +1,23 @@
 use super::{FileAnalyzer, ProjectMetadata};
 use crate::context::StagedFile;
-use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::HashSet;
 
 // Regex for extracting dependency names in TOML
-static TOML_DEPENDENCY_RE: Lazy<Regex> = Lazy::new(|| {
+static TOML_DEPENDENCY_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
     Regex::new(r"(?m)^[+-]\s*(?:dependencies|dev-dependencies|\[dependencies\]|\[dev-dependencies\]|\[\w+\.dependencies\])")
         .expect("Should compile: TOML_DEPENDENCY_RE")
 });
 
 // Regex for extracting package versions
-static TOML_VERSION_RE: Lazy<Regex> = Lazy::new(|| {
+static TOML_VERSION_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
     Regex::new(r#"(?m)^[+-]\s*version\s*=\s*["'](.+?)["']"#)
         .expect("Should compile: TOML_VERSION_RE")
 });
 
 // Regex for extracting section headers
-static TOML_SECTION_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?m)^[+-]\s*\[(.+?)\]").expect("Should compile: TOML_SECTION_RE"));
+static TOML_SECTION_RE: std::sync::LazyLock<Regex> =
+    std::sync::LazyLock::new(|| Regex::new(r"(?m)^[+-]\s*\[(.+?)\]").expect("Should compile: TOML_SECTION_RE"));
 
 /// Analyzer for TOML configuration files
 pub struct TomlAnalyzer;

@@ -1,23 +1,22 @@
 use super::{FileAnalyzer, ProjectMetadata};
 use crate::context::StagedFile;
-use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::HashSet;
 
 // Regex for extracting top-level version in YAML
-static YAML_VERSION_RE: Lazy<Regex> = Lazy::new(|| {
+static YAML_VERSION_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
     Regex::new(r#"(?m)^version:\s*['"]?(.+?)['"]?$"#).expect("Should compile: YAML_VERSION_RE")
 });
 // Regex for extracting modified top-level YAML keys
-static YAML_TOP_LEVEL_KEY_RE: Lazy<Regex> = Lazy::new(|| {
+static YAML_TOP_LEVEL_KEY_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
     Regex::new(r"(?m)^[+-]\s*(\w+):(?:\s|$)").expect("Should compile: YAML_TOP_LEVEL_KEY_RE")
 });
 // Regex for checking YAML list changes
-static YAML_LIST_CHANGE_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?m)^[+-]\s*-\s+").expect("Should compile: YAML_LIST_CHANGE_RE"));
+static YAML_LIST_CHANGE_RE: std::sync::LazyLock<Regex> =
+    std::sync::LazyLock::new(|| Regex::new(r"(?m)^[+-]\s*-\s+").expect("Should compile: YAML_LIST_CHANGE_RE"));
 // Regex for checking nested YAML changes (indented keys)
-static YAML_NESTED_CHANGE_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?m)^[+-]\s+\w+:").expect("Should compile: YAML_NESTED_CHANGE_RE"));
+static YAML_NESTED_CHANGE_RE: std::sync::LazyLock<Regex> =
+    std::sync::LazyLock::new(|| Regex::new(r"(?m)^[+-]\s+\w+:").expect("Should compile: YAML_NESTED_CHANGE_RE"));
 
 pub struct YamlAnalyzer;
 
