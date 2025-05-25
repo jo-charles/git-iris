@@ -1,7 +1,7 @@
 #![cfg(feature = "integration")]
 
 use anyhow::Result;
-use git_iris::cli::{Cli, Commands};
+use git_iris::cli::Commands;
 use git_iris::common::CommonParams;
 use git_iris::git::GitRepo;
 use std::env;
@@ -38,6 +38,7 @@ async fn test_cli_with_remote_repository() -> Result<()> {
         common: common.clone(),
         from: "v1.0.0".to_string(), // Use a tag that's likely to exist in the repo
         to: Some("HEAD".to_string()),
+        version_name: None,
     };
 
     // Just testing that it doesn't panic, we're not making actual API calls
@@ -52,6 +53,9 @@ async fn test_cli_with_remote_repository() -> Result<()> {
         common: common.clone(),
         from: "v1.0.0".to_string(),
         to: Some("HEAD".to_string()),
+        file: None,
+        update: false,
+        version_name: None,
     };
 
     // Just testing that it doesn't panic
@@ -65,6 +69,8 @@ async fn test_cli_with_remote_repository() -> Result<()> {
     let review_command = Commands::Review {
         common: common.clone(),
         print: true,
+        commit: None,
+        include_unstaged: false,
     };
 
     // Just testing that it doesn't panic

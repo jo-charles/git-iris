@@ -5,6 +5,7 @@ use git_iris::changes::models::{
 use git_iris::common::DetailLevel;
 use git2::Repository;
 
+use std::fmt::Write as FmtWrite;
 use std::path::Path;
 use std::str::FromStr;
 use tempfile::TempDir;
@@ -192,7 +193,9 @@ fn test_update_changelog_file_with_version_name() -> Result<()> {
     let custom_version = "2.0.0-alpha";
     ChangelogGenerator::update_changelog_file(
         changelog_content,
-        changelog_path.to_str().unwrap(),
+        changelog_path
+            .to_str()
+            .expect("Invalid path for changelog file"),
         &git_repo,
         "HEAD",
         Some(custom_version.to_string()),
@@ -266,16 +269,18 @@ impl ReleaseNotesWrapper {
         // Add header with either custom version or original version
         let version = version_name.unwrap_or_else(|| self.0.version.clone().unwrap_or_default());
 
-        formatted.push_str(&format!("# Release Notes - v{version}\n\n"));
+        write!(formatted, "# Release Notes - v{version}\n\n").unwrap();
 
         // Add release date (minimal implementation for test purposes)
-        formatted.push_str(&format!(
+        write!(
+            formatted,
             "Release Date: {}\n\n",
             self.0.release_date.clone().unwrap_or_default()
-        ));
+        )
+        .unwrap();
 
         // Add summary (minimal implementation for test purposes)
-        formatted.push_str(&format!("{}\n\n", self.0.summary));
+        write!(formatted, "{}\n\n", self.0.summary).unwrap();
 
         formatted
     }

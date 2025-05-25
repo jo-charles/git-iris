@@ -18,7 +18,8 @@ pub const COMET_ORANGE: Color = Color::Rgb(255, 165, 0);
 pub const BLACK_HOLE: Color = Color::Rgb(0, 0, 0);
 
 /// Track quiet mode state
-static QUIET_MODE: std::sync::LazyLock<Mutex<bool>> = std::sync::LazyLock::new(|| Mutex::new(false));
+static QUIET_MODE: std::sync::LazyLock<Mutex<bool>> =
+    std::sync::LazyLock::new(|| Mutex::new(false));
 
 /// Enable or disable quiet mode
 pub fn set_quiet_mode(enabled: bool) {
@@ -80,6 +81,29 @@ pub fn print_version(version: &str) {
             "version".cyan(),
             version.green()
         );
+    }
+}
+
+/// Print content with decorative borders
+pub fn print_bordered_content(content: &str) {
+    if !is_quiet_mode() {
+        println!("{}", "━".repeat(50).bright_purple());
+        println!("{content}");
+        println!("{}", "━".repeat(50).bright_purple());
+    }
+}
+
+/// Print a simple message (respects quiet mode)
+pub fn print_message(message: &str) {
+    if !is_quiet_mode() {
+        println!("{message}");
+    }
+}
+
+/// Print an empty line (respects quiet mode)
+pub fn print_newline() {
+    if !is_quiet_mode() {
+        println!();
     }
 }
 

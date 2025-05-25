@@ -362,7 +362,7 @@ async fn handle_gen(
     );
 
     ui::print_version(crate_version!());
-    println!();
+    ui::print_newline();
 
     commit::handle_gen_command(
         common,
@@ -410,7 +410,7 @@ async fn handle_review(
         commit
     );
     ui::print_version(crate_version!());
-    println!();
+    ui::print_newline();
     commit::review::handle_review_command(common, print, repository_url, include_unstaged, commit)
         .await
 }

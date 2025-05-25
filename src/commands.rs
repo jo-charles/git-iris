@@ -159,7 +159,7 @@ pub fn handle_config_command(
     if changes_made {
         config.save()?;
         ui::print_success("Configuration updated successfully.");
-        println!();
+        ui::print_newline();
     }
 
     // Print the configuration with beautiful styling
@@ -201,14 +201,17 @@ fn apply_project_config_changes(
 /// or shows a message if no project configuration is found.
 fn print_project_config() {
     if let Ok(project_config) = Config::load_project_config() {
-        println!(
+        ui::print_message(&format!(
             "\n{}",
             "Current project configuration:".bright_cyan().bold()
-        );
+        ));
         print_configuration(&project_config);
     } else {
-        println!("\n{}", "No project configuration file found.".yellow());
-        println!("You can create one with the project-config command.");
+        ui::print_message(&format!(
+            "\n{}",
+            "No project configuration file found.".yellow()
+        ));
+        ui::print_message("You can create one with the project-config command.");
     }
 }
 

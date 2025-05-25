@@ -3,6 +3,7 @@ use crate::instruction_presets::{PresetType, get_instruction_preset_library};
 use crate::llm;
 use anyhow::Result;
 use clap::Args;
+use std::fmt::Write;
 use std::str::FromStr;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -136,19 +137,23 @@ pub fn get_combined_instructions(config: &Config) -> String {
     let mut prompt = String::from("\n\n");
 
     if !config.instructions.is_empty() {
-        prompt.push_str(&format!(
+        write!(
+            &mut prompt,
             "\n\nAdditional instructions for the request:\n{}\n\n",
             config.instructions
-        ));
+        )
+        .expect("write to string should not fail");
     }
 
     let preset_library = get_instruction_preset_library();
     if let Some(preset_instructions) = preset_library.get_preset(config.instruction_preset.as_str())
     {
-        prompt.push_str(&format!(
+        write!(
+            &mut prompt,
             "\n\nIMPORTANT: Use this style for your output:\n{}\n\n",
             preset_instructions.instructions
-        ));
+        )
+        .expect("write to string should not fail");
     }
 
     prompt

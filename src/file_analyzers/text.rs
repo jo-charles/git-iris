@@ -5,8 +5,9 @@ use std::collections::HashSet;
 use std::path::Path;
 
 // Regex for detecting line additions/removals in diffs
-static DIFF_ADDED_REMOVED_RE: std::sync::LazyLock<Regex> =
-    std::sync::LazyLock::new(|| Regex::new(r"(?m)^[+-][^+-]").expect("Should compile: DIFF_ADDED_REMOVED_RE"));
+static DIFF_ADDED_REMOVED_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
+    Regex::new(r"(?m)^[+-][^+-]").expect("Should compile: DIFF_ADDED_REMOVED_RE")
+});
 
 // Regex for detecting key-value pairs in config-like files
 static CONFIG_KV_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {

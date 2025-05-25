@@ -27,8 +27,9 @@ static GRADLE_DEPENDENCY_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::n
         .expect("Should compile: GRADLE_DEPENDENCY_RE")
 });
 // Regex for extracting Gradle plugins
-static GRADLE_PLUGIN_RE: std::sync::LazyLock<Regex> =
-    std::sync::LazyLock::new(|| Regex::new(r#"id\s+['"](.+?)['"]"#).expect("Should compile: GRADLE_PLUGIN_RE"));
+static GRADLE_PLUGIN_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
+    Regex::new(r#"id\s+['"](.+?)['"]"#).expect("Should compile: GRADLE_PLUGIN_RE")
+});
 
 pub struct GradleAnalyzer;
 

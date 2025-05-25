@@ -6,6 +6,7 @@ use crate::common::{DetailLevel, get_combined_instructions};
 use crate::config::Config;
 use crate::gitmoji::get_gitmoji_list;
 use crate::log_debug;
+use std::fmt::Write;
 
 pub fn create_changelog_system_prompt(config: &Config) -> String {
     let changelog_schema = schemars::schema_for!(ChangelogResponse);
@@ -234,6 +235,87 @@ pub fn create_release_notes_system_prompt(config: &Config) -> String {
     prompt
 }
 
+/// Common helper function to format metrics summary
+fn format_metrics_summary(prompt: &mut String, total_metrics: &ChangeMetrics) {
+    prompt.push_str("Overall Changes:\n");
+    writeln!(prompt, "Total commits: {}", total_metrics.total_commits)
+        .expect("writing to string should never fail");
+    writeln!(prompt, "Files changed: {}", total_metrics.files_changed)
+        .expect("writing to string should never fail");
+    writeln!(
+        prompt,
+        "Total lines changed: {}",
+        total_metrics.total_lines_changed
+    )
+    .expect("writing to string should never fail");
+    writeln!(prompt, "Insertions: {}", total_metrics.insertions)
+        .expect("writing to string should never fail");
+    write!(prompt, "Deletions: {}\n\n", total_metrics.deletions)
+        .expect("writing to string should never fail");
+}
+
+/// Common helper function to format individual change details
+fn format_change_details(prompt: &mut String, change: &AnalyzedChange, detail_level: DetailLevel) {
+    writeln!(prompt, "Commit: {}", change.commit_hash).expect("writing to string should never fail");
+    writeln!(prompt, "Author: {}", change.author).expect("writing to string should never fail");
+    writeln!(prompt, "Message: {}", change.commit_message)
+        .expect("writing to string should never fail");
+    writeln!(prompt, "Type: {:?}", change.change_type).expect("writing to string should never fail");
+    writeln!(prompt, "Breaking Change: {}", change.is_breaking_change)
+        .expect("writing to string should never fail");
+    writeln!(
+        prompt,
+        "Associated Issues: {}",
+        change.associated_issues.join(", ")
+    )
+    .expect("writing to string should never fail");
+
+    if let Some(pr) = &change.pull_request {
+        writeln!(prompt, "Pull Request: {pr}").expect("writing to string should never fail");
+    }
+
+    writeln!(prompt, "Impact score: {:.2}", change.impact_score)
+        .expect("writing to string should never fail");
+
+    format_file_changes(prompt, change, detail_level);
+    prompt.push('\n');
+}
+
+/// Helper function to format file changes based on detail level
+fn format_file_changes(prompt: &mut String, change: &AnalyzedChange, detail_level: DetailLevel) {
+    match detail_level {
+        DetailLevel::Minimal => {
+            // For minimal detail, we don't include file-level changes
+        }
+        DetailLevel::Standard | DetailLevel::Detailed => {
+            prompt.push_str("File changes:\n");
+            for file_change in &change.file_changes {
+                writeln!(
+                    prompt,
+                    "  - {} ({:?})",
+                    file_change.new_path, file_change.change_type
+                )
+                .expect("writing to string should never fail");
+                if detail_level == DetailLevel::Detailed {
+                    for analysis in &file_change.analysis {
+                        writeln!(prompt, "    * {analysis}")
+                            .expect("writing to string should never fail");
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Helper function to add readme summary if available
+fn add_readme_summary(prompt: &mut String, readme_summary: Option<&str>) {
+    if let Some(summary) = readme_summary {
+        prompt.push_str("\nProject README Summary:\n");
+        prompt.push_str(summary);
+        prompt.push_str("\n\n");
+    }
+}
+
 pub fn create_changelog_user_prompt(
     changes: &[AnalyzedChange],
     total_metrics: &ChangeMetrics,
@@ -245,71 +327,15 @@ pub fn create_changelog_user_prompt(
     let mut prompt =
         format!("Based on the following changes from {from} to {to}, generate a changelog:\n\n");
 
-    prompt.push_str("Overall Changes:\n");
-    prompt.push_str(&format!("Total commits: {}\n", total_metrics.total_commits));
-    prompt.push_str(&format!("Files changed: {}\n", total_metrics.files_changed));
-    prompt.push_str(&format!(
-        "Total lines changed: {}\n",
-        total_metrics.total_lines_changed
-    ));
-    prompt.push_str(&format!("Insertions: {}\n", total_metrics.insertions));
-    prompt.push_str(&format!("Deletions: {}\n\n", total_metrics.deletions));
+    format_metrics_summary(&mut prompt, total_metrics);
 
     for change in changes {
-        prompt.push_str(&format!("Commit: {}\n", change.commit_hash));
-        prompt.push_str(&format!("Author: {}\n", change.author));
-        prompt.push_str(&format!("Message: {}\n", change.commit_message));
-        prompt.push_str(&format!("Type: {:?}\n", change.change_type));
-        prompt.push_str(&format!("Breaking Change: {}\n", change.is_breaking_change));
-        prompt.push_str(&format!(
-            "Associated Issues: {}\n",
-            change.associated_issues.join(", ")
-        ));
-        if let Some(pr) = &change.pull_request {
-            prompt.push_str(&format!("Pull Request: {pr}\n"));
-        }
-        prompt.push_str(&format!(
-            "Files changed: {}\n",
-            change.metrics.files_changed
-        ));
-        prompt.push_str(&format!(
-            "Lines changed: {}\n",
-            change.metrics.total_lines_changed
-        ));
-        prompt.push_str(&format!("Insertions: {}\n", change.metrics.insertions));
-        prompt.push_str(&format!("Deletions: {}\n", change.metrics.deletions));
-        prompt.push_str(&format!("Impact score: {:.2}\n", change.impact_score));
-
-        match detail_level {
-            DetailLevel::Minimal => {
-                // For minimal detail, we don't include file-level changes
-            }
-            DetailLevel::Standard | DetailLevel::Detailed => {
-                prompt.push_str("File changes:\n");
-                for file_change in &change.file_changes {
-                    prompt.push_str(&format!(
-                        "  - {} ({:?})\n",
-                        file_change.new_path, file_change.change_type
-                    ));
-                    if detail_level == DetailLevel::Detailed {
-                        for analysis in &file_change.analysis {
-                            prompt.push_str(&format!("    * {analysis}\n"));
-                        }
-                    }
-                }
-            }
-        }
-
-        prompt.push('\n');
+        format_change_details(&mut prompt, change, detail_level);
     }
 
-    if let Some(summary) = readme_summary {
-        prompt.push_str("\nProject README Summary:\n");
-        prompt.push_str(summary);
-        prompt.push_str("\n\n");
-    }
+    add_readme_summary(&mut prompt, readme_summary);
 
-    prompt.push_str(&format!("Please generate a {} changelog for the changes from {} to {}, adhering to the Keep a Changelog format. ", 
+    write!(&mut prompt, "Please generate a {} changelog for the changes from {} to {}, adhering to the Keep a Changelog format. ", 
         match detail_level {
             DetailLevel::Minimal => "concise",
             DetailLevel::Standard => "comprehensive",
@@ -317,7 +343,7 @@ pub fn create_changelog_user_prompt(
         },
         from,
         to
-    ));
+    ).expect("writing to string should never fail");
 
     prompt.push_str("Categorize the changes appropriately and focus on the most significant updates and their impact on the project. ");
     prompt.push_str("For each change, provide a clear description of what was changed, adhering to the guidelines in the system prompt. ");
@@ -342,61 +368,16 @@ pub fn create_release_notes_user_prompt(
     let mut prompt =
         format!("Based on the following changes from {from} to {to}, generate release notes:\n\n");
 
-    prompt.push_str("Overall Changes:\n");
-    prompt.push_str(&format!("Total commits: {}\n", changes.len()));
-    prompt.push_str(&format!("Files changed: {}\n", total_metrics.files_changed));
-    prompt.push_str(&format!(
-        "Total lines changed: {}\n",
-        total_metrics.total_lines_changed
-    ));
-    prompt.push_str(&format!("Insertions: {}\n", total_metrics.insertions));
-    prompt.push_str(&format!("Deletions: {}\n\n", total_metrics.deletions));
+    format_metrics_summary(&mut prompt, total_metrics);
 
     for change in changes {
-        prompt.push_str(&format!("Commit: {}\n", change.commit_hash));
-        prompt.push_str(&format!("Author: {}\n", change.author));
-        prompt.push_str(&format!("Message: {}\n", change.commit_message));
-        prompt.push_str(&format!("Type: {:?}\n", change.change_type));
-        prompt.push_str(&format!("Breaking Change: {}\n", change.is_breaking_change));
-        prompt.push_str(&format!(
-            "Associated Issues: {}\n",
-            change.associated_issues.join(", ")
-        ));
-        if let Some(pr) = &change.pull_request {
-            prompt.push_str(&format!("Pull Request: {pr}\n"));
-        }
-        prompt.push_str(&format!("Impact score: {:.2}\n", change.impact_score));
-
-        match detail_level {
-            DetailLevel::Minimal => {
-                // For minimal detail, we don't include file-level changes
-            }
-            DetailLevel::Standard | DetailLevel::Detailed => {
-                prompt.push_str("File changes:\n");
-                for file_change in &change.file_changes {
-                    prompt.push_str(&format!(
-                        "  - {} ({:?})\n",
-                        file_change.new_path, file_change.change_type
-                    ));
-                    if detail_level == DetailLevel::Detailed {
-                        for analysis in &file_change.analysis {
-                            prompt.push_str(&format!("    * {analysis}\n"));
-                        }
-                    }
-                }
-            }
-        }
-
-        prompt.push('\n');
+        format_change_details(&mut prompt, change, detail_level);
     }
 
-    if let Some(summary) = readme_summary {
-        prompt.push_str("\nProject README Summary:\n");
-        prompt.push_str(summary);
-        prompt.push_str("\n\n");
-    }
+    add_readme_summary(&mut prompt, readme_summary);
 
-    prompt.push_str(&format!(
+    write!(
+        &mut prompt,
         "Please generate {} release notes for the changes from {} to {}. ",
         match detail_level {
             DetailLevel::Minimal => "concise",
@@ -405,37 +386,31 @@ pub fn create_release_notes_user_prompt(
         },
         from,
         to
-    ));
-
-    prompt.push_str("Focus on the impact and benefits of the changes to users and developers. ");
-    prompt.push_str("Highlight key features, improvements, and fixes. ");
-    prompt.push_str("Include a high-level summary of the release, major changes, and any breaking changes or important upgrade notes. ");
-    prompt.push_str("Group changes into meaningful sections and explain the rationale behind important changes when possible. ");
-    prompt.push_str("Include associated issue numbers and pull request numbers when relevant. ");
+    )
+    .expect("writing to string should never fail");
 
     match detail_level {
         DetailLevel::Minimal => {
             prompt.push_str(
-                "Keep the release notes brief and focused on the most significant changes. ",
+                "Keep the release notes brief and focus only on the most critical changes. ",
             );
         }
         DetailLevel::Standard => {
-            prompt.push_str("Provide a balanced overview of all important changes, with some details on major features or fixes. ");
+            prompt.push_str("Provide a balanced overview of all significant changes. ");
         }
         DetailLevel::Detailed => {
-            prompt.push_str("Include detailed explanations of changes, their rationale, and potential impact on the project or workflow. ");
-            prompt.push_str("Provide context for technical changes and include file-level details where relevant. ");
+            prompt.push_str("Include detailed explanations and context for all changes. ");
         }
     }
 
-    if readme_summary.is_some() {
-        prompt.push_str("Ensure the release notes align with the project's overall goals and main features as described in the README summary. ");
-    }
+    prompt.push_str("Focus on user-facing changes and highlight the most impactful improvements, new features, and bug fixes. ");
+    prompt.push_str("Structure the notes to be clear and actionable for users and developers. ");
+    prompt.push_str("Include upgrade notes for any breaking changes. ");
+    prompt.push_str("Reference associated issues and pull requests where relevant. ");
 
-    prompt.push_str(
-        "Incorporate the overall metrics to give context about the scope of this release. ",
-    );
-    prompt.push_str("Pay special attention to changes with high impact scores, as they are likely to be the most significant. ");
+    if readme_summary.is_some() {
+        prompt.push_str("Use the README summary to understand the project context and ensure the release notes align with the project's purpose and user base. ");
+    }
 
     prompt
 }

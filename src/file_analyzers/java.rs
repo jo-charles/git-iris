@@ -32,8 +32,9 @@ static JAVA_METHOD_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| 
         .expect("Should compile: JAVA_METHOD_RE")
 });
 // Regex for checking Java import changes
-static JAVA_IMPORT_RE: std::sync::LazyLock<Regex> =
-    std::sync::LazyLock::new(|| Regex::new(r"(?m)^[+-]\s*import\s+").expect("Should compile: JAVA_IMPORT_RE"));
+static JAVA_IMPORT_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
+    Regex::new(r"(?m)^[+-]\s*import\s+").expect("Should compile: JAVA_IMPORT_RE")
+});
 
 pub struct JavaAnalyzer;
 

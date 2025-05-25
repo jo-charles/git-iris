@@ -84,26 +84,29 @@ fn setup_test_repo() -> Result<(TempDir, Repository)> {
     Ok((temp_dir, repo))
 }
 
-fn setup_config() -> Result<Config> {
+fn setup_config() -> Config {
     dotenv().ok();
-    let mut config = Config::default();
-    config.default_provider = "openai".to_string();
+    let mut config = Config {
+        default_provider: "openai".to_string(),
+        ..Default::default()
+    };
     let api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
     config
         .providers
         .get_mut(&config.default_provider)
-        .unwrap()
+        .expect("OpenAI provider config not found")
         .api_key = api_key;
-    Ok(config)
+    config
 }
 
 #[tokio::test]
 async fn test_changelog_generation() -> Result<()> {
     let (temp_dir, _repo) = setup_test_repo()?;
-    let config = setup_config()?;
+    let config = setup_config();
 
+    let repo_path = std::sync::Arc::new(git_iris::git::GitRepo::new(temp_dir.path())?);
     let changelog = ChangelogGenerator::generate(
-        temp_dir.path(),
+        repo_path,
         "v1.0.0",
         "v1.1.0",
         &config,
@@ -140,14 +143,16 @@ async fn test_changelog_generation() -> Result<()> {
 #[tokio::test]
 async fn test_release_notes_generation() -> Result<()> {
     let (temp_dir, _repo) = setup_test_repo()?;
-    let config = setup_config()?;
+    let config = setup_config();
 
+    let repo_path = std::sync::Arc::new(git_iris::git::GitRepo::new(temp_dir.path())?);
     let release_notes = ReleaseNotesGenerator::generate(
-        temp_dir.path(),
+        repo_path,
         "v1.0.0",
         "v1.1.0",
         &config,
         DetailLevel::Standard,
+        None,
     )
     .await?;
 
@@ -180,7 +185,7 @@ async fn test_release_notes_generation() -> Result<()> {
 #[tokio::test]
 async fn test_changelog_generation_with_custom_version() -> Result<()> {
     let (temp_dir, _repo) = setup_test_repo()?;
-    let config = setup_config()?;
+    let config = setup_config();
     let custom_version = "v2.0.0-beta";
 
     // We need to provide a path to GitRepo for this integration test
@@ -200,7 +205,9 @@ async fn test_changelog_generation_with_custom_version() -> Result<()> {
     let changelog_path = temp_dir.path().join("CHANGELOG.md");
     ChangelogGenerator::update_changelog_file(
         &changelog,
-        changelog_path.to_str().unwrap(),
+        changelog_path
+            .to_str()
+            .expect("Invalid path for changelog file"),
         &repo_path,
         "HEAD",
         Some(custom_version.to_string()),
@@ -209,7 +216,7 @@ async fn test_changelog_generation_with_custom_version() -> Result<()> {
     // Read the content to verify the custom version was used
     let content = std::fs::read_to_string(&changelog_path)?;
     assert!(
-        content.contains(&format!("## [{}]", custom_version)),
+        content.contains(&format!("## [{custom_version}]")),
         "Changelog should contain the custom version name"
     );
 
@@ -219,7 +226,7 @@ async fn test_changelog_generation_with_custom_version() -> Result<()> {
 #[tokio::test]
 async fn test_release_notes_generation_with_custom_version() -> Result<()> {
     let (temp_dir, _repo) = setup_test_repo()?;
-    let config = setup_config()?;
+    let config = setup_config();
     let custom_version = "v2.0.0-rc1";
 
     // We need to provide a path to GitRepo for this integration test
@@ -238,7 +245,7 @@ async fn test_release_notes_generation_with_custom_version() -> Result<()> {
 
     // Verify the custom version was used
     assert!(
-        release_notes.contains(&format!("Release Notes - v{}", custom_version)),
+        release_notes.contains(&format!("Release Notes - v{custom_version}")),
         "Release notes should contain the custom version name"
     );
 

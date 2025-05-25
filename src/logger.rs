@@ -7,9 +7,12 @@ use std::io::Write;
 struct GitIrisLogger;
 
 static LOGGER: GitIrisLogger = GitIrisLogger;
-static LOGGING_ENABLED: std::sync::LazyLock<Mutex<bool>> = std::sync::LazyLock::new(|| Mutex::new(false));
-static LOG_FILE: std::sync::LazyLock<Mutex<Option<std::fs::File>>> = std::sync::LazyLock::new(|| Mutex::new(None));
-static LOG_TO_STDOUT: std::sync::LazyLock<Mutex<bool>> = std::sync::LazyLock::new(|| Mutex::new(false));
+static LOGGING_ENABLED: std::sync::LazyLock<Mutex<bool>> =
+    std::sync::LazyLock::new(|| Mutex::new(false));
+static LOG_FILE: std::sync::LazyLock<Mutex<Option<std::fs::File>>> =
+    std::sync::LazyLock::new(|| Mutex::new(None));
+static LOG_TO_STDOUT: std::sync::LazyLock<Mutex<bool>> =
+    std::sync::LazyLock::new(|| Mutex::new(false));
 
 impl log::Log for GitIrisLogger {
     fn enabled(&self, metadata: &Metadata) -> bool {

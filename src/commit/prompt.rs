@@ -8,6 +8,7 @@ use crate::gitmoji::{apply_gitmoji, get_gitmoji_list};
 use super::relevance::RelevanceScorer;
 use crate::log_debug;
 use std::collections::HashMap;
+use std::fmt::Write;
 
 pub fn create_system_prompt(config: &Config) -> anyhow::Result<String> {
     let commit_schema = schemars::schema_for!(GeneratedMessage);
@@ -368,7 +369,8 @@ pub fn create_review_system_prompt(config: &Config) -> anyhow::Result<String> {
 
         if is_first {
             is_first = false;
-            prompt.push_str(&format!(
+            write!(
+                &mut prompt,
                 "
           \"{dim_name}\": {{
             \"issues_found\": true/false,
@@ -383,12 +385,15 @@ pub fn create_review_system_prompt(config: &Config) -> anyhow::Result<String> {
               ...
             ]
           }}"
-            ));
+            )
+            .expect("write to string should not fail");
         } else {
-            prompt.push_str(&format!(
+            write!(
+                &mut prompt,
                 ",
           \"{dim_name}\": {{ ... similar structure ... }}"
-            ));
+            )
+            .expect("write to string should not fail");
         }
     }
 

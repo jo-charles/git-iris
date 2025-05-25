@@ -13,6 +13,7 @@ pub use service::IrisCommitService;
 pub use types::{GeneratedMessage, format_commit_message};
 
 use crate::git::CommitResult;
+use std::fmt::Write;
 
 pub fn format_commit_result(result: &CommitResult, message: &str) -> String {
     let mut output = format!(
@@ -22,22 +23,26 @@ pub fn format_commit_result(result: &CommitResult, message: &str) -> String {
         message.lines().next().unwrap_or("")
     );
 
-    output.push_str(&format!(
-        " {} file{} changed, {} insertion{}(+), {} deletion{}(-)\n",
+    writeln!(
+        &mut output,
+        " {} file{} changed, {} insertion{}(+), {} deletion{}(-)",
         result.files_changed,
         if result.files_changed == 1 { "" } else { "s" },
         result.insertions,
         if result.insertions == 1 { "" } else { "s" },
         result.deletions,
         if result.deletions == 1 { "" } else { "s" }
-    ));
+    )
+    .expect("writing to string should never fail");
 
     for (file, mode) in &result.new_files {
-        output.push_str(&format!(
-            " create mode {} {}\n",
+        writeln!(
+            &mut output,
+            " create mode {} {}",
             format_file_mode(*mode),
             file
-        ));
+        )
+        .expect("writing to string should never fail");
     }
 
     output

@@ -1,5 +1,6 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use std::fmt::Write;
 use textwrap::wrap;
 
 /// Model for commit message generation results
@@ -18,7 +19,7 @@ pub fn format_commit_message(response: &GeneratedMessage) -> String {
     let mut message = String::new();
 
     if let Some(emoji) = &response.emoji {
-        message.push_str(&format!("{emoji} "));
+        write!(&mut message, "{emoji} ").expect("write to string should not fail");
     }
 
     message.push_str(&response.title);

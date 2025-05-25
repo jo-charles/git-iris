@@ -84,9 +84,8 @@ pub async fn handle_changelog_command(
     // Clear the spinner and display the result
     spinner.finish_and_clear();
 
-    println!("{}", "━".repeat(50).bright_purple());
-    println!("{}", &changelog);
-    println!("{}", "━".repeat(50).bright_purple());
+    // Output the changelog with decorative borders
+    ui::print_bordered_content(&changelog);
 
     // Update the changelog file if requested
     if update_file {
@@ -185,9 +184,8 @@ pub async fn handle_release_notes_command(
     // Clear the spinner and display the result
     spinner.finish_and_clear();
 
-    println!("{}", "━".repeat(50).bright_purple());
-    println!("{}", &release_notes);
-    println!("{}", "━".repeat(50).bright_purple());
+    // Output the release notes with decorative borders
+    ui::print_bordered_content(&release_notes);
 
     Ok(())
 }

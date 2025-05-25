@@ -22,8 +22,9 @@ static KOTLIN_FUNCTION_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new
     Regex::new(r"(?m)^[+-]\s*(fun)\s+(\w+)").expect("Should compile: KOTLIN_FUNCTION_RE")
 });
 // Regex for checking Kotlin import changes
-static KOTLIN_IMPORT_RE: std::sync::LazyLock<Regex> =
-    std::sync::LazyLock::new(|| Regex::new(r"(?m)^[+-]\s*import\s+").expect("Should compile: KOTLIN_IMPORT_RE"));
+static KOTLIN_IMPORT_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
+    Regex::new(r"(?m)^[+-]\s*import\s+").expect("Should compile: KOTLIN_IMPORT_RE")
+});
 
 pub struct KotlinAnalyzer;
 

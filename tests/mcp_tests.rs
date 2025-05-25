@@ -12,7 +12,7 @@ mod tests {
     use std::sync::Arc;
 
     // Helper function to create a Map<String, Value> from a JSON object
-    fn create_params_map(json_value: Value) -> Map<String, Value> {
+    fn create_params_map(json_value: &Value) -> Map<String, Value> {
         json_value
             .as_object()
             .expect("JSON value must be an object")
@@ -74,7 +74,7 @@ mod tests {
     #[ignore = "Run manually when testing MCP functionality"]
     async fn test_tools_conversion() {
         // Create parameters for the release notes tool
-        let args = create_params_map(json!({
+        let args = create_params_map(&json!({
             "from": "HEAD~5",
             "to": "HEAD",
             "detail_level": "minimal",

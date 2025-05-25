@@ -17,11 +17,13 @@ static C_FUNCTION_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
         .expect("Should compile: C_FUNCTION_RE")
 });
 // Regex for extracting modified C structs
-static C_STRUCT_RE: std::sync::LazyLock<Regex> =
-    std::sync::LazyLock::new(|| Regex::new(r"(?m)^[+-]\s*struct\s+(\w+)").expect("Should compile: C_STRUCT_RE"));
+static C_STRUCT_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
+    Regex::new(r"(?m)^[+-]\s*struct\s+(\w+)").expect("Should compile: C_STRUCT_RE")
+});
 // Regex for checking C include changes
-static C_INCLUDE_RE: std::sync::LazyLock<Regex> =
-    std::sync::LazyLock::new(|| Regex::new(r"(?m)^[+-]\s*#include").expect("Should compile: C_INCLUDE_RE"));
+static C_INCLUDE_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
+    Regex::new(r"(?m)^[+-]\s*#include").expect("Should compile: C_INCLUDE_RE")
+});
 
 pub struct CAnalyzer;
 

@@ -3,8 +3,9 @@ use crate::context::StagedFile;
 use regex::Regex;
 
 // Regex for extracting the first H1 header (potential project title)
-static MD_TITLE_RE: std::sync::LazyLock<Regex> =
-    std::sync::LazyLock::new(|| Regex::new(r"(?m)^#\s+(.+)$").expect("Should compile: MD_TITLE_RE"));
+static MD_TITLE_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
+    Regex::new(r"(?m)^#\s+(.+)$").expect("Should compile: MD_TITLE_RE")
+});
 // Regex for extracting version string (case-insensitive)
 static MD_VERSION_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
     Regex::new(r"(?i)version[:\s]+(\d+\.\d+\.\d+)").expect("Should compile: MD_VERSION_RE")
@@ -14,14 +15,17 @@ static MD_MODIFIED_HEADER_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::
     Regex::new(r"[+-]\s*(#{1,6})\s+(.+)").expect("Should compile: MD_MODIFIED_HEADER_RE")
 });
 // Regex for checking list item changes
-static MD_LIST_CHANGE_RE: std::sync::LazyLock<Regex> =
-    std::sync::LazyLock::new(|| Regex::new(r"[+-]\s*[-*+]\s+").expect("Should compile: MD_LIST_CHANGE_RE"));
+static MD_LIST_CHANGE_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
+    Regex::new(r"[+-]\s*[-*+]\s+").expect("Should compile: MD_LIST_CHANGE_RE")
+});
 // Regex for checking code block changes (```)
-static MD_CODE_BLOCK_CHANGE_RE: std::sync::LazyLock<Regex> =
-    std::sync::LazyLock::new(|| Regex::new(r"[+-]\s*```").expect("Should compile: MD_CODE_BLOCK_CHANGE_RE"));
+static MD_CODE_BLOCK_CHANGE_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
+    Regex::new(r"[+-]\s*```").expect("Should compile: MD_CODE_BLOCK_CHANGE_RE")
+});
 // Regex for checking link changes ([text](url))
-static MD_LINK_CHANGE_RE: std::sync::LazyLock<Regex> =
-    std::sync::LazyLock::new(|| Regex::new(r"[+-]\s*\[.+\]\(.+\)").expect("Should compile: MD_LINK_CHANGE_RE"));
+static MD_LINK_CHANGE_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
+    Regex::new(r"[+-]\s*\[.+\]\(.+\)").expect("Should compile: MD_LINK_CHANGE_RE")
+});
 
 pub struct MarkdownAnalyzer;
 

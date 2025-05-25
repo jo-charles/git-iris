@@ -16,8 +16,9 @@ static TOML_VERSION_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(||
 });
 
 // Regex for extracting section headers
-static TOML_SECTION_RE: std::sync::LazyLock<Regex> =
-    std::sync::LazyLock::new(|| Regex::new(r"(?m)^[+-]\s*\[(.+?)\]").expect("Should compile: TOML_SECTION_RE"));
+static TOML_SECTION_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
+    Regex::new(r"(?m)^[+-]\s*\[(.+?)\]").expect("Should compile: TOML_SECTION_RE")
+});
 
 /// Analyzer for TOML configuration files
 pub struct TomlAnalyzer;

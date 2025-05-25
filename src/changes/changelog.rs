@@ -9,6 +9,7 @@ use anyhow::{Context, Result};
 use chrono;
 use colored::Colorize;
 use regex;
+use std::fmt::Write as FmtWrite;
 use std::fs;
 use std::io::Write;
 use std::path::Path;
@@ -244,7 +245,8 @@ fn format_changelog_response(response: &ChangelogResponse) -> String {
         .clone()
         .unwrap_or_else(|| "Unreleased".to_string());
 
-    formatted.push_str(&format!("## [{}] - \n\n", version.bright_green().bold()));
+    write!(formatted, "## [{}] - \n\n", version.bright_green().bold())
+        .expect("writing to string should never fail");
 
     // Define the order of change types
     let ordered_types = [
@@ -308,17 +310,21 @@ fn format_change_entry(entry: &ChangeEntry) -> String {
     let mut formatted = format!("- {}", entry.description);
 
     if !entry.associated_issues.is_empty() {
-        formatted.push_str(&format!(
+        write!(
+            formatted,
             " ({})",
             entry.associated_issues.join(", ").yellow()
-        ));
+        )
+        .expect("writing to string should never fail");
     }
 
     if let Some(pr) = &entry.pull_request {
-        formatted.push_str(&format!(" [{}]", pr.bright_purple()));
+        write!(formatted, " [{}]", pr.bright_purple())
+            .expect("writing to string should never fail");
     }
 
-    formatted.push_str(&format!(" ({})\n", entry.commit_hashes.join(", ").dimmed()));
+    writeln!(formatted, " ({})", entry.commit_hashes.join(", ").dimmed())
+        .expect("writing to string should never fail");
 
     formatted
 }

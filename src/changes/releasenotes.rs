@@ -8,6 +8,7 @@ use crate::config::Config;
 use crate::git::GitRepo;
 use anyhow::Result;
 use colored::Colorize;
+use std::fmt::Write as FmtWrite;
 use std::sync::Arc;
 
 /// Struct responsible for generating release notes
@@ -67,17 +68,22 @@ fn format_release_notes_response(
         None => response.version.clone().unwrap_or_default(),
     };
 
-    formatted.push_str(&format!(
+    write!(
+        formatted,
         "# Release Notes - v{}\n\n",
         version.bright_green().bold()
-    ));
-    formatted.push_str(&format!(
+    )
+    .expect("writing to string should never fail");
+    write!(
+        formatted,
         "Release Date: {}\n\n",
         response.release_date.clone().unwrap_or_default().yellow()
-    ));
+    )
+    .expect("writing to string should never fail");
 
     // Add summary
-    formatted.push_str(&format!("{}\n\n", response.summary.bright_cyan()));
+    write!(formatted, "{}\n\n", response.summary.bright_cyan())
+        .expect("writing to string should never fail");
 
     // Add highlights
     if !response.highlights.is_empty() {
@@ -104,7 +110,8 @@ fn format_release_notes_response(
     if !response.upgrade_notes.is_empty() {
         formatted.push_str(&"## 🔧 Upgrade Notes\n\n".yellow().bold().to_string());
         for note in &response.upgrade_notes {
-            formatted.push_str(&format!("- {note}\n"));
+            writeln!(formatted, "- {note}")
+                .expect("writing to string should never fail");
         }
         formatted.push('\n');
     }
@@ -140,14 +147,17 @@ fn format_section_item(item: &SectionItem) -> String {
     let mut formatted = format!("- {}", item.description);
 
     if !item.associated_issues.is_empty() {
-        formatted.push_str(&format!(
+        write!(
+            formatted,
             " ({})",
             item.associated_issues.join(", ").yellow()
-        ));
+        )
+        .expect("writing to string should never fail");
     }
 
     if let Some(pr) = &item.pull_request {
-        formatted.push_str(&format!(" [{}]", pr.bright_purple()));
+        write!(formatted, " [{}]", pr.bright_purple())
+            .expect("writing to string should never fail");
     }
 
     formatted.push('\n');

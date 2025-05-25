@@ -17,11 +17,13 @@ static CPP_FUNCTION_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(||
         .expect("Should compile: CPP_FUNCTION_RE")
 });
 // Regex for extracting modified C++ classes
-static CPP_CLASS_RE: std::sync::LazyLock<Regex> =
-    std::sync::LazyLock::new(|| Regex::new(r"(?m)^[+-]\s*class\s+(\w+)").expect("Should compile: CPP_CLASS_RE"));
+static CPP_CLASS_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
+    Regex::new(r"(?m)^[+-]\s*class\s+(\w+)").expect("Should compile: CPP_CLASS_RE")
+});
 // Regex for checking C++ include changes
-static CPP_INCLUDE_RE: std::sync::LazyLock<Regex> =
-    std::sync::LazyLock::new(|| Regex::new(r"(?m)^[+-]\s*#include").expect("Should compile: CPP_INCLUDE_RE"));
+static CPP_INCLUDE_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
+    Regex::new(r"(?m)^[+-]\s*#include").expect("Should compile: CPP_INCLUDE_RE")
+});
 
 pub struct CppAnalyzer;
 

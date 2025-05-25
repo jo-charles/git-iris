@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::LazyLock;
 
 fn create_gitmoji_map() -> HashMap<&'static str, (&'static str, &'static str)> {
     let mut m = HashMap::new();
@@ -41,9 +42,8 @@ fn create_gitmoji_map() -> HashMap<&'static str, (&'static str, &'static str)> {
     m
 }
 
-lazy_static::lazy_static! {
-    static ref GITMOJI_MAP: HashMap<&'static str, (&'static str, &'static str)> = create_gitmoji_map();
-}
+static GITMOJI_MAP: LazyLock<HashMap<&'static str, (&'static str, &'static str)>> =
+    LazyLock::new(create_gitmoji_map);
 
 pub fn get_gitmoji(commit_type: &str) -> Option<&'static str> {
     GITMOJI_MAP.get(commit_type).map(|&(emoji, _)| emoji)

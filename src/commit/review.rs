@@ -1,6 +1,7 @@
 use colored::Colorize;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use std::fmt::Write;
 use textwrap;
 
 /// Width in characters for wrapping explanations in code reviews
@@ -249,21 +250,29 @@ pub struct GeneratedReview {
 }
 
 impl GeneratedReview {
-    /// Formats a location string to ensure it includes file reference when possible
-    ///
-    /// Intelligently formats location strings by detecting whether they already
-    /// contain a file reference or just line numbers.
+    /// Validates if the location string is parseable for better error handling
     pub fn format_location(location: &str) -> String {
-        if location.contains(':')
-            || location.to_lowercase().contains(".rs")
-            || location.to_lowercase().contains(".ts")
-            || location.to_lowercase().contains(".js")
+        // If it already contains keywords like "line", "file", or "in", return as-is
+        if location.to_lowercase().contains("line")
             || location.to_lowercase().contains("file")
+            || location.to_lowercase().contains(" in ")
         {
-            // This is likely a file reference
+            return location.to_string();
+        }
+
+        // If it looks like a file path (contains "/" or "\\" and ":"), return as-is
+        if location.contains(':') && (location.contains('/') || location.contains('\\')) {
             location.to_string()
-        } else if location.to_lowercase().contains("line") {
-            // This already mentions line numbers
+        } else if location.contains(':') {
+            // Treat as file:line_numbers format without path separators
+            format!("in {location}")
+        } else if location.contains('.')
+            && location
+                .split('.')
+                .next_back()
+                .is_some_and(|ext| !ext.is_empty())
+        {
+            // Looks like a filename with extension, return as-is
             location.to_string()
         } else {
             // Treat as just line numbers - explicitly mention it's line numbers
@@ -275,103 +284,134 @@ impl GeneratedReview {
     pub fn format(&self) -> String {
         let mut formatted = String::new();
 
-        formatted.push_str(&format!(
-            "{}\n\n{}\n\n",
-            "✧･ﾟ: *✧･ﾟ CODE REVIEW ✧･ﾟ: *✧･ﾟ".bright_magenta().bold(),
-            self.summary.bright_white()
-        ));
-
-        formatted.push_str(&format!(
-            "{}\n\n{}\n\n",
-            "◤ QUALITY ASSESSMENT ◢".bright_cyan().bold(),
-            self.code_quality.bright_white()
-        ));
-
-        if !self.positive_aspects.is_empty() {
-            formatted.push_str(&format!("{}\n\n", "✅ STRENGTHS //".green().bold()));
-            for aspect in &self.positive_aspects {
-                formatted.push_str(&format!("  {} {}\n", "•".bright_green(), aspect.green()));
-            }
-            formatted.push('\n');
-        }
-
-        if !self.issues.is_empty() {
-            formatted.push_str(&format!("{}\n\n", "⚠️ CORE ISSUES //".yellow().bold()));
-            for issue in &self.issues {
-                formatted.push_str(&format!("  {} {}\n", "•".bright_yellow(), issue.yellow()));
-            }
-            formatted.push('\n');
-        }
-
-        // Format the dimension-specific analyses if they exist
-        Self::format_dimension_analysis(
-            &mut formatted,
-            QualityDimension::Complexity,
-            self.complexity.as_ref(),
-        );
-        Self::format_dimension_analysis(
-            &mut formatted,
-            QualityDimension::Abstraction,
-            self.abstraction.as_ref(),
-        );
-        Self::format_dimension_analysis(
-            &mut formatted,
-            QualityDimension::Deletion,
-            self.deletion.as_ref(),
-        );
-        Self::format_dimension_analysis(
-            &mut formatted,
-            QualityDimension::Hallucination,
-            self.hallucination.as_ref(),
-        );
-        Self::format_dimension_analysis(
-            &mut formatted,
-            QualityDimension::Style,
-            self.style.as_ref(),
-        );
-        Self::format_dimension_analysis(
-            &mut formatted,
-            QualityDimension::Security,
-            self.security.as_ref(),
-        );
-        Self::format_dimension_analysis(
-            &mut formatted,
-            QualityDimension::Performance,
-            self.performance.as_ref(),
-        );
-        Self::format_dimension_analysis(
-            &mut formatted,
-            QualityDimension::Duplication,
-            self.duplication.as_ref(),
-        );
-        Self::format_dimension_analysis(
-            &mut formatted,
-            QualityDimension::ErrorHandling,
-            self.error_handling.as_ref(),
-        );
-        Self::format_dimension_analysis(
-            &mut formatted,
-            QualityDimension::Testing,
-            self.testing.as_ref(),
-        );
-        Self::format_dimension_analysis(
-            &mut formatted,
-            QualityDimension::BestPractices,
-            self.best_practices.as_ref(),
-        );
-
-        if !self.suggestions.is_empty() {
-            formatted.push_str(&format!("{}\n\n", "💡 SUGGESTIONS //".bright_blue().bold()));
-            for suggestion in &self.suggestions {
-                formatted.push_str(&format!(
-                    "  {} {}\n",
-                    "•".bright_cyan(),
-                    suggestion.bright_blue()
-                ));
-            }
-        }
+        Self::format_header(&mut formatted, &self.summary, &self.code_quality);
+        Self::format_positive_aspects(&mut formatted, &self.positive_aspects);
+        Self::format_issues(&mut formatted, &self.issues);
+        Self::format_all_dimension_analyses(&mut formatted, self);
+        Self::format_suggestions(&mut formatted, &self.suggestions);
 
         formatted
+    }
+
+    /// Formats the header section with title, summary, and quality assessment
+    fn format_header(formatted: &mut String, summary: &str, code_quality: &str) {
+        write!(
+            formatted,
+            "{}\n\n{}\n\n",
+            "✧･ﾟ: *✧･ﾟ CODE REVIEW ✧･ﾟ: *✧･ﾟ".bright_magenta().bold(),
+            summary.bright_white()
+        )
+        .expect("write to string should not fail");
+
+        write!(
+            formatted,
+            "{}\n\n{}\n\n",
+            "◤ QUALITY ASSESSMENT ◢".bright_cyan().bold(),
+            code_quality.bright_white()
+        )
+        .expect("write to string should not fail");
+    }
+
+    /// Formats the positive aspects section
+    fn format_positive_aspects(formatted: &mut String, positive_aspects: &[String]) {
+        if !positive_aspects.is_empty() {
+            write!(formatted, "{}\n\n", "✅ STRENGTHS //".green().bold())
+                .expect("write to string should not fail");
+            for aspect in positive_aspects {
+                writeln!(formatted, "  {} {}", "•".bright_green(), aspect.green())
+                    .expect("write to string should not fail");
+            }
+            formatted.push('\n');
+        }
+    }
+
+    /// Formats the issues section
+    fn format_issues(formatted: &mut String, issues: &[String]) {
+        if !issues.is_empty() {
+            write!(formatted, "{}\n\n", "⚠️ CORE ISSUES //".yellow().bold())
+                .expect("write to string should not fail");
+            for issue in issues {
+                writeln!(formatted, "  {} {}", "•".bright_yellow(), issue.yellow())
+                    .expect("write to string should not fail");
+            }
+            formatted.push('\n');
+        }
+    }
+
+    /// Formats all dimension-specific analyses
+    fn format_all_dimension_analyses(formatted: &mut String, review: &GeneratedReview) {
+        Self::format_dimension_analysis(
+            formatted,
+            QualityDimension::Complexity,
+            review.complexity.as_ref(),
+        );
+        Self::format_dimension_analysis(
+            formatted,
+            QualityDimension::Abstraction,
+            review.abstraction.as_ref(),
+        );
+        Self::format_dimension_analysis(
+            formatted,
+            QualityDimension::Deletion,
+            review.deletion.as_ref(),
+        );
+        Self::format_dimension_analysis(
+            formatted,
+            QualityDimension::Hallucination,
+            review.hallucination.as_ref(),
+        );
+        Self::format_dimension_analysis(formatted, QualityDimension::Style, review.style.as_ref());
+        Self::format_dimension_analysis(
+            formatted,
+            QualityDimension::Security,
+            review.security.as_ref(),
+        );
+        Self::format_dimension_analysis(
+            formatted,
+            QualityDimension::Performance,
+            review.performance.as_ref(),
+        );
+        Self::format_dimension_analysis(
+            formatted,
+            QualityDimension::Duplication,
+            review.duplication.as_ref(),
+        );
+        Self::format_dimension_analysis(
+            formatted,
+            QualityDimension::ErrorHandling,
+            review.error_handling.as_ref(),
+        );
+        Self::format_dimension_analysis(
+            formatted,
+            QualityDimension::Testing,
+            review.testing.as_ref(),
+        );
+        Self::format_dimension_analysis(
+            formatted,
+            QualityDimension::BestPractices,
+            review.best_practices.as_ref(),
+        );
+    }
+
+    /// Formats the suggestions section
+    fn format_suggestions(formatted: &mut String, suggestions: &[String]) {
+        if !suggestions.is_empty() {
+            write!(
+                formatted,
+                "{}\n\n",
+                "💡 SUGGESTIONS //".bright_blue().bold()
+            )
+            .expect("write to string should not fail");
+            for suggestion in suggestions {
+                writeln!(
+                    formatted,
+                    "  {} {}",
+                    "•".bright_cyan(),
+                    suggestion.bright_blue()
+                )
+                .expect("write to string should not fail");
+            }
+        }
     }
 
     /// Helper method to format a single dimension analysis
@@ -409,7 +449,7 @@ impl GeneratedReview {
                     _ => format!("◤ {emoji} {title} ◢").normal().bold(),
                 };
 
-                formatted.push_str(&format!("{header}\n\n"));
+                write!(formatted, "{header}\n\n").expect("write to string should not fail");
 
                 for (i, issue) in dim.issues.iter().enumerate() {
                     // Severity badge with custom styling based on severity
@@ -421,38 +461,46 @@ impl GeneratedReview {
                         _ => format!("[{}]", issue.severity.normal().bold()),
                     };
 
-                    formatted.push_str(&format!(
-                        "  {} {} {}\n",
+                    writeln!(
+                        formatted,
+                        "  {} {} {}",
                         format!("{:02}", i + 1).bright_white().bold(),
                         severity_badge,
                         issue.description.bright_white()
-                    ));
+                    )
+                    .expect("write to string should not fail");
 
                     let formatted_location = Self::format_location(&issue.location).bright_white();
-                    formatted.push_str(&format!(
-                        "     {}: {}\n",
+                    writeln!(
+                        formatted,
+                        "     {}: {}",
                         "LOCATION".bright_cyan().bold(),
                         formatted_location
-                    ));
+                    )
+                    .expect("write to string should not fail");
 
                     // Format explanation with some spacing for readability
                     let explanation_lines =
                         textwrap::wrap(&issue.explanation, EXPLANATION_WRAP_WIDTH);
-                    formatted.push_str(&format!("     {}: ", "DETAIL".bright_cyan().bold()));
+                    write!(formatted, "     {}: ", "DETAIL".bright_cyan().bold())
+                        .expect("write to string should not fail");
                     for (i, line) in explanation_lines.iter().enumerate() {
                         if i == 0 {
-                            formatted.push_str(&format!("{line}\n"));
+                            writeln!(formatted, "{line}").expect("write to string should not fail");
                         } else {
-                            formatted.push_str(&format!("            {line}\n"));
+                            writeln!(formatted, "            {line}")
+                                .expect("write to string should not fail");
                         }
                     }
 
                     // Format recommendation with a different style
-                    formatted.push_str(&format!(
+                    write!(
+                        formatted,
                         "     {}: {}\n\n",
                         "FIX".bright_green().bold(),
                         issue.recommendation.bright_green()
-                    ));
+                    )
+                    .expect("write to string should not fail");
                 }
             }
         }
