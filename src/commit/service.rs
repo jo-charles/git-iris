@@ -236,8 +236,9 @@ impl IrisCommitService {
         let mut config_clone = self.config.clone();
 
         // Check if the preset exists and is valid for commits
-        if preset.is_empty() {
+        let effective_preset = if preset.is_empty() {
             config_clone.instruction_preset = "default".to_string();
+            "default"
         } else {
             let library = get_instruction_preset_library();
             if let Some(preset_info) = library.get_preset(preset) {
@@ -248,11 +249,13 @@ impl IrisCommitService {
                     );
                 }
                 config_clone.instruction_preset = preset.to_string();
+                preset
             } else {
                 log_debug!("Preset '{}' not found, using default", preset);
                 config_clone.instruction_preset = "default".to_string();
+                "default"
             }
-        }
+        };
 
         config_clone.instructions = instructions.to_string();
 
@@ -273,8 +276,9 @@ impl IrisCommitService {
         )
         .await?;
 
-        // Apply gitmoji setting
-        if !self.use_gitmoji {
+        // Apply gitmoji setting - automatically disable for conventional commits
+        let should_use_gitmoji = self.use_gitmoji && effective_preset != "conventional";
+        if !should_use_gitmoji {
             generated_message.emoji = None;
         }
 

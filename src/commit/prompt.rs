@@ -48,12 +48,21 @@ pub fn create_system_prompt(config: &Config) -> anyhow::Result<String> {
 
     prompt.push_str(get_combined_instructions(config).as_str());
 
-    if config.use_gitmoji {
+    // Check if using conventional commits preset - if so, explicitly disable gitmoji
+    let is_conventional = config.instruction_preset == "conventional";
+
+    if config.use_gitmoji && !is_conventional {
         prompt.push_str(
             "\n\nUse a single gitmoji at the start of the commit message. \
           Choose the most relevant emoji from the following list:\n\n",
         );
         prompt.push_str(&get_gitmoji_list());
+    } else if is_conventional {
+        prompt.push_str(
+            "\n\nIMPORTANT: This is using Conventional Commits format. \
+          DO NOT include any emojis in the commit message. \
+          Set the emoji field to null in your response.",
+        );
     }
 
     prompt.push_str("

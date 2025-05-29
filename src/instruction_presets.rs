@@ -253,12 +253,61 @@ impl InstructionPresetLibrary {
             InstructionPreset {
                 name: "Conventional Commits".to_string(),
                 description: "Follow the Conventional Commits specification".to_string(),
-                instructions: "Use the Conventional Commits format: <type>[optional scope]: <description>\n\
-                               Valid types are: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert\n\
-                               Use the imperative mood in the subject line\n\
-                               Limit the subject line to 50 characters if possible, never exceed 72\n\
-                               Separate subject from body with a blank line\n\
-                               Use the body to explain what and why, wrapping at 72 characters".to_string(),
+                instructions: "STRICT CONVENTIONAL COMMITS SPECIFICATION - FOLLOW EXACTLY:\n\n\
+                               FORMAT: <type>[optional scope]: <description>\n\n\
+                               MANDATORY RULES:\n\
+                               1. NO EMOJIS - Conventional commits never use emojis\n\
+                               2. NO CAPITALIZATION of type or scope\n\
+                               3. Subject line MUST be 50 characters or less\n\
+                               4. Description MUST be in imperative mood (add, fix, update - NOT added, fixed, updated)\n\
+                               5. NO period at end of subject line\n\
+                               6. USE SCOPES when files relate to specific components/modules\n\n\
+                               SCOPE USAGE - STRONGLY PREFERRED:\n\
+                               - For API changes: feat(api): add user endpoint\n\
+                               - For UI changes: feat(ui): add login form\n\
+                               - For auth: fix(auth): handle expired tokens\n\
+                               - For database: feat(db): add user table migration\n\
+                               - For tests: test(auth): add login validation tests\n\
+                               - For config: chore(config): update database settings\n\
+                               - For docs: docs(readme): update installation steps\n\
+                               - For CLI: feat(cli): add new command option\n\
+                               - For build: build(deps): update dependency versions\n\
+                               - Analyze the changed files and pick the most relevant component\n\n\
+                               VALID TYPES (use ONLY these):\n\
+                               - feat: new feature for the user\n\
+                               - fix: bug fix for the user\n\
+                               - docs: changes to documentation\n\
+                               - style: formatting, missing semicolons, etc (no code change)\n\
+                               - refactor: code change that neither fixes bug nor adds feature\n\
+                               - perf: code change that improves performance\n\
+                               - test: adding missing tests or correcting existing tests\n\
+                               - build: changes that affect build system or external dependencies\n\
+                               - ci: changes to CI configuration files and scripts\n\
+                               - chore: other changes that don't modify src or test files\n\
+                               - revert: reverts a previous commit\n\n\
+                               SCOPE SELECTION RULES:\n\
+                               - Look at the file paths and identify the main component/module\n\
+                               - Use the most specific relevant scope (prefer 'auth' over 'api' if it's auth-specific)\n\
+                               - Common scopes: api, ui, auth, db, cli, config, deps, core, utils, tests\n\
+                               - If multiple unrelated components, omit scope or use broader one\n\n\
+                               BODY (optional):\n\
+                               - Separate from subject with blank line\n\
+                               - Wrap at 72 characters\n\
+                               - Explain what and why, not how\n\
+                               - Use imperative mood\n\n\
+                               BREAKING CHANGES:\n\
+                               - Add '!' after type/scope: feat(api)!: remove deprecated endpoints\n\
+                               - OR include 'BREAKING CHANGE:' in footer\n\n\
+                               EXAMPLES:\n\
+                               ✓ feat(auth): add OAuth login\n\
+                               ✓ fix(api): resolve timeout issue\n\
+                               ✓ docs(readme): update contributing guidelines\n\
+                               ✓ feat(ui)!: remove deprecated button component\n\
+                               ✓ refactor(core): extract validation logic\n\
+                               ✗ Add user authentication (missing type and scope)\n\
+                               ✗ feat: Add user authentication (missing scope when relevant)\n\
+                               ✗ feat: adds user authentication (wrong mood)\n\
+                               ✗ 🎉 feat(auth): add authentication (has emoji)".to_string(),
                 emoji: "📏".to_string(),
                 preset_type: PresetType::Both,
             },
