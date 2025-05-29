@@ -609,6 +609,49 @@ impl GitRepo {
         let repo = self.open_repo()?;
         commit::get_file_paths_for_commit(&repo, commit_id)
     }
+
+    /// Get Git information for comparing two branches
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - The configuration object
+    /// * `base_branch` - The base branch (e.g., "main")
+    /// * `target_branch` - The target branch (e.g., "feature-branch")
+    ///
+    /// # Returns
+    ///
+    /// A Result containing the `CommitContext` for the branch comparison or an error.
+    pub async fn get_git_info_for_branch_diff(
+        &self,
+        _config: &Config,
+        base_branch: &str,
+        target_branch: &str,
+    ) -> Result<CommitContext> {
+        log_debug!(
+            "Getting git info for branch diff: {} -> {}",
+            base_branch,
+            target_branch
+        );
+        let repo = self.open_repo()?;
+
+        // Extract branch diff info
+        let (display_branch, recent_commits, file_paths) =
+            commit::extract_branch_diff_info(&repo, base_branch, target_branch)?;
+
+        // Get the actual file changes
+        let branch_files = commit::get_branch_diff_files(&repo, base_branch, target_branch)?;
+
+        // Get project metadata with async operations
+        let project_metadata = self.get_project_metadata(&file_paths).await?;
+
+        // Create and return the context
+        self.create_commit_context(
+            display_branch,
+            recent_commits,
+            branch_files,
+            project_metadata,
+        )
+    }
 }
 
 impl Drop for GitRepo {

@@ -31,6 +31,14 @@ pub struct CodeReviewTool {
     #[serde(default)]
     pub commit_id: String,
 
+    /// Starting branch for comparison (defaults to 'main'). Used with to for branch comparison reviews
+    #[serde(default)]
+    pub from: String,
+
+    /// Target branch for comparison (e.g., 'feature-branch', 'pr-branch'). Used with from for branch comparison reviews
+    #[serde(default)]
+    pub to: String,
+
     /// Preset instruction set to use for the review
     #[serde(default)]
     pub preset: String,
@@ -49,7 +57,7 @@ impl CodeReviewTool {
         Tool {
             name: Cow::Borrowed("git_iris_code_review"),
             description: Cow::Borrowed(
-                "Generate a comprehensive code review with options for staged changes, unstaged changes, or specific commits",
+                "Generate a comprehensive code review with options for staged changes, unstaged changes, specific commits, or branch comparisons (e.g., PR reviews)",
             ),
             input_schema: cached_schema_for_type::<Self>(),
         }
@@ -71,10 +79,32 @@ impl GitIrisTool for CodeReviewTool {
         let git_repo = resolve_git_repo(Some(self.repository.as_str()), git_repo)?;
         log_debug!("Using repository: {}", git_repo.repo_path().display());
 
-        // Check if local operations are required without a specific commit
-        if !self.commit_id.trim().is_empty() {
-            // Specific commit review works with remote repositories
-        } else if git_repo.is_remote()
+        // Validate parameter combinations
+        let has_commit = !self.commit_id.trim().is_empty();
+        let has_branches = !self.from.trim().is_empty() || !self.to.trim().is_empty();
+
+        if has_commit && has_branches {
+            return Err(anyhow::anyhow!(
+                "Cannot use both commit_id and branch parameters. These options are mutually exclusive."
+            ));
+        }
+
+        if !self.from.trim().is_empty() && self.to.trim().is_empty() {
+            return Err(anyhow::anyhow!(
+                "When using 'from', you must also specify 'to' for branch comparison reviews"
+            ));
+        }
+
+        if self.include_unstaged && has_branches {
+            return Err(anyhow::anyhow!(
+                "Cannot use include_unstaged with branch comparison. Branch reviews compare committed changes only."
+            ));
+        }
+
+        // Check if local operations are required
+        if !has_commit
+            && !has_branches
+            && git_repo.is_remote()
             && (self.include_unstaged || self.commit_id.trim().is_empty())
         {
             return Err(anyhow::anyhow!(
@@ -107,7 +137,24 @@ impl GitIrisTool for CodeReviewTool {
         };
 
         // Generate the code review based on parameters
-        let review = if !self.commit_id.trim().is_empty() {
+        let review = if has_branches {
+            // Branch comparison review
+            let from_branch = if self.from.trim().is_empty() {
+                "main"
+            } else {
+                self.from.trim()
+            };
+            let to_branch = self.to.trim();
+
+            service
+                .generate_review_for_branch_diff(
+                    preset,
+                    &self.custom_instructions,
+                    from_branch,
+                    to_branch,
+                )
+                .await?
+        } else if has_commit {
             // Review a specific commit
             service
                 .generate_review_for_commit(preset, &self.custom_instructions, &self.commit_id)

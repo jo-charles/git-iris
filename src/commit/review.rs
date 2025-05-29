@@ -525,18 +525,88 @@ pub async fn handle_review_command(
     repository_url: Option<String>,
     include_unstaged: bool,
     commit_id: Option<String>,
+    from: Option<String>,
+    to: Option<String>,
 ) -> Result<()> {
     // Check if the preset is appropriate for code reviews
+    validate_preset_for_review(&common);
+
+    // Validate parameter combinations
+    validate_review_parameters(
+        commit_id.as_ref(),
+        from.as_ref(),
+        to.as_ref(),
+        include_unstaged,
+    )?;
+
+    let mut config = Config::load()?;
+    common.apply_to_config(&mut config)?;
+
+    // Setup the service
+    let service = setup_review_service(&common, repository_url, &config)?;
+
+    // Generate the review
+    let review = generate_review_based_on_parameters(
+        service,
+        common,
+        config,
+        include_unstaged,
+        commit_id,
+        from,
+        to,
+    )
+    .await?;
+
+    // Print the review to stdout
+    println!("{}", review.format());
+
+    Ok(())
+}
+
+/// Validates that the preset is appropriate for code reviews
+fn validate_preset_for_review(common: &CommonParams) {
     if !common.is_valid_preset_for_type(PresetType::Review) {
         ui::print_warning(
             "The specified preset may not be suitable for code reviews. Consider using a review or general preset instead.",
         );
         ui::print_info("Run 'git-iris list-presets' to see available presets for reviews.");
     }
+}
 
-    let mut config = Config::load()?;
-    common.apply_to_config(&mut config)?;
+/// Validates the parameter combinations for review command
+fn validate_review_parameters(
+    commit_id: Option<&String>,
+    from: Option<&String>,
+    to: Option<&String>,
+    include_unstaged: bool,
+) -> Result<()> {
+    if from.is_some() && to.is_none() {
+        return Err(anyhow::anyhow!(
+            "When using --from, you must also specify --to for branch comparison reviews"
+        ));
+    }
 
+    if commit_id.is_some() && (from.is_some() || to.is_some()) {
+        return Err(anyhow::anyhow!(
+            "Cannot use --commit with --from/--to. These are mutually exclusive options"
+        ));
+    }
+
+    if include_unstaged && (from.is_some() || to.is_some()) {
+        return Err(anyhow::anyhow!(
+            "Cannot use --include-unstaged with --from/--to. Branch comparison reviews don't include working directory changes"
+        ));
+    }
+
+    Ok(())
+}
+
+/// Sets up the review service with proper configuration
+fn setup_review_service(
+    common: &CommonParams,
+    repository_url: Option<String>,
+    config: &Config,
+) -> Result<Arc<IrisCommitService>> {
     // Combine repository URL from CLI and CommonParams
     let repo_url = repository_url.or(common.repository_url.clone());
 
@@ -570,6 +640,19 @@ pub async fn handle_review_command(
         return Err(e);
     }
 
+    Ok(service)
+}
+
+/// Generates a review based on the provided parameters
+async fn generate_review_based_on_parameters(
+    service: Arc<IrisCommitService>,
+    common: CommonParams,
+    config: Config,
+    include_unstaged: bool,
+    commit_id: Option<String>,
+    from: Option<String>,
+    to: Option<String>,
+) -> Result<GeneratedReview> {
     let effective_instructions = common
         .instructions
         .unwrap_or_else(|| config.instructions.clone());
@@ -580,69 +663,148 @@ pub async fn handle_review_command(
     let random_message = messages::get_review_waiting_message();
     spinner.set_message(random_message.text.to_string());
 
-    // Generate the code review, with different approaches based on parameters
-    let review = if let Some(commit_id) = commit_id {
-        // Show the commit we're reviewing
-        spinner.set_message(format!(
-            "{} - Reviewing commit: {}",
-            random_message.text, commit_id
-        ));
-
-        // Get the review for the specified commit
-        service
-            .generate_review_for_commit(preset_str, &effective_instructions, &commit_id)
-            .await?
+    let review = if let (Some(from_branch), Some(to_branch)) = (from.as_ref(), to.as_ref()) {
+        // Branch comparison review
+        generate_branch_comparison_review(
+            &service,
+            &spinner,
+            &random_message,
+            preset_str,
+            &effective_instructions,
+            from_branch,
+            to_branch,
+        )
+        .await?
+    } else if let Some(to_branch) = to.as_ref() {
+        // If only --to is specified, default --from to "main"
+        let from_branch = "main";
+        generate_branch_comparison_review(
+            &service,
+            &spinner,
+            &random_message,
+            preset_str,
+            &effective_instructions,
+            from_branch,
+            to_branch,
+        )
+        .await?
+    } else if let Some(commit_id) = commit_id {
+        // Generate review for specific commit
+        generate_commit_review(
+            &service,
+            &spinner,
+            &random_message,
+            preset_str,
+            &effective_instructions,
+            &commit_id,
+        )
+        .await?
     } else {
-        // Check if we should include unstaged changes
-        if include_unstaged {
-            spinner.set_message(format!(
-                "{} - Including unstaged changes",
-                random_message.text
-            ));
-
-            // Get the git info with unstaged changes to check if there are any changes
-            let git_info = service.get_git_info_with_unstaged(include_unstaged).await?;
-
-            if git_info.staged_files.is_empty() {
-                spinner.finish_and_clear();
-                ui::print_warning("No changes found (staged or unstaged). Nothing to review.");
-                return Ok(());
-            }
-
-            // Generate the review with unstaged changes
-            service
-                .generate_review_with_unstaged(
-                    preset_str,
-                    &effective_instructions,
-                    include_unstaged,
-                )
-                .await?
-        } else {
-            // Original behavior - only staged changes
-            let git_info = service.get_git_info().await?;
-
-            if git_info.staged_files.is_empty() {
-                spinner.finish_and_clear();
-                ui::print_warning(
-                    "No staged changes. Please stage your changes before generating a review.",
-                );
-                ui::print_info("You can stage changes using 'git add <file>' or 'git add .'");
-                ui::print_info("To include unstaged changes, use --include-unstaged");
-                return Ok(());
-            }
-
-            // Generate the review with only staged changes
-            service
-                .generate_review(preset_str, &effective_instructions)
-                .await?
-        }
+        // Generate review for staged/unstaged changes
+        generate_working_directory_review(
+            &service,
+            &spinner,
+            &random_message,
+            preset_str,
+            &effective_instructions,
+            include_unstaged,
+        )
+        .await?
     };
 
     // Stop the spinner
     spinner.finish_and_clear();
 
-    // Print the review to stdout or save to file if requested
-    println!("{}", review.format());
+    Ok(review)
+}
 
-    Ok(())
+/// Generates a review for branch comparison
+async fn generate_branch_comparison_review(
+    service: &Arc<IrisCommitService>,
+    spinner: &indicatif::ProgressBar,
+    random_message: &messages::ColoredMessage,
+    preset_str: &str,
+    effective_instructions: &str,
+    from_branch: &str,
+    to_branch: &str,
+) -> Result<GeneratedReview> {
+    spinner.set_message(format!(
+        "{} - Comparing {} -> {}",
+        random_message.text, from_branch, to_branch
+    ));
+
+    service
+        .generate_review_for_branch_diff(preset_str, effective_instructions, from_branch, to_branch)
+        .await
+}
+
+/// Generates a review for a specific commit
+async fn generate_commit_review(
+    service: &Arc<IrisCommitService>,
+    spinner: &indicatif::ProgressBar,
+    random_message: &messages::ColoredMessage,
+    preset_str: &str,
+    effective_instructions: &str,
+    commit_id: &str,
+) -> Result<GeneratedReview> {
+    spinner.set_message(format!(
+        "{} - Reviewing commit: {}",
+        random_message.text, commit_id
+    ));
+
+    service
+        .generate_review_for_commit(preset_str, effective_instructions, commit_id)
+        .await
+}
+
+/// Generates a review for working directory changes (staged/unstaged)
+async fn generate_working_directory_review(
+    service: &Arc<IrisCommitService>,
+    spinner: &indicatif::ProgressBar,
+    random_message: &messages::ColoredMessage,
+    preset_str: &str,
+    effective_instructions: &str,
+    include_unstaged: bool,
+) -> Result<GeneratedReview> {
+    if include_unstaged {
+        spinner.set_message(format!(
+            "{} - Including unstaged changes",
+            random_message.text
+        ));
+
+        // Get the git info with unstaged changes to check if there are any changes
+        let git_info = service.get_git_info_with_unstaged(include_unstaged).await?;
+
+        if git_info.staged_files.is_empty() {
+            spinner.finish_and_clear();
+            ui::print_warning("No changes found (staged or unstaged). Nothing to review.");
+            return Err(anyhow::anyhow!("No changes to review"));
+        }
+
+        // Generate the review with unstaged changes
+        service
+            .generate_review_with_unstaged(preset_str, effective_instructions, include_unstaged)
+            .await
+    } else {
+        // Original behavior - only staged changes
+        let git_info = service.get_git_info().await?;
+
+        if git_info.staged_files.is_empty() {
+            spinner.finish_and_clear();
+            ui::print_warning(
+                "No staged changes. Please stage your changes before generating a review.",
+            );
+            ui::print_info("You can stage changes using 'git add <file>' or 'git add .'");
+            ui::print_info("To include unstaged changes, use --include-unstaged");
+            ui::print_info(
+                "To review differences between branches, use --from and --to (--from defaults to 'main')",
+            );
+            return Err(anyhow::anyhow!("No staged changes to review"));
+        }
+
+        // Generate the review with only staged changes
+        service
+            .generate_review(preset_str, effective_instructions)
+            .await
+    }
 }

@@ -36,10 +36,7 @@ fn setup_git_repo() -> anyhow::Result<(TempDir, GitRepo)> {
     fs::write(&initial_file_path, "Initial content")?;
 
     // Print current directory for debugging
-    println!(
-        "Current directory: {}",
-        env::current_dir()?.display()
-    );
+    println!("Current directory: {}", env::current_dir()?.display());
     println!("Temp directory: {}", temp_dir.path().display());
 
     let mut index = repo.index()?;

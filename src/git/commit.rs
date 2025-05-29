@@ -342,3 +342,177 @@ pub fn get_commit_date(repo: &Repository, commit_ish: &str) -> Result<String> {
     // Format as YYYY-MM-DD
     Ok(datetime.format("%Y-%m-%d").to_string())
 }
+
+/// Gets the files changed between two branches
+///
+/// # Arguments
+///
+/// * `repo` - The git repository
+/// * `base_branch` - The base branch (e.g., "main")
+/// * `target_branch` - The target branch (e.g., "feature-branch")
+///
+/// # Returns
+///
+/// A Result containing a Vec of `StagedFile` objects for the branch comparison or an error.
+pub fn get_branch_diff_files(
+    repo: &Repository,
+    base_branch: &str,
+    target_branch: &str,
+) -> Result<Vec<StagedFile>> {
+    log_debug!(
+        "Getting files changed between branches: {} -> {}",
+        base_branch,
+        target_branch
+    );
+
+    // Resolve branch references
+    let base_commit = repo.revparse_single(base_branch)?.peel_to_commit()?;
+    let target_commit = repo.revparse_single(target_branch)?.peel_to_commit()?;
+
+    // Find the merge-base (common ancestor) between the branches
+    // This gives us the point where the target branch diverged from the base branch
+    let merge_base_oid = repo.merge_base(base_commit.id(), target_commit.id())?;
+    let merge_base_commit = repo.find_commit(merge_base_oid)?;
+
+    log_debug!("Using merge-base {} for comparison", merge_base_oid);
+
+    let base_tree = merge_base_commit.tree()?;
+    let target_tree = target_commit.tree()?;
+
+    let mut branch_files = Vec::new();
+
+    // Create diff between the merge-base tree and target tree
+    // This shows only changes made in the target branch since it diverged
+    let diff = repo.diff_tree_to_tree(Some(&base_tree), Some(&target_tree), None)?;
+
+    // Get statistics for each file and convert to our StagedFile format
+    diff.foreach(
+        &mut |delta, _| {
+            if let Some(path) = delta.new_file().path().and_then(|p| p.to_str()) {
+                let change_type = match delta.status() {
+                    git2::Delta::Added => ChangeType::Added,
+                    git2::Delta::Modified => ChangeType::Modified,
+                    git2::Delta::Deleted => ChangeType::Deleted,
+                    _ => return true, // Skip other types of changes
+                };
+
+                let should_exclude = crate::file_analyzers::should_exclude_file(path);
+
+                branch_files.push(StagedFile {
+                    path: path.to_string(),
+                    change_type,
+                    diff: String::new(), // Will be populated later
+                    analysis: Vec::new(),
+                    content: None,
+                    content_excluded: should_exclude,
+                });
+            }
+            true
+        },
+        None,
+        None,
+        None,
+    )?;
+
+    // Get the diff for each file
+    for file in &mut branch_files {
+        if file.content_excluded {
+            file.diff = String::from("[Content excluded]");
+            file.analysis = vec!["[Analysis excluded]".to_string()];
+            continue;
+        }
+
+        let mut diff_options = git2::DiffOptions::new();
+        diff_options.pathspec(&file.path);
+
+        let file_diff = repo.diff_tree_to_tree(
+            Some(&base_tree),
+            Some(&target_tree),
+            Some(&mut diff_options),
+        )?;
+
+        let mut diff_string = String::new();
+        file_diff.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
+            let origin = match line.origin() {
+                '+' | '-' | ' ' => line.origin(),
+                _ => ' ',
+            };
+            diff_string.push(origin);
+            diff_string.push_str(&String::from_utf8_lossy(line.content()));
+            true
+        })?;
+
+        if is_binary_diff(&diff_string) {
+            file.diff = "[Binary file changed]".to_string();
+        } else {
+            file.diff = diff_string;
+        }
+
+        // Get file content from target branch if it's a modified or added file
+        if matches!(file.change_type, ChangeType::Added | ChangeType::Modified) {
+            if let Ok(entry) = target_tree.get_path(std::path::Path::new(&file.path)) {
+                if let Ok(object) = entry.to_object(repo) {
+                    if let Some(blob) = object.as_blob() {
+                        if let Ok(content) = std::str::from_utf8(blob.content()) {
+                            file.content = Some(content.to_string());
+                        }
+                    }
+                }
+            }
+        }
+
+        let analyzer = crate::file_analyzers::get_analyzer(&file.path);
+        file.analysis = analyzer.analyze(&file.path, file);
+    }
+
+    log_debug!(
+        "Found {} files changed between branches (using merge-base)",
+        branch_files.len()
+    );
+    Ok(branch_files)
+}
+
+/// Extract branch comparison info without crossing async boundaries
+pub fn extract_branch_diff_info(
+    repo: &Repository,
+    base_branch: &str,
+    target_branch: &str,
+) -> Result<(String, Vec<RecentCommit>, Vec<String>)> {
+    // Get the target branch name for display
+    let display_branch = format!("{base_branch} -> {target_branch}");
+
+    // Get commits between the branches using merge-base
+    let base_commit = repo.revparse_single(base_branch)?.peel_to_commit()?;
+    let target_commit = repo.revparse_single(target_branch)?.peel_to_commit()?;
+
+    // Find the merge-base (common ancestor) between the branches
+    let merge_base_oid = repo.merge_base(base_commit.id(), target_commit.id())?;
+    log_debug!("Using merge-base {} for commit history", merge_base_oid);
+
+    let mut revwalk = repo.revwalk()?;
+    revwalk.push(target_commit.id())?;
+    revwalk.hide(merge_base_oid)?; // Hide the merge-base commit itself
+
+    let recent_commits: Result<Vec<RecentCommit>> = revwalk
+        .take(10) // Limit to 10 most recent commits in the branch
+        .map(|oid| {
+            let oid = oid?;
+            let commit = repo.find_commit(oid)?;
+            let author = commit.author();
+            Ok(RecentCommit {
+                hash: oid.to_string(),
+                message: commit.message().unwrap_or_default().to_string(),
+                author: author.name().unwrap_or_default().to_string(),
+                timestamp: commit.time().seconds().to_string(),
+            })
+        })
+        .collect();
+
+    let recent_commits = recent_commits?;
+
+    // Get file paths from the diff for metadata
+    let diff_files = get_branch_diff_files(repo, base_branch, target_branch)?;
+    let file_paths: Vec<String> = diff_files.iter().map(|file| file.path.clone()).collect();
+
+    Ok((display_branch, recent_commits, file_paths))
+}

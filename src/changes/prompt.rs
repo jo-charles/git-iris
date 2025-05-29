@@ -256,11 +256,13 @@ fn format_metrics_summary(prompt: &mut String, total_metrics: &ChangeMetrics) {
 
 /// Common helper function to format individual change details
 fn format_change_details(prompt: &mut String, change: &AnalyzedChange, detail_level: DetailLevel) {
-    writeln!(prompt, "Commit: {}", change.commit_hash).expect("writing to string should never fail");
+    writeln!(prompt, "Commit: {}", change.commit_hash)
+        .expect("writing to string should never fail");
     writeln!(prompt, "Author: {}", change.author).expect("writing to string should never fail");
     writeln!(prompt, "Message: {}", change.commit_message)
         .expect("writing to string should never fail");
-    writeln!(prompt, "Type: {:?}", change.change_type).expect("writing to string should never fail");
+    writeln!(prompt, "Type: {:?}", change.change_type)
+        .expect("writing to string should never fail");
     writeln!(prompt, "Breaking Change: {}", change.is_breaking_change)
         .expect("writing to string should never fail");
     writeln!(

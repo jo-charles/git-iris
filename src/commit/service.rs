@@ -407,6 +407,74 @@ impl IrisCommitService {
         .await
     }
 
+    /// Generate a review for branch comparison
+    ///
+    /// # Arguments
+    ///
+    /// * `preset` - The instruction preset to use
+    /// * `instructions` - Custom instructions for the AI
+    /// * `base_branch` - The base branch (e.g., "main")
+    /// * `target_branch` - The target branch (e.g., "feature-branch")
+    ///
+    /// # Returns
+    ///
+    /// A Result containing the generated code review or an error
+    pub async fn generate_review_for_branch_diff(
+        &self,
+        preset: &str,
+        instructions: &str,
+        base_branch: &str,
+        target_branch: &str,
+    ) -> anyhow::Result<GeneratedReview> {
+        let mut config_clone = self.config.clone();
+
+        // Set the preset and instructions
+        if preset.is_empty() {
+            config_clone.instruction_preset = "default".to_string();
+        } else {
+            let library = get_instruction_preset_library();
+            if let Some(preset_info) = library.get_preset(preset) {
+                if preset_info.preset_type == PresetType::Commit {
+                    log_debug!(
+                        "Warning: Preset '{}' is commit-specific, not ideal for reviews",
+                        preset
+                    );
+                }
+                config_clone.instruction_preset = preset.to_string();
+            } else {
+                log_debug!("Preset '{}' not found, using default", preset);
+                config_clone.instruction_preset = "default".to_string();
+            }
+        }
+
+        config_clone.instructions = instructions.to_string();
+
+        // Get context for the branch comparison
+        let context = self
+            .repo
+            .get_git_info_for_branch_diff(&self.config, base_branch, target_branch)
+            .await?;
+
+        // Create system prompt
+        let system_prompt = super::prompt::create_review_system_prompt(&config_clone)?;
+
+        // Use the shared optimization logic
+        let (_, final_user_prompt) = self.optimize_prompt(
+            &config_clone,
+            &system_prompt,
+            context,
+            super::prompt::create_review_user_prompt,
+        );
+
+        llm::get_message::<GeneratedReview>(
+            &config_clone,
+            &self.provider_name,
+            &system_prompt,
+            &final_user_prompt,
+        )
+        .await
+    }
+
     /// Generate a code review using AI
     ///
     /// # Arguments

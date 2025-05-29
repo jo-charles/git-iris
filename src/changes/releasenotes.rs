@@ -110,8 +110,7 @@ fn format_release_notes_response(
     if !response.upgrade_notes.is_empty() {
         formatted.push_str(&"## 🔧 Upgrade Notes\n\n".yellow().bold().to_string());
         for note in &response.upgrade_notes {
-            writeln!(formatted, "- {note}")
-                .expect("writing to string should never fail");
+            writeln!(formatted, "- {note}").expect("writing to string should never fail");
         }
         formatted.push('\n');
     }

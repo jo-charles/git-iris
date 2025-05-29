@@ -128,6 +128,20 @@ pub enum Commands {
             help = "Review a specific commit by ID (hash, branch, or reference)"
         )]
         commit: Option<String>,
+
+        /// Starting branch for comparison (defaults to 'main')
+        #[arg(
+            long,
+            help = "Starting branch for comparison (defaults to 'main'). Used with --to for branch comparison reviews"
+        )]
+        from: Option<String>,
+
+        /// Target branch for comparison (e.g., 'feature-branch', 'pr-branch')
+        #[arg(
+            long,
+            help = "Target branch for comparison (e.g., 'feature-branch', 'pr-branch'). Used with --from for branch comparison reviews"
+        )]
+        to: Option<String>,
     },
 
     /// Generate a changelog
@@ -401,18 +415,30 @@ async fn handle_review(
     repository_url: Option<String>,
     include_unstaged: bool,
     commit: Option<String>,
+    from: Option<String>,
+    to: Option<String>,
 ) -> anyhow::Result<()> {
     log_debug!(
-        "Handling 'review' command with common: {:?}, print: {}, include_unstaged: {}, commit: {:?}",
+        "Handling 'review' command with common: {:?}, print: {}, include_unstaged: {}, commit: {:?}, from: {:?}, to: {:?}",
         common,
         print,
         include_unstaged,
-        commit
+        commit,
+        from,
+        to
     );
     ui::print_version(crate_version!());
     ui::print_newline();
-    commit::review::handle_review_command(common, print, repository_url, include_unstaged, commit)
-        .await
+    commit::review::handle_review_command(
+        common,
+        print,
+        repository_url,
+        include_unstaged,
+        commit,
+        from,
+        to,
+    )
+    .await
 }
 
 /// Handle the `Changelog` command
@@ -510,7 +536,20 @@ pub async fn handle_command(
             print,
             include_unstaged,
             commit,
-        } => handle_review(common, print, repository_url, include_unstaged, commit).await,
+            from,
+            to,
+        } => {
+            handle_review(
+                common,
+                print,
+                repository_url,
+                include_unstaged,
+                commit,
+                from,
+                to,
+            )
+            .await
+        }
         Commands::Changelog {
             common,
             from,

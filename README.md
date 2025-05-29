@@ -302,6 +302,57 @@ Example:
 git-iris review -i "Focus on security" --preset security --include-unstaged
 ```
 
+For more comprehensive reviews, you can also:
+
+- **Review unstaged changes**: Include unstaged changes in the review
+  ```bash
+  git-iris review --include-unstaged
+  ```
+
+- **Review a specific commit**: Analyze a particular commit
+  ```bash
+  git-iris review --commit abc123
+  ```
+
+- **Review branch differences**: Compare entire branches (perfect for PR reviews)
+  ```bash
+  git-iris review --from main --to feature-branch
+  ```
+
+The branch comparison feature is particularly powerful for reviewing pull requests, as it analyzes all changes between two branches, giving you a comprehensive view of the entire feature or fix.
+
+**Smart Branch Comparison**: Git-Iris uses merge-base comparison to ensure you only see changes relevant to the feature branch, not unrelated changes that happened in the base branch after the feature branch was created. This provides accurate PR reviews even when the base branch has moved forward.
+
+Example usage:
+
+```bash
+# Compare feature branch to main (explicit)
+git-iris review --from main --to feature-branch
+
+# Compare feature branch to main (using default)
+git-iris review --to feature-branch  # --from defaults to 'main'
+```
+
+The review includes:
+
+- A summary of the changes
+- Code quality assessment
+- Suggestions for improvement
+- Identified issues
+- Positive aspects of your code
+- Analysis across 11 dimensions of code quality:
+  - Complexity - Identifies unnecessary complexity in algorithms and control flow
+  - Abstraction - Assesses appropriateness of abstractions and design patterns
+  - Unintended Deletion - Detects critical functionality removed without replacement
+  - Hallucinated Components - Flags references to non-existent functions or APIs
+  - Style Inconsistencies - Highlights deviations from project coding standards
+  - Security Vulnerabilities - Identifies potential security issues
+  - Performance Issues - Spots inefficient algorithms or resource usage
+  - Code Duplication - Detects repeated logic or copy-pasted code
+  - Error Handling - Evaluates completeness of error recovery strategies
+  - Test Coverage - Analyzes test coverage gaps or brittle tests
+  - Best Practices - Checks adherence to language-specific conventions and design guidelines
+
 ### Generate Changelogs
 
 Create a detailed changelog between Git references:
@@ -475,34 +526,6 @@ The interactive CLI allows you to refine and perfect your commit messages:
 - Press 'r' to regenerate the message
 - Press Enter to commit
 - Press Esc to cancel
-
-### Getting an AI Code Review
-
-Git-Iris can analyze your staged changes and provide a detailed code review:
-
-```bash
-git-iris review
-```
-
-The review includes:
-
-- A summary of the changes
-- Code quality assessment
-- Suggestions for improvement
-- Identified issues
-- Positive aspects of your code
-- Analysis across 11 dimensions of code quality:
-  - Complexity - Identifies unnecessary complexity in algorithms and control flow
-  - Abstraction - Assesses appropriateness of abstractions and design patterns
-  - Unintended Deletion - Detects critical functionality removed without replacement
-  - Hallucinated Components - Flags references to non-existent functions or APIs
-  - Style Inconsistencies - Highlights deviations from project coding standards
-  - Security Vulnerabilities - Identifies potential security issues
-  - Performance Issues - Spots inefficient algorithms or resource usage
-  - Code Duplication - Detects repeated logic or copy-pasted code
-  - Error Handling - Evaluates completeness of error recovery strategies
-  - Test Coverage - Analyzes test coverage gaps or brittle tests
-  - Best Practices - Checks adherence to language-specific conventions and design guidelines
 
 ## 🎛️ Custom Instructions and Presets
 

@@ -90,6 +90,12 @@ Include unstaged changes in the review
 .TP
 .BR \-\-commit =\fICOMMIT_ID\fR
 Review a specific commit by ID (hash, branch, or reference)
+.TP
+.BR \-\-from =\fIBRANCH\fR
+Starting branch for comparison (defaults to 'main'). Used with --to for branch comparison reviews. Ideal for reviewing entire PRs or feature branches.
+.TP
+.BR \-\-to =\fIBRANCH\fR
+Target branch for comparison (e.g., 'feature-branch', 'pr-branch'). Used with --from for branch comparison reviews. If only --to is specified, --from defaults to 'main'. The changes from --from to --to will be reviewed
 .SH "CHANGELOG COMMAND OPTIONS"
 .TP
 .BR \-\-from =\fIREF\fR
