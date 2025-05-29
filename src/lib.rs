@@ -25,4 +25,6 @@ pub use ::llm::LLMProvider;
 
 // Re-exports from the new types organization
 pub use commit::review::{CodeIssue, DimensionAnalysis, GeneratedReview, QualityDimension};
-pub use commit::types::{GeneratedMessage, format_commit_message};
+pub use commit::types::{
+    GeneratedMessage, GeneratedPullRequest, format_commit_message, format_pull_request,
+};

@@ -463,6 +463,95 @@ impl GitRepo {
         )
     }
 
+    /// Get Git information for comparing two branches
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - The configuration object
+    /// * `base_branch` - The base branch (e.g., "main")
+    /// * `target_branch` - The target branch (e.g., "feature-branch")
+    ///
+    /// # Returns
+    ///
+    /// A Result containing the `CommitContext` for the branch comparison or an error.
+    pub async fn get_git_info_for_branch_diff(
+        &self,
+        _config: &Config,
+        base_branch: &str,
+        target_branch: &str,
+    ) -> Result<CommitContext> {
+        log_debug!(
+            "Getting git info for branch diff: {} -> {}",
+            base_branch,
+            target_branch
+        );
+        let repo = self.open_repo()?;
+
+        // Extract branch diff info
+        let (display_branch, recent_commits, file_paths) =
+            commit::extract_branch_diff_info(&repo, base_branch, target_branch)?;
+
+        // Get the actual file changes
+        let branch_files = commit::get_branch_diff_files(&repo, base_branch, target_branch)?;
+
+        // Get project metadata with async operations
+        let project_metadata = self.get_project_metadata(&file_paths).await?;
+
+        // Create and return the context
+        self.create_commit_context(
+            display_branch,
+            recent_commits,
+            branch_files,
+            project_metadata,
+        )
+    }
+
+    /// Get Git information for a commit range (for PR descriptions)
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - The configuration object
+    /// * `from` - The starting Git reference (exclusive)
+    /// * `to` - The ending Git reference (inclusive)
+    ///
+    /// # Returns
+    ///
+    /// A Result containing the `CommitContext` for the commit range or an error.
+    pub async fn get_git_info_for_commit_range(
+        &self,
+        _config: &Config,
+        from: &str,
+        to: &str,
+    ) -> Result<CommitContext> {
+        log_debug!("Getting git info for commit range: {} -> {}", from, to);
+        let repo = self.open_repo()?;
+
+        // Extract commit range info
+        let (display_range, recent_commits, file_paths) =
+            commit::extract_commit_range_info(&repo, from, to)?;
+
+        // Get the actual file changes
+        let range_files = commit::get_commit_range_files(&repo, from, to)?;
+
+        // Get project metadata with async operations
+        let project_metadata = self.get_project_metadata(&file_paths).await?;
+
+        // Create and return the context
+        self.create_commit_context(display_range, recent_commits, range_files, project_metadata)
+    }
+
+    /// Get commits for PR description between two references
+    pub fn get_commits_for_pr(&self, from: &str, to: &str) -> Result<Vec<String>> {
+        let repo = self.open_repo()?;
+        commit::get_commits_for_pr(&repo, from, to)
+    }
+
+    /// Get files changed in a commit range  
+    pub fn get_commit_range_files(&self, from: &str, to: &str) -> Result<Vec<StagedFile>> {
+        let repo = self.open_repo()?;
+        commit::get_commit_range_files(&repo, from, to)
+    }
+
     /// Retrieves recent commits.
     ///
     /// # Arguments
@@ -608,49 +697,6 @@ impl GitRepo {
     pub fn get_file_paths_for_commit(&self, commit_id: &str) -> Result<Vec<String>> {
         let repo = self.open_repo()?;
         commit::get_file_paths_for_commit(&repo, commit_id)
-    }
-
-    /// Get Git information for comparing two branches
-    ///
-    /// # Arguments
-    ///
-    /// * `config` - The configuration object
-    /// * `base_branch` - The base branch (e.g., "main")
-    /// * `target_branch` - The target branch (e.g., "feature-branch")
-    ///
-    /// # Returns
-    ///
-    /// A Result containing the `CommitContext` for the branch comparison or an error.
-    pub async fn get_git_info_for_branch_diff(
-        &self,
-        _config: &Config,
-        base_branch: &str,
-        target_branch: &str,
-    ) -> Result<CommitContext> {
-        log_debug!(
-            "Getting git info for branch diff: {} -> {}",
-            base_branch,
-            target_branch
-        );
-        let repo = self.open_repo()?;
-
-        // Extract branch diff info
-        let (display_branch, recent_commits, file_paths) =
-            commit::extract_branch_diff_info(&repo, base_branch, target_branch)?;
-
-        // Get the actual file changes
-        let branch_files = commit::get_branch_diff_files(&repo, base_branch, target_branch)?;
-
-        // Get project metadata with async operations
-        let project_metadata = self.get_project_metadata(&file_paths).await?;
-
-        // Create and return the context
-        self.create_commit_context(
-            display_branch,
-            recent_commits,
-            branch_files,
-            project_metadata,
-        )
     }
 }
 

@@ -5,8 +5,10 @@ mod tests {
     use git_iris::config::Config;
     use git_iris::git::GitRepo;
     use git_iris::mcp::tools::GitIrisTools;
+    use git_iris::mcp::tools::PrTool;
     use git_iris::mcp::tools::ReleaseNotesTool;
     use git_iris::mcp::tools::utils::GitIrisTool;
+
     use rmcp::model::{Content, RawContent};
     use serde_json::{Map, Value, json};
     use std::sync::Arc;
@@ -120,6 +122,70 @@ mod tests {
                 // Not testing this variant in this test
                 println!("CodeReviewTool variant not being tested in this test");
             }
+            GitIrisTools::PrTool(_) => {
+                // Not testing this variant in this test
+                println!("PrTool variant not being tested in this test");
+            }
         }
+    }
+
+    #[tokio::test]
+    async fn test_mcp_tools_include_pr_tool() {
+        // Test that the PR tool is included in the available tools
+        let tools = GitIrisTools::get_tools();
+
+        // Should have 5 tools now (including the new PR tool)
+        assert_eq!(tools.len(), 5);
+
+        // Check that git_iris_pr is included
+        let pr_tool_exists = tools.iter().any(|tool| tool.name == "git_iris_pr");
+        assert!(pr_tool_exists, "git_iris_pr tool should be available");
+
+        // Check that all expected tools are present
+        let tool_names: Vec<&str> = tools.iter().map(|tool| tool.name.as_ref()).collect();
+        assert!(tool_names.contains(&"git_iris_commit"));
+        assert!(tool_names.contains(&"git_iris_code_review"));
+        assert!(tool_names.contains(&"git_iris_pr"));
+        assert!(tool_names.contains(&"git_iris_changelog"));
+        assert!(tool_names.contains(&"git_iris_release_notes"));
+    }
+
+    #[test]
+    fn test_pr_tool_definition() {
+        let tool = PrTool::get_tool_definition();
+
+        assert_eq!(tool.name, "git_iris_pr");
+        assert!(tool.description.contains("pull request descriptions"));
+        assert!(tool.description.contains("atomic unit"));
+
+        // The input schema should be present and valid
+        assert!(
+            !tool.input_schema.is_empty(),
+            "Input schema should not be empty"
+        );
+    }
+
+    #[test]
+    fn test_pr_tool_serialization() {
+        let pr_tool = PrTool {
+            from: "main".to_string(),
+            to: "feature-branch".to_string(),
+            preset: "conventional".to_string(),
+            custom_instructions: "Focus on breaking changes".to_string(),
+            repository: "/tmp/test-repo".to_string(),
+        };
+
+        // Should be able to serialize/deserialize
+        let json = serde_json::to_string(&pr_tool).expect("Should serialize");
+        let deserialized: PrTool = serde_json::from_str(&json).expect("Should deserialize");
+
+        assert_eq!(deserialized.from, "main");
+        assert_eq!(deserialized.to, "feature-branch");
+        assert_eq!(deserialized.preset, "conventional");
+        assert_eq!(
+            deserialized.custom_instructions,
+            "Focus on breaking changes"
+        );
+        assert_eq!(deserialized.repository, "/tmp/test-repo");
     }
 }

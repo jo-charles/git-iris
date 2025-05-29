@@ -6,6 +6,7 @@
 pub mod changelog;
 pub mod codereview;
 pub mod commit;
+pub mod pr;
 pub mod releasenotes;
 pub mod utils;
 
@@ -33,6 +34,7 @@ use std::sync::Mutex;
 pub use self::changelog::ChangelogTool;
 pub use self::codereview::CodeReviewTool;
 pub use self::commit::CommitTool;
+pub use self::pr::PrTool;
 pub use self::releasenotes::ReleaseNotesTool;
 
 // Define our tools for the Git-Iris toolbox
@@ -42,6 +44,7 @@ pub enum GitIrisTools {
     ChangelogTool(ChangelogTool),
     CommitTool(CommitTool),
     CodeReviewTool(CodeReviewTool),
+    PrTool(PrTool),
 }
 
 impl GitIrisTools {
@@ -52,6 +55,7 @@ impl GitIrisTools {
             ChangelogTool::get_tool_definition(),
             CommitTool::get_tool_definition(),
             CodeReviewTool::get_tool_definition(),
+            PrTool::get_tool_definition(),
         ]
     }
 
@@ -87,6 +91,12 @@ impl GitIrisTools {
                 let tool: CodeReviewTool = serde_json::from_value(Value::Object(params))
                     .map_err(|e| Error::invalid_params(format!("Invalid parameters: {e}"), None))?;
                 Ok(GitIrisTools::CodeReviewTool(tool))
+            }
+            "git_iris_pr" => {
+                // Convert params to PrTool
+                let tool: PrTool = serde_json::from_value(Value::Object(params))
+                    .map_err(|e| Error::invalid_params(format!("Invalid parameters: {e}"), None))?;
+                Ok(GitIrisTools::PrTool(tool))
             }
             _ => Err(Error::invalid_params(
                 format!("Unknown tool: {tool_name}"),
@@ -235,6 +245,10 @@ impl ServerHandler for GitIrisHandler {
                 .await
                 .map_err(|e| handle_tool_error(&e)),
             GitIrisTools::CodeReviewTool(tool) => tool
+                .execute(git_repo.clone(), config)
+                .await
+                .map_err(|e| handle_tool_error(&e)),
+            GitIrisTools::PrTool(tool) => tool
                 .execute(git_repo, config)
                 .await
                 .map_err(|e| handle_tool_error(&e)),

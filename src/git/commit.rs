@@ -516,3 +516,170 @@ pub fn extract_branch_diff_info(
 
     Ok((display_branch, recent_commits, file_paths))
 }
+
+/// Gets commits between two references with their messages for PR descriptions
+///
+/// # Arguments
+///
+/// * `repo` - The git repository
+/// * `from` - The starting Git reference (exclusive)
+/// * `to` - The ending Git reference (inclusive)
+///
+/// # Returns
+///
+/// A Result containing a Vec of formatted commit messages or an error.
+pub fn get_commits_for_pr(repo: &Repository, from: &str, to: &str) -> Result<Vec<String>> {
+    log_debug!("Getting commits for PR between {} and {}", from, to);
+
+    let from_commit = repo.revparse_single(from)?.peel_to_commit()?;
+    let to_commit = repo.revparse_single(to)?.peel_to_commit()?;
+
+    let mut revwalk = repo.revwalk()?;
+    revwalk.push(to_commit.id())?;
+    revwalk.hide(from_commit.id())?;
+
+    let commits: Result<Vec<String>> = revwalk
+        .map(|oid| {
+            let oid = oid?;
+            let commit = repo.find_commit(oid)?;
+            let message = commit.message().unwrap_or_default();
+            // Get just the first line (title) of the commit message
+            let title = message.lines().next().unwrap_or_default();
+            Ok(format!("{}: {}", &oid.to_string()[..7], title))
+        })
+        .collect();
+
+    let mut result = commits?;
+    result.reverse(); // Show commits in chronological order
+
+    log_debug!("Found {} commits for PR", result.len());
+    Ok(result)
+}
+
+/// Gets the files changed in a commit range (similar to branch diff but for commit range)
+///
+/// # Arguments
+///
+/// * `repo` - The git repository
+/// * `from` - The starting Git reference (exclusive)
+/// * `to` - The ending Git reference (inclusive)
+///
+/// # Returns
+///
+/// A Result containing a Vec of `StagedFile` objects for the commit range or an error.
+pub fn get_commit_range_files(repo: &Repository, from: &str, to: &str) -> Result<Vec<StagedFile>> {
+    log_debug!("Getting files changed in commit range: {} -> {}", from, to);
+
+    // Resolve commit references
+    let from_commit = repo.revparse_single(from)?.peel_to_commit()?;
+    let to_commit = repo.revparse_single(to)?.peel_to_commit()?;
+
+    let from_tree = from_commit.tree()?;
+    let to_tree = to_commit.tree()?;
+
+    let mut range_files = Vec::new();
+
+    // Create diff between the from and to trees
+    let diff = repo.diff_tree_to_tree(Some(&from_tree), Some(&to_tree), None)?;
+
+    // Get statistics for each file and convert to our StagedFile format
+    diff.foreach(
+        &mut |delta, _| {
+            if let Some(path) = delta.new_file().path().and_then(|p| p.to_str()) {
+                let change_type = match delta.status() {
+                    git2::Delta::Added => ChangeType::Added,
+                    git2::Delta::Modified => ChangeType::Modified,
+                    git2::Delta::Deleted => ChangeType::Deleted,
+                    _ => return true, // Skip other types of changes
+                };
+
+                let should_exclude = crate::file_analyzers::should_exclude_file(path);
+
+                range_files.push(StagedFile {
+                    path: path.to_string(),
+                    change_type,
+                    diff: String::new(), // Will be populated later
+                    analysis: Vec::new(),
+                    content: None,
+                    content_excluded: should_exclude,
+                });
+            }
+            true
+        },
+        None,
+        None,
+        None,
+    )?;
+
+    // Get the diff for each file
+    for file in &mut range_files {
+        if file.content_excluded {
+            file.diff = String::from("[Content excluded]");
+            file.analysis = vec!["[Analysis excluded]".to_string()];
+            continue;
+        }
+
+        let mut diff_options = git2::DiffOptions::new();
+        diff_options.pathspec(&file.path);
+
+        let file_diff =
+            repo.diff_tree_to_tree(Some(&from_tree), Some(&to_tree), Some(&mut diff_options))?;
+
+        let mut diff_string = String::new();
+        file_diff.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
+            let origin = match line.origin() {
+                '+' | '-' | ' ' => line.origin(),
+                _ => ' ',
+            };
+            diff_string.push(origin);
+            diff_string.push_str(&String::from_utf8_lossy(line.content()));
+            true
+        })?;
+
+        if is_binary_diff(&diff_string) {
+            file.diff = "[Binary file changed]".to_string();
+        } else {
+            file.diff = diff_string;
+        }
+
+        // Get file content from to commit if it's a modified or added file
+        if matches!(file.change_type, ChangeType::Added | ChangeType::Modified) {
+            if let Ok(entry) = to_tree.get_path(std::path::Path::new(&file.path)) {
+                if let Ok(object) = entry.to_object(repo) {
+                    if let Some(blob) = object.as_blob() {
+                        if let Ok(content) = std::str::from_utf8(blob.content()) {
+                            file.content = Some(content.to_string());
+                        }
+                    }
+                }
+            }
+        }
+
+        let analyzer = crate::file_analyzers::get_analyzer(&file.path);
+        file.analysis = analyzer.analyze(&file.path, file);
+    }
+
+    log_debug!("Found {} files changed in commit range", range_files.len());
+    Ok(range_files)
+}
+
+/// Extract commit range info without crossing async boundaries
+pub fn extract_commit_range_info(
+    repo: &Repository,
+    from: &str,
+    to: &str,
+) -> Result<(String, Vec<RecentCommit>, Vec<String>)> {
+    // Get the range name for display
+    let display_range = format!("{from}..{to}");
+
+    // Get commits in the range
+    let recent_commits: Result<Vec<RecentCommit>> =
+        get_commits_between_with_callback(repo, from, to, |commit| Ok(commit.clone()));
+    let recent_commits = recent_commits?;
+
+    // Get file paths from the range for metadata
+    let range_files = get_commit_range_files(repo, from, to)?;
+    let file_paths: Vec<String> = range_files.iter().map(|file| file.path.clone()).collect();
+
+    Ok((display_range, recent_commits, file_paths))
+}

@@ -144,6 +144,38 @@ pub enum Commands {
         to: Option<String>,
     },
 
+    /// Generate a pull request description
+    #[command(
+        about = "Generate a pull request description using AI",
+        long_about = "Generate a comprehensive pull request description based on commit ranges, branch differences, or single commits. Analyzes the overall changeset as an atomic unit and creates professional PR descriptions with summaries, detailed explanations, and testing notes.\n\nUsage examples:\n• Single commit: --from abc1234 or --to abc1234\n• Single commitish: --from HEAD~1 or --to HEAD~2\n• Multiple commits: --from HEAD~3 (reviews last 3 commits)\n• Commit range: --from abc1234 --to def5678\n• Branch comparison: --from main --to feature-branch\n• From main to branch: --to feature-branch\n\nSupported commitish syntax: HEAD~2, HEAD^, @~3, main~1, origin/main^, etc."
+    )]
+    Pr {
+        #[command(flatten)]
+        common: CommonParams,
+
+        /// Print the generated PR description to stdout and exit
+        #[arg(
+            short,
+            long,
+            help = "Print the generated PR description to stdout and exit"
+        )]
+        print: bool,
+
+        /// Starting branch, commit, or commitish for comparison
+        #[arg(
+            long,
+            help = "Starting branch, commit, or commitish for comparison. For single commit analysis, specify just this parameter with a commit hash (e.g., --from abc1234). For reviewing multiple commits, use commitish syntax (e.g., --from HEAD~3 to review last 3 commits)"
+        )]
+        from: Option<String>,
+
+        /// Target branch, commit, or commitish for comparison
+        #[arg(
+            long,
+            help = "Target branch, commit, or commitish for comparison. For single commit analysis, specify just this parameter with a commit hash or commitish (e.g., --to HEAD~2)"
+        )]
+        to: Option<String>,
+    },
+
     /// Generate a changelog
     #[command(
         about = "Generate a changelog",
@@ -578,5 +610,31 @@ pub async fn handle_command(
             print,
         } => commands::handle_project_config_command(&common, model, token_limit, param, print),
         Commands::ListPresets => commands::handle_list_presets_command(),
+        Commands::Pr {
+            common,
+            print,
+            from,
+            to,
+        } => handle_pr(common, print, from, to, repository_url).await,
     }
+}
+
+/// Handle the `Pr` command
+async fn handle_pr(
+    common: CommonParams,
+    print: bool,
+    from: Option<String>,
+    to: Option<String>,
+    repository_url: Option<String>,
+) -> anyhow::Result<()> {
+    log_debug!(
+        "Handling 'pr' command with common: {:?}, print: {}, from: {:?}, to: {:?}",
+        common,
+        print,
+        from,
+        to
+    );
+    ui::print_version(crate_version!());
+    ui::print_newline();
+    commit::handle_pr_command(common, print, repository_url, from, to).await
 }

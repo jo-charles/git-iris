@@ -353,6 +353,81 @@ The review includes:
   - Test Coverage - Analyzes test coverage gaps or brittle tests
   - Best Practices - Checks adherence to language-specific conventions and design guidelines
 
+### Generate Pull Request Descriptions
+
+Create comprehensive PR descriptions for changesets spanning multiple commits or single commits:
+
+```bash
+git-iris pr --from <from-ref> --to <to-ref>
+```
+
+Options:
+
+- `--from`: Starting Git reference (commit hash, tag, or branch name)
+- `--to`: Ending Git reference (defaults to HEAD if not specified)
+- `-i`, `--instructions`: Custom instructions for PR description generation
+- `--preset`: Select an instruction preset for PR description generation
+- `-p`, `--print`: Print the generated PR description to stdout and exit
+
+**Examples:**
+
+**Single commit analysis:**
+```bash
+# Analyze a single commit (compares against its parent)
+git-iris pr --from abc1234
+git-iris pr --to abc1234
+
+# Analyze a specific commitish (e.g., 2 commits ago)
+git-iris pr --to HEAD~2
+
+# Same commit for both from and to
+git-iris pr --from abc1234 --to abc1234
+```
+
+**Multiple commit analysis:**
+```bash
+# Review the last 3 commits together
+git-iris pr --from HEAD~3
+
+# Review commits from a specific point to now
+git-iris pr --from @~5
+```
+
+**Commit range analysis:**
+```bash
+git-iris pr --from v1.0.0 --to HEAD --preset detailed
+```
+
+**Branch comparison:**
+```bash
+git-iris pr --from main --to feature-auth --preset conventional
+```
+
+**Comparison to main:**
+```bash
+# Compare feature branch to main
+git-iris pr --to feature-branch
+```
+
+The PR description generator analyzes the entire changeset as an atomic unit rather than individual commits, providing:
+
+- A comprehensive title and summary
+- Detailed description of what was changed and why
+- List of commits included in the PR
+- Breaking changes identification
+- Testing notes and deployment considerations
+- Technical implementation details
+
+This is particularly useful for:
+- **Single commits**: Get detailed analysis of what changed in a specific commit or commitish (e.g., `HEAD~2`)
+- **Multiple commits**: Review a range of commits together (e.g., `--from HEAD~3` reviews the last 3 commits)
+- **Feature branches**: Get a complete overview of all changes in a feature
+- **Release preparations**: Understand what's included in a release candidate
+- **Code reviews**: Provide reviewers with comprehensive context
+- **Documentation**: Create detailed records of what changed between versions
+
+**Supported commitish syntax**: `HEAD~2`, `HEAD^`, `@~3`, `main~1`, `origin/main^`, and other Git commitish references.
+
 ### Generate Changelogs
 
 Create a detailed changelog between Git references:

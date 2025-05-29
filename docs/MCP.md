@@ -103,6 +103,75 @@ Example (remote URL):
 }
 ```
 
+### `git_iris_pr`
+
+Generate comprehensive pull request descriptions for changesets spanning multiple commits or single commits. Analyzes commits and changes as an atomic unit rather than individual commits. Supports Git commitish syntax like `HEAD~2`, `HEAD^`, `@~3`, etc.
+
+**Parameters:**
+
+- `from`: (string, required) Starting reference (commit hash, tag, branch name, or commitish)
+- `to`: (string) Ending reference (defaults to HEAD if not specified)
+- `preset`: (string) Preset instruction set to use for the PR description
+- `custom_instructions`: (string) Custom instructions for the AI
+- `repository`: (string, required) Repository path (local) or URL (remote). **Required.**
+
+Example (single commit analysis):
+
+```json
+{
+  "from": "abc1234",
+  "preset": "conventional",
+  "custom_instructions": "Focus on the specific changes made in this commit",
+  "repository": "/home/bliss/dev/myproject"
+}
+```
+
+Example (multiple commits using commitish):
+
+```json
+{
+  "from": "HEAD~3",
+  "preset": "conventional",
+  "custom_instructions": "Review the last 3 commits together as a cohesive change",
+  "repository": "/home/bliss/dev/myproject"
+}
+```
+
+Example (single commitish analysis):
+
+```json
+{
+  "to": "HEAD~2",
+  "preset": "detailed",
+  "custom_instructions": "Analyze what changed 2 commits ago",
+  "repository": "/home/bliss/dev/myproject"
+}
+```
+
+Example (branch comparison):
+
+```json
+{
+  "from": "main",
+  "to": "feature-auth",
+  "preset": "conventional",
+  "custom_instructions": "Highlight security implications and breaking changes",
+  "repository": "/home/bliss/dev/myproject"
+}
+```
+
+Example (commit range - remote URL):
+
+```json
+{
+  "from": "v1.0.0",
+  "to": "HEAD",
+  "preset": "detailed",
+  "custom_instructions": "Focus on user-facing changes",
+  "repository": "https://github.com/example/repo.git"
+}
+```
+
 ### `git_iris_changelog`
 
 Generate a detailed changelog between two Git references.

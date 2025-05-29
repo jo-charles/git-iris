@@ -509,3 +509,124 @@ pub fn create_review_user_prompt(context: &CommitContext) -> String {
 
     prompt
 }
+
+/// Creates a system prompt for PR description generation
+pub fn create_pr_system_prompt(config: &Config) -> anyhow::Result<String> {
+    let pr_schema = schemars::schema_for!(super::types::GeneratedPullRequest);
+    let pr_schema_str = serde_json::to_string_pretty(&pr_schema)?;
+
+    let mut prompt = String::from(
+        "You are an AI assistant specializing in generating comprehensive, professional pull request descriptions. \
+        Your task is to create clear, informative, and well-structured PR descriptions based on the provided context.
+
+        Work step-by-step and follow these guidelines exactly:
+
+        1. Analyze the commits and changes to understand the overall purpose of the PR
+        2. Create a concise, descriptive title that summarizes the main changes
+        3. Write a brief summary that captures the essence of what was changed
+        4. Provide a detailed description explaining what was changed, why it was changed, and how it works
+        5. List all commits included in this PR for reference
+        6. Identify any breaking changes and explain their impact
+        7. Provide testing instructions if the changes require specific testing steps
+        8. Include any additional notes or context that would be helpful for reviewers
+
+        Guidelines for PR descriptions:
+        - Focus on the overall impact and purpose, not individual commit details
+        - Explain the 'why' behind changes, not just the 'what'
+        - Use clear, professional language suitable for code review
+        - Organize information logically with proper sections
+        - Be comprehensive but concise
+        - Consider the audience: other developers who need to review and understand the changes
+        - Highlight any configuration changes, migrations, or deployment considerations
+        - Mention any dependencies or prerequisites
+        - Note any performance implications or architectural decisions
+
+        Your description should treat the changeset as an atomic unit representing a cohesive feature, 
+        fix, or improvement, rather than a collection of individual commits.
+        ");
+
+    prompt.push_str(get_combined_instructions(config).as_str());
+
+    prompt.push_str(
+        "
+        Your response must be a valid JSON object with the following structure:
+
+        {
+          \"title\": \"Clear, descriptive PR title\",
+          \"summary\": \"Brief overview of the changes\",
+          \"description\": \"Detailed explanation of what was changed and why\",
+          \"commits\": [\"List of commit messages included in this PR\"],
+          \"breaking_changes\": [\"Any breaking changes introduced\"],
+          \"testing_notes\": \"Instructions for testing these changes (optional)\",
+          \"notes\": \"Additional context or notes for reviewers (optional)\"
+        }
+
+        Follow these steps to generate the PR description:
+
+        1. Analyze the provided context, including commit messages, file changes, and project metadata
+        2. Identify the main theme or purpose that unifies all the changes
+        3. Create a clear, descriptive title that captures the essence of the PR
+        4. Write a concise summary highlighting the key changes and their impact
+        5. Provide a detailed description explaining the changes, their rationale, and implementation approach
+        6. List all commit messages for reference and traceability
+        7. Identify any breaking changes and explain their impact on users or systems
+        8. Provide testing instructions if the changes require specific testing procedures
+        9. Add any additional notes about deployment, configuration, or other considerations
+        10. Construct the final JSON object with all components
+
+        Example output format:
+
+        {
+          \"title\": \"Add user authentication with JWT tokens and role-based access control\",
+          \"summary\": \"Implements a comprehensive authentication system with JWT tokens, user registration/login, and role-based permissions. Includes middleware for route protection and database migrations for user management.\",
+          \"description\": \"This PR introduces a complete authentication system to secure the application:\\n\\n**Features Added:**\\n- JWT-based authentication with access and refresh tokens\\n- User registration and login endpoints\\n- Role-based access control (admin, user roles)\\n- Password hashing with bcrypt\\n- Authentication middleware for protected routes\\n\\n**Technical Details:**\\n- Uses industry-standard JWT libraries for token management\\n- Implements secure password storage with salt rounds\\n- Adds database migrations for user and role tables\\n- Includes comprehensive error handling and validation\\n\\n**Security Considerations:**\\n- Tokens expire after 24 hours with refresh mechanism\\n- Passwords are hashed with bcrypt (12 rounds)\\n- CORS configuration updated for authentication headers\",
+          \"commits\": [\"abc1234: Add JWT authentication middleware\", \"def5678: Implement user registration endpoint\", \"ghi9012: Add login functionality with password validation\"],
+          \"breaking_changes\": [\"All API endpoints now require authentication headers\", \"Database schema changes require migration\"],
+          \"testing_notes\": \"Test user registration and login flows. Verify that protected routes reject unauthenticated requests. Check token refresh mechanism with expired tokens.\",
+          \"notes\": \"Requires environment variables: JWT_SECRET, JWT_EXPIRES_IN. Run database migrations before deployment.\"
+        }
+
+        Ensure that your response is a valid JSON object matching this structure.
+        ");
+
+    prompt.push_str(&pr_schema_str);
+
+    Ok(prompt)
+}
+
+/// Creates a user prompt for PR description generation
+pub fn create_pr_user_prompt(context: &CommitContext, commit_messages: &[String]) -> String {
+    let scorer = RelevanceScorer::new();
+    let relevance_scores = scorer.score(context);
+    let detailed_changes = format_detailed_changes(&context.staged_files, &relevance_scores);
+
+    let commits_section = if commit_messages.is_empty() {
+        "No commits available".to_string()
+    } else {
+        commit_messages.join("\n")
+    };
+
+    let prompt = format!(
+        "Based on the following context, generate a comprehensive pull request description:\n\n\
+        Range: {}\n\n\
+        Commits in this PR:\n{}\n\n\
+        Recent commit history:\n{}\n\n\
+        File changes summary:\n{}\n\n\
+        Project metadata:\n{}\n\n\
+        Detailed changes:\n{}",
+        context.branch,
+        commits_section,
+        format_recent_commits(&context.recent_commits),
+        format_staged_files(&context.staged_files, &relevance_scores),
+        format_project_metadata(&context.project_metadata),
+        detailed_changes
+    );
+
+    log_debug!(
+        "Generated PR prompt for {} files across {} commits",
+        context.staged_files.len(),
+        commit_messages.len()
+    );
+
+    prompt
+}

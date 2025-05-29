@@ -6,11 +6,13 @@ pub mod types;
 pub mod prompt;
 pub mod service;
 
-pub use cli::handle_gen_command;
+pub use cli::{handle_gen_command, handle_pr_command};
 use git2::FileMode;
 pub use review::handle_review_command;
 pub use service::IrisCommitService;
-pub use types::{GeneratedMessage, format_commit_message};
+pub use types::{
+    GeneratedMessage, GeneratedPullRequest, format_commit_message, format_pull_request,
+};
 
 use crate::git::CommitResult;
 use std::fmt::Write;
