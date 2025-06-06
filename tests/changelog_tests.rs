@@ -6,76 +6,18 @@ use git_iris::common::DetailLevel;
 use git2::Repository;
 
 use std::fmt::Write as FmtWrite;
-use std::path::Path;
 use std::str::FromStr;
 use tempfile::TempDir;
+
+// Use our centralized test infrastructure
+#[path = "test_utils.rs"]
+mod test_utils;
+use test_utils::setup_git_repo_with_tags;
 
 /// Sets up a temporary Git repository for testing
 #[allow(dead_code)]
 fn setup_test_repo() -> Result<(TempDir, Repository)> {
-    let temp_dir = TempDir::new()?;
-    let repo = Repository::init(temp_dir.path())?;
-
-    let signature = git2::Signature::now("Test User", "test@example.com")?;
-
-    // Create initial commit
-    {
-        let mut index = repo.index()?;
-        let tree_id = index.write_tree()?;
-        let tree = repo.find_tree(tree_id)?;
-        repo.commit(
-            Some("HEAD"),
-            &signature,
-            &signature,
-            "Initial commit",
-            &tree,
-            &[],
-        )?;
-    }
-
-    // Create a tag for the initial commit (v1.0.0)
-    {
-        let head = repo.head()?.peel_to_commit()?;
-        repo.tag(
-            "v1.0.0",
-            &head.into_object(),
-            &signature,
-            "Version 1.0.0",
-            false,
-        )?;
-    }
-
-    // Create a new file and commit
-    std::fs::write(temp_dir.path().join("file1.txt"), "Hello, world!")?;
-    {
-        let mut index = repo.index()?;
-        index.add_path(Path::new("file1.txt"))?;
-        let tree_id = index.write_tree()?;
-        let tree = repo.find_tree(tree_id)?;
-        let parent = repo.head()?.peel_to_commit()?;
-        repo.commit(
-            Some("HEAD"),
-            &signature,
-            &signature,
-            "Add file1.txt",
-            &tree,
-            &[&parent],
-        )?;
-    }
-
-    // Create another tag (v1.1.0)
-    {
-        let head = repo.head()?.peel_to_commit()?;
-        repo.tag(
-            "v1.1.0",
-            &head.into_object(),
-            &signature,
-            "Version 1.1.0",
-            false,
-        )?;
-    }
-
-    Ok((temp_dir, repo))
+    setup_git_repo_with_tags()
 }
 
 #[test]

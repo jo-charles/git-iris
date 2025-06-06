@@ -3,138 +3,28 @@ use git_iris::commit::prompt::{create_pr_system_prompt, create_pr_user_prompt};
 use git_iris::commit::service::IrisCommitService;
 use git_iris::commit::types::{GeneratedPullRequest, format_pull_request};
 use git_iris::config::Config;
-use git_iris::context::{ChangeType, CommitContext, ProjectMetadata, RecentCommit, StagedFile};
+use git_iris::context::{ChangeType, CommitContext, StagedFile};
 use git_iris::git::GitRepo;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tempfile::TempDir;
 
+// Use our centralized test infrastructure
+#[path = "test_utils.rs"]
+mod test_utils;
+use test_utils::{MockDataBuilder, setup_git_repo_with_commits};
+
 fn create_mock_pr_context() -> CommitContext {
-    CommitContext {
-        branch: "main..feature-auth".to_string(),
-        recent_commits: vec![
-            RecentCommit {
-                hash: "abc1234".to_string(),
-                message: "Add JWT authentication middleware".to_string(),
-                author: "Test User".to_string(),
-                timestamp: "1234567890".to_string(),
-            },
-            RecentCommit {
-                hash: "def5678".to_string(),
-                message: "Implement user registration endpoint".to_string(),
-                author: "Test User".to_string(),
-                timestamp: "1234567891".to_string(),
-            },
-        ],
-        staged_files: vec![
-            StagedFile {
-                path: "src/auth/middleware.rs".to_string(),
-                change_type: ChangeType::Added,
-                diff: "+ use jwt::encode;\n+ pub fn auth_middleware() -> impl Filter<Extract = (), Error = Rejection> + Clone {".to_string(),
-                analysis: vec!["New authentication middleware".to_string()],
-                content: Some("use jwt::encode;\n\npub fn auth_middleware() -> impl Filter {}".to_string()),
-                content_excluded: false,
-            },
-            StagedFile {
-                path: "src/auth/models.rs".to_string(),
-                change_type: ChangeType::Added,
-                diff: "+ #[derive(Serialize, Deserialize)]\n+ pub struct User {".to_string(),
-                analysis: vec!["New User model with authentication fields".to_string()],
-                content: Some("#[derive(Serialize, Deserialize)]\npub struct User {\n    pub id: u32,\n    pub email: String,\n}".to_string()),
-                content_excluded: false,
-            },
-            StagedFile {
-                path: "README.md".to_string(),
-                change_type: ChangeType::Modified,
-                diff: "- # My Project\n+ # My Project - Now with Authentication!".to_string(),
-                analysis: vec!["Updated documentation for authentication feature".to_string()],
-                content: Some("# My Project - Now with Authentication!\n\nThis project now includes JWT-based authentication.".to_string()),
-                content_excluded: false,
-            },
-        ],
-        project_metadata: ProjectMetadata {
-            language: Some("Rust".to_string()),
-            framework: Some("Warp".to_string()),
-            dependencies: vec!["serde".to_string(), "jwt".to_string(), "bcrypt".to_string()],
-            version: None,
-            build_system: None,
-            test_framework: None,
-            plugins: vec![],
-        },
-        user_name: "Test User".to_string(),
-        user_email: "test@example.com".to_string(),
-    }
+    MockDataBuilder::pr_commit_context()
 }
 
 fn create_mock_generated_pr() -> GeneratedPullRequest {
-    GeneratedPullRequest {
-        title: "Add JWT authentication with user registration".to_string(),
-        summary: "Implements comprehensive JWT-based authentication system with user registration, login, and middleware for protected routes.".to_string(),
-        description: "This PR introduces a complete authentication system:\n\n**Features Added:**\n- JWT token generation and validation\n- User registration endpoint\n- Authentication middleware for protected routes\n- Password hashing with bcrypt\n\n**Technical Details:**\n- Uses industry-standard JWT libraries\n- Implements secure password storage\n- Includes comprehensive error handling".to_string(),
-        commits: vec![
-            "abc1234: Add JWT authentication middleware".to_string(),
-            "def5678: Implement user registration endpoint".to_string(),
-        ],
-        breaking_changes: vec![
-            "All protected endpoints now require authentication headers".to_string(),
-        ],
-        testing_notes: Some("Test user registration flow and verify JWT tokens are properly validated on protected routes.".to_string()),
-        notes: Some("Requires JWT_SECRET environment variable to be set before deployment.".to_string()),
-    }
+    MockDataBuilder::generated_pull_request()
 }
 
-fn setup_test_repo_with_commits() -> Result<(TempDir, Arc<GitRepo>)> {
-    let temp_dir = TempDir::new()?;
-    let repo = git2::Repository::init(temp_dir.path())?;
-
-    // Configure git user
-    let mut config = repo.config().expect("Failed to get repository config");
-    config.set_str("user.name", "Test User")?;
-    config.set_str("user.email", "test@example.com")?;
-
-    // Create initial commit
-    let signature = git2::Signature::now("Test User", "test@example.com")?;
-
-    // Create initial file
-    std::fs::write(temp_dir.path().join("README.md"), "# Initial Project")?;
-    let mut index = repo.index()?;
-    index.add_path(std::path::Path::new("README.md"))?;
-    index.write()?;
-
-    let tree_id = index.write_tree()?;
-    let tree = repo.find_tree(tree_id)?;
-    let initial_commit = repo.commit(
-        Some("HEAD"),
-        &signature,
-        &signature,
-        "Initial commit",
-        &tree,
-        &[],
-    )?;
-
-    // Create src directory and second commit
-    std::fs::create_dir_all(temp_dir.path().join("src"))?;
-    std::fs::write(
-        temp_dir.path().join("src/main.rs"),
-        "fn main() { println!(\"Hello\"); }",
-    )?;
-    index.add_path(std::path::Path::new("src/main.rs"))?;
-    index.write()?;
-
-    let tree_id = index.write_tree()?;
-    let tree = repo.find_tree(tree_id)?;
-    let parent_commit = repo.find_commit(initial_commit)?;
-    repo.commit(
-        Some("HEAD"),
-        &signature,
-        &signature,
-        "Add main function",
-        &tree,
-        &[&parent_commit],
-    )?;
-
-    let git_repo = Arc::new(GitRepo::new(temp_dir.path())?);
-    Ok((temp_dir, git_repo))
+fn setup_test_repo_with_commits_arc() -> Result<(TempDir, Arc<GitRepo>)> {
+    let (temp_dir, git_repo) = setup_git_repo_with_commits()?;
+    Ok((temp_dir, Arc::new(git_repo)))
 }
 
 // Tests for PR prompt generation
@@ -243,7 +133,7 @@ fn test_format_pull_request_minimal() {
 // Tests for Git operations (using public API)
 #[tokio::test]
 async fn test_git_repo_get_commits_for_pr() -> Result<()> {
-    let (temp_dir, git_repo) = setup_test_repo_with_commits()?;
+    let (temp_dir, git_repo) = setup_test_repo_with_commits_arc()?;
     let repo = git2::Repository::open(temp_dir.path())?;
 
     // Get commits between the initial commit and HEAD
@@ -267,7 +157,7 @@ async fn test_git_repo_get_commits_for_pr() -> Result<()> {
 
 #[tokio::test]
 async fn test_git_repo_get_commit_range_files() -> Result<()> {
-    let (temp_dir, git_repo) = setup_test_repo_with_commits()?;
+    let (temp_dir, git_repo) = setup_test_repo_with_commits_arc()?;
     let repo = git2::Repository::open(temp_dir.path())?;
 
     // Get commits
@@ -297,7 +187,7 @@ async fn test_git_repo_get_commit_range_files() -> Result<()> {
 // Tests for service integration
 #[tokio::test]
 async fn test_service_pr_generation_setup() -> Result<()> {
-    let (temp_dir, _git_repo) = setup_test_repo_with_commits()?;
+    let (temp_dir, _git_repo) = setup_test_repo_with_commits_arc()?;
     let config = Config::default();
     let repo_path = PathBuf::from(temp_dir.path());
     let provider_name = "test";
@@ -323,7 +213,7 @@ async fn test_service_pr_generation_setup() -> Result<()> {
 // Integration tests for GitRepo PR methods
 #[tokio::test]
 async fn test_git_repo_pr_methods() -> Result<()> {
-    let (temp_dir, git_repo) = setup_test_repo_with_commits()?;
+    let (temp_dir, git_repo) = setup_test_repo_with_commits_arc()?;
     let repo = git2::Repository::open(temp_dir.path())?;
 
     // Get commit IDs for testing

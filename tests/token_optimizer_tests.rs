@@ -1,56 +1,46 @@
 use git_iris::context::{ChangeType, CommitContext, ProjectMetadata, RecentCommit, StagedFile};
 use git_iris::token_optimizer::TokenOptimizer;
 
+// Use our centralized test infrastructure
+#[path = "test_utils.rs"]
+mod test_utils;
+use test_utils::MockDataBuilder;
+
 const DEBUG: bool = false;
 
-// Helper function to create a test context
+// Helper function to create a test context with additional commits and files
 fn create_test_context() -> CommitContext {
-    CommitContext {
-        branch: "main".to_string(),
-        recent_commits: vec![
-            RecentCommit {
-                hash: "abc123".to_string(),
-                message: "Initial commit".to_string(),
-                author: "Test Author".to_string(),
-                timestamp: "2023-01-01 00:00:00".to_string(),
-            },
-            RecentCommit {
-                hash: "def456".to_string(),
-                message: "Add new feature".to_string(),
-                author: "Test Author".to_string(),
-                timestamp: "2023-01-02 00:00:00".to_string(),
-            },
-        ],
-        staged_files: vec![
-            StagedFile {
-                path: "file1.rs".to_string(),
-                change_type: ChangeType::Modified,
-                diff: "- Old line\n+ New line".to_string(),
-                analysis: vec!["Modified function: test_function".to_string()],
-                content_excluded: false,
-                content: Some("Full content of file1.rs".to_string()),
-            },
-            StagedFile {
-                path: "file2.rs".to_string(),
-                change_type: ChangeType::Added,
-                diff: "+ New file content".to_string(),
-                analysis: vec!["Added new struct: TestStruct".to_string()],
-                content_excluded: false,
-                content: Some("Full content of file2.rs".to_string()),
-            },
-        ],
-        project_metadata: ProjectMetadata {
-            language: Some("Rust".to_string()),
-            framework: None,
-            dependencies: vec![],
-            version: Some("0.1.0".to_string()),
-            build_system: Some("Cargo".to_string()),
-            test_framework: None,
-            plugins: vec![],
+    let mut context = MockDataBuilder::commit_context();
+
+    // Add second commit for testing
+    context.recent_commits.push(RecentCommit {
+        hash: "def456".to_string(),
+        message: "Add new feature".to_string(),
+        author: "Test Author".to_string(),
+        timestamp: "2023-01-02 00:00:00".to_string(),
+    });
+
+    // Replace staged files with test-specific ones that have content
+    context.staged_files = vec![
+        StagedFile {
+            path: "file1.rs".to_string(),
+            change_type: ChangeType::Modified,
+            diff: "- Old line\n+ New line".to_string(),
+            analysis: vec!["Modified function: test_function".to_string()],
+            content_excluded: false,
+            content: Some("Full content of file1.rs".to_string()),
         },
-        user_name: "Test User".to_string(),
-        user_email: "test@example.com".to_string(),
-    }
+        StagedFile {
+            path: "file2.rs".to_string(),
+            change_type: ChangeType::Added,
+            diff: "+ New file content".to_string(),
+            analysis: vec!["Added new struct: TestStruct".to_string()],
+            content_excluded: false,
+            content: Some("Full content of file2.rs".to_string()),
+        },
+    ];
+
+    context
 }
 
 // Test case for small token limit to ensure diffs and commits are prioritized over full content

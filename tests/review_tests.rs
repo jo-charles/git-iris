@@ -1,6 +1,10 @@
 use git_iris::commit::review::{CodeIssue, DimensionAnalysis, GeneratedReview};
 use git_iris::mcp::tools::codereview::CodeReviewTool;
 
+// Use our centralized test infrastructure
+#[path = "test_utils.rs"]
+mod test_utils;
+
 #[test]
 fn test_review_format() {
     // Test that the review formatting works as expected
@@ -234,9 +238,9 @@ fn test_mcp_validation_edge_cases() {
 
 // Helper function to validate branch comparison parameters (extracted from the logic)
 fn validate_branch_parameters(
-    from: &Option<String>,
-    to: &Option<String>,
-    commit_id: &Option<String>,
+    from: Option<&String>,
+    to: Option<&String>,
+    commit_id: Option<&String>,
     include_unstaged: bool,
 ) -> Result<(), String> {
     // Validate branch parameters
@@ -264,83 +268,83 @@ fn validate_branch_parameters(
 #[test]
 fn test_branch_parameter_validation() {
     // Test valid combinations
-    assert!(validate_branch_parameters(&None, &None, &None, false).is_ok());
+    assert!(validate_branch_parameters(None, None, None, false).is_ok());
     assert!(
         validate_branch_parameters(
-            &Some("main".to_string()),
-            &Some("feature".to_string()),
-            &None,
+            Some(&"main".to_string()),
+            Some(&"feature".to_string()),
+            None,
             false
         )
         .is_ok()
     );
-    assert!(validate_branch_parameters(&None, &Some("feature".to_string()), &None, false).is_ok()); // --to only (defaults to main)
-    assert!(validate_branch_parameters(&None, &None, &Some("abc123".to_string()), false).is_ok());
-    assert!(validate_branch_parameters(&None, &None, &None, true).is_ok());
+    assert!(validate_branch_parameters(None, Some(&"feature".to_string()), None, false).is_ok()); // --to only (defaults to main)
+    assert!(validate_branch_parameters(None, None, Some(&"abc123".to_string()), false).is_ok());
+    assert!(validate_branch_parameters(None, None, None, true).is_ok());
 
     // Test invalid combinations
-    assert!(validate_branch_parameters(&Some("main".to_string()), &None, &None, false).is_err()); // --from without --to
+    assert!(validate_branch_parameters(Some(&"main".to_string()), None, None, false).is_err()); // --from without --to
     assert!(
         validate_branch_parameters(
-            &Some("main".to_string()),
-            &Some("feature".to_string()),
-            &Some("abc123".to_string()),
+            Some(&"main".to_string()),
+            Some(&"feature".to_string()),
+            Some(&"abc123".to_string()),
             false
         )
         .is_err()
     ); // branches + commit
     assert!(
         validate_branch_parameters(
-            &None,
-            &Some("feature".to_string()),
-            &Some("abc123".to_string()),
+            None,
+            Some(&"feature".to_string()),
+            Some(&"abc123".to_string()),
             false
         )
         .is_err()
     ); // --to + commit
     assert!(
         validate_branch_parameters(
-            &Some("main".to_string()),
-            &Some("feature".to_string()),
-            &None,
+            Some(&"main".to_string()),
+            Some(&"feature".to_string()),
+            None,
             true
         )
         .is_err()
     ); // branches + unstaged
-    assert!(validate_branch_parameters(&None, &Some("feature".to_string()), &None, true).is_err()); // --to + unstaged
+    assert!(validate_branch_parameters(None, Some(&"feature".to_string()), None, true).is_err()); // --to + unstaged
 
     // Test error messages
-    let result = validate_branch_parameters(&Some("main".to_string()), &None, &None, false);
+    let result = validate_branch_parameters(Some(&"main".to_string()), None, None, false);
     assert!(result.is_err());
     assert!(
         result
-            .unwrap_err()
+            .expect_err("Should have error")
             .contains("When using --from, you must also specify --to")
     );
 
     let result = validate_branch_parameters(
-        &Some("main".to_string()),
-        &Some("feature".to_string()),
-        &Some("abc123".to_string()),
+        Some(&"main".to_string()),
+        Some(&"feature".to_string()),
+        Some(&"abc123".to_string()),
         false,
     );
     assert!(result.is_err());
     assert!(
         result
-            .unwrap_err()
+            .expect_err("Should have error")
             .contains("Cannot use --commit with --from/--to")
     );
 
     let result = validate_branch_parameters(
-        &Some("main".to_string()),
-        &Some("feature".to_string()),
-        &None,
+        Some(&"main".to_string()),
+        Some(&"feature".to_string()),
+        None,
         true,
     );
     assert!(result.is_err());
     assert!(
         result
-            .unwrap_err()
+            .expect_err("Should have error")
             .contains("Cannot use --include-unstaged with --from/--to")
     );
 }

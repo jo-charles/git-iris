@@ -1,10 +1,13 @@
 use anyhow::Result;
-use git_iris::config::Config;
 use git_iris::llm::{
     get_available_provider_names, get_default_model_for_provider,
     get_default_token_limit_for_provider, validate_provider_config,
 };
-use std::collections::HashMap;
+
+// Use our centralized test infrastructure
+#[path = "test_utils.rs"]
+mod test_utils;
+use test_utils::MockDataBuilder;
 
 #[test]
 fn test_get_available_providers() {
@@ -60,23 +63,8 @@ fn test_get_default_token_limit_for_provider() -> Result<()> {
 
 #[test]
 fn test_validate_provider_config() {
-    // Create a config with valid provider configuration
-    let config = Config {
-        default_provider: "openai".to_string(),
-        providers: {
-            let mut providers = HashMap::new();
-            providers.insert(
-                "openai".to_string(),
-                git_iris::config::ProviderConfig {
-                    api_key: "dummy-api-key".to_string(),
-                    model: "gpt-4o".to_string(),
-                    ..Default::default()
-                },
-            );
-            providers
-        },
-        ..Default::default()
-    };
+    // Create a config with valid provider configuration using our MockDataBuilder
+    let config = MockDataBuilder::test_config_with_api_key("openai", "dummy-api-key");
 
     // Validation should pass with API key set
     assert!(validate_provider_config(&config, "openai").is_ok());

@@ -2,13 +2,18 @@ use git_iris::context::{ChangeType, StagedFile};
 use git_iris::file_analyzers::get_analyzer;
 use git_iris::file_analyzers::should_exclude_file;
 
+// Use our centralized test infrastructure
+#[path = "test_utils.rs"]
+mod test_utils;
+use test_utils::MockDataBuilder;
+
 #[test]
 fn test_rust_analyzer() {
     let analyzer = get_analyzer("test.rs");
-    let change = StagedFile {
-        path: "test.rs".to_string(),
-        change_type: ChangeType::Modified,
-        diff: r#"
+    let change = MockDataBuilder::staged_file_for_analysis(
+        "test.rs",
+        ChangeType::Modified,
+        r#"
 +pub fn new_function() {
 +    println!("Hello, world!");
 +}
@@ -18,12 +23,8 @@ fn test_rust_analyzer() {
 +struct NewStruct {
 +    field: String,
 +}
-        "#
-        .to_string(),
-        analysis: Vec::new(),
-        content: None,
-        content_excluded: false,
-    };
+        "#,
+    );
 
     let analysis = analyzer.analyze("test.rs", &change);
     println!("Rust Test Debug: Analysis results: {analysis:?}");
@@ -34,10 +35,10 @@ fn test_rust_analyzer() {
 #[test]
 fn test_javascript_analyzer() {
     let analyzer = get_analyzer("test.js");
-    let change = StagedFile {
-        path: "test.js".to_string(),
-        change_type: ChangeType::Modified,
-        diff: r#"
+    let change = MockDataBuilder::staged_file_for_analysis(
+        "test.js",
+        ChangeType::Modified,
+        r#"
 +function newFunction() {
 +    console.log("Hello, world!");
 +}
@@ -53,12 +54,8 @@ fn test_javascript_analyzer() {
 +    return <div>Functional</div>;
 +}
 +import { useState } from 'react';
-        "#
-        .to_string(),
-        analysis: Vec::new(),
-        content: None,
-        content_excluded: false,
-    };
+        "#,
+    );
 
     let analysis = analyzer.analyze("test.js", &change);
     println!("JavaScript Test Debug: Analysis results: {analysis:?}");
@@ -77,10 +74,10 @@ fn test_javascript_analyzer() {
 #[test]
 fn test_python_analyzer() {
     let analyzer = get_analyzer("test.py");
-    let change = StagedFile {
-        path: "test.py".to_string(),
-        change_type: ChangeType::Modified,
-        diff: r#"
+    let change = MockDataBuilder::staged_file_for_analysis(
+        "test.py",
+        ChangeType::Modified,
+        r#"
 +def new_function():
 +    print("Hello, world!")
 -class OldClass:
@@ -92,12 +89,8 @@ fn test_python_analyzer() {
 +def decorated_function():
 +    pass
 +from module import something
-        "#
-        .to_string(),
-        analysis: Vec::new(),
-        content: None,
-        content_excluded: false,
-    };
+        "#,
+    );
 
     let analysis = analyzer.analyze("test.py", &change);
     println!("Python Test Debug: Analysis results: {analysis:?}");
@@ -110,10 +103,10 @@ fn test_python_analyzer() {
 #[test]
 fn test_yaml_analyzer() {
     let analyzer = get_analyzer("test.yaml");
-    let change = StagedFile {
-        path: "test.yaml".to_string(),
-        change_type: ChangeType::Modified,
-        diff: r"
+    let change = MockDataBuilder::staged_file_for_analysis(
+        "test.yaml",
+        ChangeType::Modified,
+        r"
 +new_key: value
 -old_key: value
  list:
@@ -121,12 +114,8 @@ fn test_yaml_analyzer() {
 -  - old item
  nested:
 +  inner_key: value
-        "
-        .to_string(),
-        analysis: Vec::new(),
-        content: None,
-        content_excluded: false,
-    };
+        ",
+    );
 
     let analysis = analyzer.analyze("test.yaml", &change);
     println!("YAML Test Debug: Analysis results: {analysis:?}");

@@ -1,59 +1,30 @@
-use git_iris::changes::change_analyzer::{AnalyzedChange, FileChange};
+use git_iris::changes::change_analyzer::AnalyzedChange;
 use git_iris::changes::models::ChangeMetrics;
-use git_iris::changes::models::ChangelogType;
 use git_iris::changes::prompt::{
     create_changelog_system_prompt, create_changelog_user_prompt,
     create_release_notes_system_prompt, create_release_notes_user_prompt,
 };
 use git_iris::common::DetailLevel;
 use git_iris::config::Config;
-use git_iris::context::ChangeType;
+
+// Use our centralized test infrastructure
+#[path = "test_utils.rs"]
+mod test_utils;
+use test_utils::MockDataBuilder;
 
 /// Creates a mock configuration for testing
 fn create_mock_config() -> Config {
-    Config {
-        use_gitmoji: true,
-        instructions: "Always mention performance impacts".to_string(),
-        ..Default::default()
-    }
+    MockDataBuilder::config_with_instructions("Always mention performance impacts")
 }
 
 /// Creates a mock analyzed change for testing
 fn create_mock_analyzed_change() -> AnalyzedChange {
-    AnalyzedChange {
-        commit_hash: "abcdef123456".to_string(),
-        commit_message: "Add new feature".to_string(),
-        author: "Jane Doe".to_string(),
-        file_changes: vec![FileChange {
-            old_path: "src/old.rs".to_string(),
-            new_path: "src/new.rs".to_string(),
-            change_type: ChangeType::Modified,
-            analysis: vec!["Modified function: process_data".to_string()],
-        }],
-        metrics: ChangeMetrics {
-            total_commits: 1,
-            files_changed: 1,
-            insertions: 15,
-            deletions: 5,
-            total_lines_changed: 20,
-        },
-        impact_score: 0.75,
-        change_type: ChangelogType::Added,
-        is_breaking_change: false,
-        associated_issues: vec!["#123".to_string()],
-        pull_request: Some("PR #456".to_string()),
-    }
+    MockDataBuilder::analyzed_change()
 }
 
 /// Creates mock total metrics for testing
 fn create_mock_total_metrics() -> ChangeMetrics {
-    ChangeMetrics {
-        total_commits: 5,
-        files_changed: 10,
-        insertions: 100,
-        deletions: 50,
-        total_lines_changed: 150,
-    }
+    MockDataBuilder::total_change_metrics()
 }
 
 #[test]

@@ -1,63 +1,14 @@
 use git_iris::common::CommonParams;
-use git_iris::config::{Config, ProviderConfig};
-use git_iris::git::GitRepo;
-
-use git2::Repository;
+use git_iris::config::ProviderConfig;
 use std::env;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
-use tempfile::TempDir;
 
-// Helper function to set up a test Git repository
-fn setup_git_repo() -> anyhow::Result<(TempDir, GitRepo)> {
-    let temp_dir = TempDir::new()?;
-
-    // Explicitly initialize git in the directory
-    let init_output = Command::new("git")
-        .args(["init"])
-        .current_dir(temp_dir.path())
-        .output()?;
-
-    if !init_output.status.success() {
-        anyhow::bail!("Failed to initialize git repository: {init_output:?}");
-    }
-
-    // Now use git2 to configure and make an initial commit
-    let repo = Repository::open(temp_dir.path())?;
-
-    // Configure git user
-    let mut config = repo.config()?;
-    config.set_str("user.name", "Test User")?;
-    config.set_str("user.email", "test@example.com")?;
-
-    // Create and commit an initial file
-    let initial_file_path = temp_dir.path().join("initial.txt");
-    fs::write(&initial_file_path, "Initial content")?;
-
-    // Print current directory for debugging
-    println!("Current directory: {}", env::current_dir()?.display());
-    println!("Temp directory: {}", temp_dir.path().display());
-
-    let mut index = repo.index()?;
-    index.add_path(Path::new("initial.txt"))?;
-    index.write()?;
-
-    let tree_id = index.write_tree()?;
-    let tree = repo.find_tree(tree_id)?;
-    let signature = repo.signature()?;
-    repo.commit(
-        Some("HEAD"),
-        &signature,
-        &signature,
-        "Initial commit",
-        &tree,
-        &[],
-    )?;
-
-    let git_repo = GitRepo::new(temp_dir.path())?;
-    Ok((temp_dir, git_repo))
-}
+// Use our centralized test infrastructure
+#[path = "test_utils.rs"]
+mod test_utils;
+use test_utils::{MockDataBuilder, setup_git_repo};
 
 // Helper to verify git repo status
 fn is_git_repo(dir: &Path) -> bool {
@@ -72,8 +23,8 @@ fn is_git_repo(dir: &Path) -> bool {
 
 #[test]
 fn test_project_config_security() {
-    // Set up a git repository in a temporary directory
-    let (temp_dir, _git_repo) = setup_git_repo().expect("Failed to set up test git repository");
+    // Set up a git repository using our centralized infrastructure
+    let (temp_dir, _git_repo) = setup_git_repo();
 
     // Save current directory so we can restore it later
     let original_dir = env::current_dir().expect("Failed to get current directory");
@@ -88,8 +39,8 @@ fn test_project_config_security() {
     );
 
     // 1. Test API key security in project config
-    // Create a config with API keys
-    let mut config = Config::default();
+    // Create a config with API keys using our MockDataBuilder
+    let mut config = MockDataBuilder::config();
 
     // Add API keys to multiple providers
     for provider_name in &["openai", "anthropic", "cohere"] {
@@ -126,20 +77,16 @@ fn test_project_config_security() {
     }
 
     // 2. Test merging project config with personal config
-    // Create a personal config with API keys
-    let mut personal_config = Config::default();
-
-    let personal_provider_config = ProviderConfig {
-        api_key: "personal_api_key".to_string(),
-        model: "gpt-3.5-turbo".to_string(),
-        ..Default::default()
-    };
+    // Create configs using our MockDataBuilder
+    let mut personal_config =
+        MockDataBuilder::test_config_with_api_key("openai", "personal_api_key");
     personal_config
         .providers
-        .insert("openai".to_string(), personal_provider_config);
+        .get_mut("openai")
+        .expect("OpenAI provider should exist")
+        .model = "gpt-3.5-turbo".to_string();
 
-    // Create a project config
-    let mut project_config = Config::default();
+    let mut project_config = MockDataBuilder::config();
     let project_provider_config = ProviderConfig {
         api_key: String::new(), // Empty API key
         model: "gpt-4".to_string(),
@@ -179,8 +126,8 @@ fn test_project_config_security() {
         repository_url: None,
     };
 
-    // Create a config and apply common parameters
-    let mut config = Config::default();
+    // Create a config using our MockDataBuilder and apply common parameters
+    let mut config = MockDataBuilder::config();
     common
         .apply_to_config(&mut config)
         .expect("Failed to apply common params");

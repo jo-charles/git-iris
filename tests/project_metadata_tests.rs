@@ -1,14 +1,16 @@
-use git_iris::git::GitRepo;
 use std::fs;
 use std::path::Path;
 use std::time::{Duration, Instant};
-use tempfile::TempDir;
+
+// Use our centralized test infrastructure
+#[path = "test_utils.rs"]
+mod test_utils;
+use test_utils::setup_temp_dir;
 
 #[tokio::test]
 async fn test_project_metadata_parallelism() {
-    // Create a temporary directory for our test files
-    let temp_dir = TempDir::new().expect("Failed to create temporary directory");
-    let git_repo = GitRepo::new(temp_dir.path()).expect("Failed to create GitRepo");
+    // Create a temporary directory for our test files using our centralized infrastructure
+    let (temp_dir, git_repo) = setup_temp_dir();
 
     // Create multiple files with different "languages"
     let files = vec![

@@ -6,31 +6,14 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tempfile::TempDir;
 
+// Use our centralized test infrastructure
+#[path = "test_utils.rs"]
+mod test_utils;
+use test_utils::setup_git_repo_with_commits;
+
 fn setup_test_repo() -> Result<(TempDir, Arc<GitRepo>)> {
-    let temp_dir = TempDir::new()?;
-    let repo = git2::Repository::init(temp_dir.path())?;
-
-    // Configure git user
-    let mut config = repo.config().expect("Failed to get repository config");
-    config.set_str("user.name", "Git-Iris")?;
-    config.set_str("user.email", "git-iris@is-aweso.me")?;
-
-    // Create an initial commit
-    let signature = git2::Signature::now("Test User", "test@example.com")?;
-    let tree_id = repo.index()?.write_tree()?;
-    let tree = repo.find_tree(tree_id)?;
-    repo.commit(
-        Some("HEAD"),
-        &signature,
-        &signature,
-        "Initial commit",
-        &tree,
-        &[],
-    )?;
-
-    let git_repo = Arc::new(GitRepo::new(temp_dir.path())?);
-
-    Ok((temp_dir, git_repo))
+    let (temp_dir, git_repo) = setup_git_repo_with_commits()?;
+    Ok((temp_dir, Arc::new(git_repo)))
 }
 
 #[tokio::test]

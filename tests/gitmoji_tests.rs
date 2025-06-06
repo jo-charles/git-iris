@@ -1,11 +1,17 @@
 use git_iris::gitmoji::{apply_gitmoji, get_gitmoji, get_gitmoji_list};
 
+// Use our centralized test infrastructure
+#[path = "test_utils.rs"]
+mod test_utils;
+use test_utils::TestAssertions;
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_apply_gitmoji() {
+        // Test standard gitmoji applications
         assert_eq!(
             apply_gitmoji("feat: add new feature"),
             "✨ feat: add new feature"
@@ -28,6 +34,8 @@ mod tests {
             apply_gitmoji("chore: update dependencies"),
             "🔨 chore: update dependencies"
         );
+
+        // Test edge cases
         assert_eq!(
             apply_gitmoji("unknown: some message"),
             "unknown: some message"
@@ -39,6 +47,11 @@ mod tests {
     #[test]
     fn test_get_gitmoji_list() {
         let list = get_gitmoji_list();
+
+        // Use our centralized assertion for gitmoji validation
+        TestAssertions::assert_contains_gitmoji(&list);
+
+        // Additional specific checks
         assert!(list.contains("✨ - :feat: - Introduce new features"));
         assert!(list.contains("🐛 - :fix: - Fix a bug"));
         assert!(list.contains("📝 - :docs: - Add or update documentation"));
@@ -50,6 +63,7 @@ mod tests {
 
     #[test]
     fn test_get_gitmoji() {
+        // Test valid gitmoji lookups
         assert_eq!(get_gitmoji("feat"), Some("✨"));
         assert_eq!(get_gitmoji("fix"), Some("🐛"));
         assert_eq!(get_gitmoji("docs"), Some("📝"));
@@ -57,6 +71,8 @@ mod tests {
         assert_eq!(get_gitmoji("refactor"), Some("♻️"));
         assert_eq!(get_gitmoji("test"), Some("✅"));
         assert_eq!(get_gitmoji("chore"), Some("🔨"));
+
+        // Test invalid lookup
         assert_eq!(get_gitmoji("unknown"), None);
     }
 }
