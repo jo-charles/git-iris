@@ -1,5 +1,8 @@
 use git_iris::logger;
 
+// Common test utilities shared across test modules
+mod test_utils;
+
 #[cfg(test)]
 mod tests {
     use super::*;
