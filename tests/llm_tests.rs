@@ -32,9 +32,12 @@ fn test_get_default_model_for_provider() {
     assert_eq!(get_default_model_for_provider("openai"), "gpt-4.1");
     assert_eq!(
         get_default_model_for_provider("anthropic"),
-        "claude-3-7-sonnet-latest"
+        "claude-sonnet-4-20250514"
     );
-    assert_eq!(get_default_model_for_provider("google"), "gemini-2.0-flash");
+    assert_eq!(
+        get_default_model_for_provider("google"),
+        "gemini-2.5-pro-preview-06-05"
+    );
     assert_eq!(get_default_model_for_provider("xai"), "grok-2-beta");
 
     // Test fallback for unknown provider

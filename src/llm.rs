@@ -237,9 +237,9 @@ pub fn get_available_provider_names() -> Vec<String> {
 /// Returns the default model for a given provider
 pub fn get_default_model_for_provider(provider_type: &str) -> &'static str {
     match provider_type.to_lowercase().as_str() {
-        "anthropic" => "claude-3-7-sonnet-latest",
+        "anthropic" => "claude-sonnet-4-20250514",
         "ollama" => "llama3",
-        "google" => "gemini-2.0-flash",
+        "google" => "gemini-2.5-pro-preview-06-05",
         "groq" => "llama-3.1-70b-versatile",
         "xai" => "grok-2-beta",
         "deepseek" => "deepseek-chat",
