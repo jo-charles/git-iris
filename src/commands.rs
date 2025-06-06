@@ -42,18 +42,16 @@ fn apply_config_changes(
 ) -> anyhow::Result<bool> {
     let mut changes_made = false;
 
-    // Apply common parameters to the config
-    common.apply_to_config(config)?;
+    // Apply common parameters to the config and track if changes were made
+    let common_changes = common.apply_to_config(config)?;
+    changes_made |= common_changes;
 
-    // Handle provider change
+    // Handle provider change - but skip if already handled by apply_to_config
     if let Some(provider) = &common.provider {
         if !get_available_provider_names().iter().any(|p| p == provider) {
             return Err(anyhow!("Invalid provider: {}", provider));
         }
-        if config.default_provider != *provider {
-            config.default_provider.clone_from(provider);
-            changes_made = true;
-        }
+        // Only check for provider insertion if it wasn't already handled
         if !config.providers.contains_key(provider) {
             config
                 .providers

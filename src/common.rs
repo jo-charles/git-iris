@@ -75,7 +75,9 @@ pub struct CommonParams {
 }
 
 impl CommonParams {
-    pub fn apply_to_config(&self, config: &mut Config) -> Result<()> {
+    pub fn apply_to_config(&self, config: &mut Config) -> Result<bool> {
+        let mut changes_made = false;
+
         if let Some(provider) = &self.provider {
             // Convert "claude" to "anthropic" for backward compatibility
             let provider_name = if provider.to_lowercase() == "claude" {
@@ -83,18 +85,42 @@ impl CommonParams {
             } else {
                 provider.clone()
             };
-            config.default_provider.clone_from(&provider_name);
+
+            // Check if we need to update the default provider
+            if config.default_provider != provider_name {
+                // Ensure the provider exists in the providers HashMap
+                if !config.providers.contains_key(&provider_name) {
+                    // Import ProviderConfig here
+                    use crate::config::ProviderConfig;
+                    config.providers.insert(
+                        provider_name.clone(),
+                        ProviderConfig::default_for(&provider_name),
+                    );
+                }
+
+                config.default_provider.clone_from(&provider_name);
+                changes_made = true;
+            }
         }
+
         if let Some(instructions) = &self.instructions {
             config.set_temp_instructions(Some(instructions.clone()));
+            // Note: temp instructions don't count as permanent changes
         }
+
         if let Some(preset) = &self.preset {
             config.set_temp_preset(Some(preset.clone()));
+            // Note: temp preset doesn't count as permanent changes
         }
+
         if let Some(use_gitmoji) = self.gitmoji {
-            config.use_gitmoji = use_gitmoji;
+            if config.use_gitmoji != use_gitmoji {
+                config.use_gitmoji = use_gitmoji;
+                changes_made = true;
+            }
         }
-        Ok(())
+
+        Ok(changes_made)
     }
 
     /// Check if the provided preset is valid for the specified preset type

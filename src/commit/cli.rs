@@ -181,7 +181,7 @@ fn validate_pr_parameters(_from: Option<&String>, _to: Option<&String>) {
     // - from only: from..HEAD
     // - to only: main..to
     // - none: main..HEAD (caught earlier, but handled gracefully)
-    
+
     // No validation errors needed - all combinations are handled
 }
 
@@ -224,16 +224,44 @@ async fn generate_pr_based_on_parameters(
 
     let pr_description = match (from, to) {
         (Some(from_ref), Some(to_ref)) => {
-            handle_from_and_to_parameters(service, preset_str, &effective_instructions, from_ref, to_ref, &random_message).await?
+            handle_from_and_to_parameters(
+                service,
+                preset_str,
+                &effective_instructions,
+                from_ref,
+                to_ref,
+                &random_message,
+            )
+            .await?
         }
         (None, Some(to_ref)) => {
-            handle_to_only_parameter(service, preset_str, &effective_instructions, to_ref, &random_message).await?
+            handle_to_only_parameter(
+                service,
+                preset_str,
+                &effective_instructions,
+                to_ref,
+                &random_message,
+            )
+            .await?
         }
         (Some(from_ref), None) => {
-            handle_from_only_parameter(service, preset_str, &effective_instructions, from_ref, &random_message).await?
+            handle_from_only_parameter(
+                service,
+                preset_str,
+                &effective_instructions,
+                from_ref,
+                &random_message,
+            )
+            .await?
         }
         (None, None) => {
-            handle_no_parameters(service, preset_str, &effective_instructions, &random_message).await?
+            handle_no_parameters(
+                service,
+                preset_str,
+                &effective_instructions,
+                &random_message,
+            )
+            .await?
         }
     };
 
@@ -305,7 +333,7 @@ async fn handle_to_only_parameter(
     random_message: &crate::messages::ColoredMessage,
 ) -> Result<super::types::GeneratedPullRequest> {
     let spinner = ui::create_spinner("");
-    
+
     // Check if this is a single commit hash
     if is_likely_commit_hash(&to_ref) {
         // For a single commit specified with --to, compare it against its parent
@@ -359,7 +387,7 @@ async fn handle_from_only_parameter(
     random_message: &crate::messages::ColoredMessage,
 ) -> Result<super::types::GeneratedPullRequest> {
     let spinner = ui::create_spinner("");
-    
+
     // Check if this looks like a single commit hash that we should compare against its parent
     if is_likely_commit_hash(&from_ref) {
         // For a single commit hash, compare it against its parent (commit^..commit)
