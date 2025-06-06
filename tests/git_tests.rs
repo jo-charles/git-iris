@@ -45,6 +45,29 @@ fn setup_git_repo() -> (TempDir, GitRepo) {
     )
     .expect("Failed to commit");
 
+    // Ensure the default branch is named 'main' for consistency across environments
+    {
+        let head_commit = repo
+            .head()
+            .expect("Failed to get HEAD")
+            .peel_to_commit()
+            .expect("Failed to peel HEAD to commit");
+        let current_branch = repo
+            .head()
+            .ok()
+            .and_then(|h| h.shorthand().map(|s| s.to_string()))
+            .unwrap_or_default();
+        if current_branch != "main" {
+            // Create or update the 'main' branch pointing to the current HEAD commit
+            repo.branch("main", &head_commit, true)
+                .expect("Failed to create 'main' branch");
+            repo.set_head("refs/heads/main")
+                .expect("Failed to set HEAD to 'main' branch");
+            repo.checkout_head(Some(git2::build::CheckoutBuilder::default().force()))
+                .expect("Failed to checkout 'main' branch");
+        }
+    }
+
     let git_repo = GitRepo::new(temp_dir.path()).expect("Failed to create GitRepo");
     (temp_dir, git_repo)
 }
