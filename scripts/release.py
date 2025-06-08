@@ -294,6 +294,39 @@ def is_valid_version(version: str) -> bool:
     return re.match(r"^\d+\.\d+\.\d+$", version) is not None
 
 
+def generate_release_notes_to_stdout(current_version: str, new_version: str) -> None:
+    """Generate and display release notes to stdout using git-iris."""
+    print_step("Generating release notes to stdout")
+    from_tag = f"v{current_version}"
+    to_tag = f"v{new_version}"
+
+    try:
+        print_colored(
+            f"\n🎯 Release Notes for {PROJECT_NAME} v{new_version}", COLOR_SUCCESS
+        )
+        print_colored("=" * 60, COLOR_BORDER)
+
+        # Generate release notes and output to stdout
+        subprocess.run(
+            [
+                "cargo",
+                "run",
+                "--",
+                "release-notes",
+                "--from",
+                from_tag,
+                "--to",
+                to_tag,
+                "--version-name",
+                new_version,
+            ],
+            check=True,
+        )
+
+    except subprocess.CalledProcessError as e:
+        print_warning(f"Could not generate release notes: {str(e)}")
+
+
 def main() -> None:
     """Main function to handle the release process."""
     print_logo()
@@ -330,6 +363,9 @@ def main() -> None:
     print_success(
         f"\n🎉✨ {PROJECT_NAME} v{new_version} has been successfully released! ✨🎉"
     )
+
+    # Generate and display release notes to stdout
+    generate_release_notes_to_stdout(current_version, new_version)
 
 
 if __name__ == "__main__":
