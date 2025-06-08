@@ -157,13 +157,6 @@ jobs:
             arch_suffix: amd64
             rpm_arch: x86_64
             rust_flags: "-C target-cpu=x86-64"
-
-          - build: linux-arm64
-            os: ubuntu-latest
-            target: aarch64-unknown-linux-gnu
-            arch_suffix: arm64
-            rpm_arch: aarch64
-            rust_flags: "-C target-cpu=generic"
     outputs:
       version: ${{ steps.get_version.outputs.VERSION }}
     steps:
