@@ -61,7 +61,12 @@ where
     }
 
     // Set max tokens if specified in additional params, otherwise use 4096 as default
-    if let Some(max_tokens) = provider_config.additional_params.get("max_tokens") {
+    // For OpenAI thinking models, don't set max_tokens via builder since they use max_completion_tokens
+    if is_openai_thinking_model(&provider_config.model) && provider_name.to_lowercase() == "openai"
+    {
+        // For thinking models, max_completion_tokens should be handled via additional_params
+        // Don't set max_tokens via the builder for these models
+    } else if let Some(max_tokens) = provider_config.additional_params.get("max_tokens") {
         if let Ok(mt_val) = max_tokens.parse::<u32>() {
             builder = builder.max_tokens(mt_val);
         }
@@ -275,6 +280,12 @@ fn requires_api_key(backend: &LLMBackend) -> bool {
     !matches!(backend, LLMBackend::Ollama | LLMBackend::Phind)
 }
 
+/// Helper function: check if the model is an `OpenAI` thinking model
+fn is_openai_thinking_model(model: &str) -> bool {
+    let model_lower = model.to_lowercase();
+    model_lower.starts_with('o')
+}
+
 /// Validates the provider configuration
 pub fn validate_provider_config(config: &Config, provider_name: &str) -> Result<()> {
     if provider_requires_api_key(provider_name) {
@@ -321,6 +332,17 @@ pub fn get_combined_config<S: ::std::hash::BuildHasher>(
     for (key, value) in command_line_args {
         if !value.is_empty() {
             combined_params.insert(key.clone(), value.clone());
+        }
+    }
+
+    // Handle OpenAI thinking models: convert max_tokens to max_completion_tokens
+    if provider_name.to_lowercase() == "openai" {
+        if let Some(model) = combined_params.get("model") {
+            if is_openai_thinking_model(model) {
+                if let Some(max_tokens) = combined_params.remove("max_tokens") {
+                    combined_params.insert("max_completion_tokens".to_string(), max_tokens);
+                }
+            }
         }
     }
 
