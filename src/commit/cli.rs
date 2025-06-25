@@ -196,8 +196,8 @@ fn setup_pr_service(
         common,
         repository_url,
         config,
-        false, // gitmoji not needed for PR descriptions
-        false, // verification not needed for PR descriptions
+        config.use_gitmoji, // Use gitmoji setting from config for PR descriptions
+        false,              // verification not needed for PR descriptions
     )
 }
 

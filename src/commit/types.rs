@@ -1,7 +1,7 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
-use textwrap::wrap;
+use textwrap;
 
 /// Model for commit message generation results
 #[derive(Serialize, Deserialize, JsonSchema, Debug, Clone)]
@@ -17,6 +17,8 @@ pub struct GeneratedMessage {
 /// Model for pull request description generation results
 #[derive(Serialize, Deserialize, JsonSchema, Debug, Clone)]
 pub struct GeneratedPullRequest {
+    /// Optional emoji for the pull request title
+    pub emoji: Option<String>,
     /// Pull request title
     pub title: String,
     /// Brief summary of the changes
@@ -44,7 +46,7 @@ pub fn format_commit_message(response: &GeneratedMessage) -> String {
     message.push_str(&response.title);
     message.push_str("\n\n");
 
-    let wrapped_message = wrap(&response.message, 78);
+    let wrapped_message = textwrap::wrap(&response.message, 78);
     for line in wrapped_message {
         message.push_str(&line);
         message.push('\n');
@@ -57,24 +59,23 @@ pub fn format_commit_message(response: &GeneratedMessage) -> String {
 pub fn format_pull_request(response: &GeneratedPullRequest) -> String {
     let mut message = String::new();
 
-    // Title
-    writeln!(&mut message, "# {}", response.title).expect("write to string should not fail");
+    // Title with optional emoji
+    if let Some(emoji) = &response.emoji {
+        writeln!(&mut message, "# {emoji} {}", response.title)
+            .expect("write to string should not fail");
+    } else {
+        writeln!(&mut message, "# {}", response.title).expect("write to string should not fail");
+    }
     message.push('\n');
 
-    // Summary
+    // Summary - no word wrapping for web UI display
     writeln!(&mut message, "## Summary").expect("write to string should not fail");
-    let wrapped_summary = wrap(&response.summary, 78);
-    for line in wrapped_summary {
-        writeln!(&mut message, "{line}").expect("write to string should not fail");
-    }
+    writeln!(&mut message, "{}", response.summary).expect("write to string should not fail");
     message.push('\n');
 
-    // Description
+    // Description - no word wrapping for web UI display
     writeln!(&mut message, "## Description").expect("write to string should not fail");
-    let wrapped_description = wrap(&response.description, 78);
-    for line in wrapped_description {
-        writeln!(&mut message, "{line}").expect("write to string should not fail");
-    }
+    writeln!(&mut message, "{}", response.description).expect("write to string should not fail");
     message.push('\n');
 
     // Commits
@@ -95,23 +96,17 @@ pub fn format_pull_request(response: &GeneratedPullRequest) -> String {
         message.push('\n');
     }
 
-    // Testing notes
+    // Testing notes - no word wrapping for web UI display
     if let Some(testing) = &response.testing_notes {
         writeln!(&mut message, "## Testing").expect("write to string should not fail");
-        let wrapped_testing = wrap(testing, 78);
-        for line in wrapped_testing {
-            writeln!(&mut message, "{line}").expect("write to string should not fail");
-        }
+        writeln!(&mut message, "{testing}").expect("write to string should not fail");
         message.push('\n');
     }
 
-    // Additional notes
+    // Additional notes - no word wrapping for web UI display
     if let Some(notes) = &response.notes {
         writeln!(&mut message, "## Notes").expect("write to string should not fail");
-        let wrapped_notes = wrap(notes, 78);
-        for line in wrapped_notes {
-            writeln!(&mut message, "{line}").expect("write to string should not fail");
-        }
+        writeln!(&mut message, "{notes}").expect("write to string should not fail");
     }
 
     message

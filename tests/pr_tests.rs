@@ -108,6 +108,7 @@ fn test_format_pull_request() {
 #[test]
 fn test_format_pull_request_minimal() {
     let pr = GeneratedPullRequest {
+        emoji: None,
         title: "Fix bug in user authentication".to_string(),
         summary: "Fixes a critical bug in the authentication flow".to_string(),
         description: "This PR fixes an issue where users couldn't log in properly.".to_string(),
@@ -265,6 +266,7 @@ fn test_pr_prompt_with_large_commit_list() {
 #[test]
 fn test_format_pull_request_with_unicode() {
     let pr = GeneratedPullRequest {
+        emoji: None,
         title: "Add 🚀 deployment automation".to_string(),
         summary: "Implements automated deployment with emojis 🎉".to_string(),
         description: "This PR adds deployment automation:\n\n• Feature 1\n• Feature 2 ✅"

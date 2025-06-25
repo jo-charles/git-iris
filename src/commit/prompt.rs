@@ -547,14 +547,43 @@ pub fn create_pr_system_prompt(config: &Config) -> anyhow::Result<String> {
 
     prompt.push_str(get_combined_instructions(config).as_str());
 
+    if config.use_gitmoji {
+        prompt.push_str(
+            "\n\nUse emojis strategically to create visual structure and reinforce section meaning. \
+          Use a single gitmoji at the start of the PR title, and include emojis in section headers \
+          to create a clean, professional, and visually structured PR description. \
+          Choose relevant emojis from the following list:\n\n",
+        );
+        prompt.push_str(&get_gitmoji_list());
+        prompt.push_str(
+            "\n\nEmoji placement guidelines:\
+          \n- Use emojis in ALL major section headers (## Summary, ## Features, ## Testing, etc.)\
+          \n- Include emojis in key sub-section headers within Features for visual hierarchy\
+          \n- Use ⚠️ specifically for breaking changes\
+          \n- Keep the actual content clean and professional without scattered emojis\
+          \n- Choose emojis that reinforce the section's purpose and meaning\
+          \n- Maintain consistency in emoji selection across similar sections\
+          \n\nRecommended section emojis:\
+          \n- 🧩 Summary (puzzle piece for overview)\
+          \n- 📦 Features (package for new functionality)\
+          \n- 🚀 Core Capabilities (rocket for main features)\
+          \n- 🛠 Technical Details (wrench for implementation)\
+          \n- 🧪 Testing (test tube for testing info)\
+          \n- 📝 Notes (memo for additional context)\
+          \n- 🔍 Commits (magnifying glass for commit list)\
+          \n- ⚠️ Breaking Changes (warning for breaking changes)\n\n",
+        );
+    }
+
     prompt.push_str(
         "
         Your response must be a valid JSON object with the following structure:
 
         {
+          \"emoji\": \"string or null\",
           \"title\": \"Clear, descriptive PR title\",
           \"summary\": \"Brief overview of the changes\",
-          \"description\": \"Detailed explanation of what was changed and why\",
+          \"description\": \"Detailed explanation organized into Features section with sub-sections for Core Capabilities, Technical Details, CLI/Integration details, etc.\",
           \"commits\": [\"List of commit messages included in this PR\"],
           \"breaking_changes\": [\"Any breaking changes introduced\"],
           \"testing_notes\": \"Instructions for testing these changes (optional)\",
@@ -566,27 +595,29 @@ pub fn create_pr_system_prompt(config: &Config) -> anyhow::Result<String> {
         1. Analyze the provided context, including commit messages, file changes, and project metadata
         2. Identify the main theme or purpose that unifies all the changes
         3. Create a clear, descriptive title that captures the essence of the PR
-        4. Write a concise summary highlighting the key changes and their impact
-        5. Provide a detailed description explaining the changes, their rationale, and implementation approach
-        6. List all commit messages for reference and traceability
-        7. Identify any breaking changes and explain their impact on users or systems
-        8. Provide testing instructions if the changes require specific testing procedures
-        9. Add any additional notes about deployment, configuration, or other considerations
-        10. Construct the final JSON object with all components
+        4. If using emojis, select the most appropriate one for the PR type
+        5. Write a concise summary highlighting the key changes and their impact
+        6. Organize the description into a Features section with logical sub-sections
+        7. List all commit messages for reference and traceability
+        8. Identify any breaking changes and explain their impact on users or systems
+        9. Provide testing instructions if the changes require specific testing procedures
+        10. Add any additional notes about deployment, configuration, or other considerations
+        11. Construct the final JSON object with all components
 
         Example output format:
 
         {
-          \"title\": \"Add user authentication with JWT tokens and role-based access control\",
-          \"summary\": \"Implements a comprehensive authentication system with JWT tokens, user registration/login, and role-based permissions. Includes middleware for route protection and database migrations for user management.\",
-          \"description\": \"This PR introduces a complete authentication system to secure the application:\\n\\n**Features Added:**\\n- JWT-based authentication with access and refresh tokens\\n- User registration and login endpoints\\n- Role-based access control (admin, user roles)\\n- Password hashing with bcrypt\\n- Authentication middleware for protected routes\\n\\n**Technical Details:**\\n- Uses industry-standard JWT libraries for token management\\n- Implements secure password storage with salt rounds\\n- Adds database migrations for user and role tables\\n- Includes comprehensive error handling and validation\\n\\n**Security Considerations:**\\n- Tokens expire after 24 hours with refresh mechanism\\n- Passwords are hashed with bcrypt (12 rounds)\\n- CORS configuration updated for authentication headers\",
-          \"commits\": [\"abc1234: Add JWT authentication middleware\", \"def5678: Implement user registration endpoint\", \"ghi9012: Add login functionality with password validation\"],
-          \"breaking_changes\": [\"All API endpoints now require authentication headers\", \"Database schema changes require migration\"],
-          \"testing_notes\": \"Test user registration and login flows. Verify that protected routes reject unauthenticated requests. Check token refresh mechanism with expired tokens.\",
-          \"notes\": \"Requires environment variables: JWT_SECRET, JWT_EXPIRES_IN. Run database migrations before deployment.\"
+          \"emoji\": \"✨\",
+          \"title\": \"Add comprehensive Experience Fragment management system\",
+          \"summary\": \"Implements full lifecycle support for Experience Fragments (XFs), including create, retrieve, update, and page integration operations. Adds a unified agent tool, rich CLI interface, and tight AEM manager integration with tenant-specific configuration support.\",
+          \"description\": \"### 🚀 Core Capabilities\\n\\n* Unified `manage_experience_fragments` tool with four key operations:\\n  * `create`: Create new XFs with optional initial content\\n  * `get`: Retrieve existing XF data\\n  * `update`: Modify XF content\\n  * `add_to_page`: Inject XF references into pages with flexible positioning\\n\\n* AEM manager integration with `createExperienceFragment` and `populateExperienceFragment`\\n* Support for tenant-specific `experienceFragmentComponentType` configuration\\n\\n### 🛠 Technical Details\\n\\n* Secure CSRF token handling for all operations\\n* XF page structure conversion for accurate population\\n* AEM 6.5 vs AEM Cloud component type detection\\n* Unique XF name generation with randomized suffixes\\n* Comprehensive validation and error handling\\n* State change logging for operational observability\\n\\n### 🖥 CLI Tooling\\n\\n* New command-line script with full XF management\\n* Commands: `create`, `update`, `list`, `get`, `delete`, `search`, `info`\\n* Content file input/output support\\n* XF discovery and metadata analysis tools\",
+          \"commits\": [\"b1b1f3f: feat(xf): add experience fragment management system\"],
+          \"breaking_changes\": [],
+          \"testing_notes\": \"Verified XF creation, update, and population. Confirmed CLI command behavior across all operations. Tested page integration and position logic. Checked tenant-specific component resolution.\",
+          \"notes\": \"Tenants using non-default XF components must define `experienceFragmentComponentType`. Requires sufficient AEM permissions and CSRF support.\"
         }
 
-        Ensure that your response is a valid JSON object matching this structure.
+        Ensure that your response is a valid JSON object matching this structure. Include an empty string for the emoji if not using one.
         ");
 
     prompt.push_str(&pr_schema_str);

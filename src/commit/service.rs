@@ -599,13 +599,20 @@ impl IrisCommitService {
                 super::prompt::create_pr_user_prompt(ctx, &commit_messages)
             });
 
-        llm::get_message::<super::types::GeneratedPullRequest>(
+        let mut generated_pr = llm::get_message::<super::types::GeneratedPullRequest>(
             &config_clone,
             &self.provider_name,
             &system_prompt,
             &final_user_prompt,
         )
-        .await
+        .await?;
+
+        // Apply gitmoji setting
+        if !self.use_gitmoji {
+            generated_pr.emoji = None;
+        }
+
+        Ok(generated_pr)
     }
 
     /// Generate a PR description for branch comparison
@@ -668,13 +675,20 @@ impl IrisCommitService {
                 super::prompt::create_pr_user_prompt(ctx, &commit_messages)
             });
 
-        llm::get_message::<super::types::GeneratedPullRequest>(
+        let mut generated_pr = llm::get_message::<super::types::GeneratedPullRequest>(
             &config_clone,
             &self.provider_name,
             &system_prompt,
             &final_user_prompt,
         )
-        .await
+        .await?;
+
+        // Apply gitmoji setting
+        if !self.use_gitmoji {
+            generated_pr.emoji = None;
+        }
+
+        Ok(generated_pr)
     }
 
     /// Performs a commit with the given message.
