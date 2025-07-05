@@ -250,30 +250,13 @@ impl AgentFactory {
         }
     }
 
-    pub async fn create_commit_agent(&self) -> Result<Box<dyn IrisAgent>> {
-        let tools = self
-            .tool_registry
-            .get_tools_for_capability("commit")
-            .await?;
-        let agent = crate::agents::commit::CommitAgent::new(self.backend.clone(), tools);
-        Ok(Box::new(agent))
-    }
-
-    pub async fn create_review_agent(&self) -> Result<Box<dyn IrisAgent>> {
-        let tools = self
-            .tool_registry
-            .get_tools_for_capability("review")
-            .await?;
-        let agent = crate::agents::review::ReviewAgent::new(self.backend.clone(), tools);
-        Ok(Box::new(agent))
-    }
-
-    pub async fn create_changelog_agent(&self) -> Result<Box<dyn IrisAgent>> {
-        let tools = self
-            .tool_registry
-            .get_tools_for_capability("changelog")
-            .await?;
-        let agent = crate::agents::changelog::ChangelogAgent::new(self.backend.clone(), tools);
+    pub async fn create_iris_agent(&self) -> Result<Box<dyn IrisAgent>> {
+        let tools = vec![
+            self.tool_registry.get_tool("git_operations").unwrap(),
+            self.tool_registry.get_tool("file_analyzer").unwrap(),
+            self.tool_registry.get_tool("code_search").unwrap(),
+        ];
+        let agent = crate::agents::iris::IrisAgent::new(self.backend.clone(), tools);
         Ok(Box::new(agent))
     }
 }
