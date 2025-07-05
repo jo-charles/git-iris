@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::agents::core::AgentContext;
+use crate::log_debug;
 
 /// Core trait for agent tools
 #[async_trait]
@@ -153,14 +154,18 @@ impl AgentTool for GitTool {
         context: &AgentContext,
         params: &HashMap<String, serde_json::Value>,
     ) -> Result<serde_json::Value> {
+        log_debug!("🔧 GitTool executing with params: {:?}", params);
+
         let args: GitToolArgs = serde_json::from_value(serde_json::Value::Object(
             params.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
         ))?;
 
+        log_debug!("⚙️  GitTool operation: {}", args.operation);
         let repo = &context.git_repo;
 
         match args.operation.as_str() {
             "diff" => {
+                log_debug!("📄 GitTool: Getting staged files with diffs");
                 // Get the actual git context which includes diffs
                 let git_context = repo.get_git_info(&context.config).await?;
                 let combined_diff = git_context
@@ -170,26 +175,45 @@ impl AgentTool for GitTool {
                     .collect::<Vec<_>>()
                     .join("\n\n");
 
+                log_debug!(
+                    "✅ GitTool: Diff retrieved, {} staged files, {} total chars",
+                    git_context.staged_files.len(),
+                    combined_diff.len()
+                );
+
                 Ok(serde_json::json!({
                     "operation": "diff",
                     "content": combined_diff,
                 }))
             }
             "status" => {
+                log_debug!("📊 GitTool: Getting repository status");
                 let files = repo.get_unstaged_files()?;
+                log_debug!(
+                    "✅ GitTool: Status retrieved, {} unstaged files",
+                    files.len()
+                );
+
                 Ok(serde_json::json!({
                     "operation": "status",
                     "content": files,
                 }))
             }
             "log" => {
+                log_debug!("📜 GitTool: Getting recent commit history (10 commits)");
                 let commits = repo.get_recent_commits(10)?;
+                log_debug!(
+                    "✅ GitTool: Commit history retrieved, {} commits found",
+                    commits.len()
+                );
+
                 Ok(serde_json::json!({
                     "operation": "log",
                     "content": commits,
                 }))
             }
             "files" => {
+                log_debug!("📂 GitTool: Getting list of changed files");
                 let git_context = repo.get_git_info(&context.config).await?;
                 let files: Vec<String> = git_context
                     .staged_files
@@ -197,12 +221,21 @@ impl AgentTool for GitTool {
                     .map(|f| f.path.clone())
                     .collect();
 
+                log_debug!(
+                    "✅ GitTool: File list retrieved, {} files: {:?}",
+                    files.len(),
+                    files
+                );
+
                 Ok(serde_json::json!({
                     "operation": "files",
                     "content": files,
                 }))
             }
-            _ => Err(anyhow::anyhow!("Unknown git operation: {}", args.operation)),
+            _ => {
+                log_debug!("❌ GitTool: Unknown operation: {}", args.operation);
+                Err(anyhow::anyhow!("Unknown git operation: {}", args.operation))
+            }
         }
     }
 
@@ -286,13 +319,24 @@ impl AgentTool for FileAnalyzerTool {
         _context: &AgentContext,
         params: &HashMap<String, serde_json::Value>,
     ) -> Result<serde_json::Value> {
+        log_debug!("🔍 FileAnalyzerTool executing with params: {:?}", params);
+
         let args: FileAnalyzerArgs = serde_json::from_value(serde_json::Value::Object(
             params.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
         ))?;
 
+        log_debug!(
+            "📄 FileAnalyzerTool: Analyzing file: {} (type: {:?}, include_content: {})",
+            args.path,
+            args.analysis_type,
+            args.include_content.unwrap_or(false)
+        );
+
         let analyzer = crate::file_analyzers::get_analyzer(&args.path);
         let file_type = analyzer.get_file_type();
         let include_content = args.include_content.unwrap_or(false);
+
+        log_debug!("🔬 FileAnalyzerTool: File type detected: {}", file_type);
 
         let mut result = serde_json::json!({
             "path": args.path,
@@ -300,13 +344,26 @@ impl AgentTool for FileAnalyzerTool {
         });
 
         if include_content {
+            log_debug!("📖 FileAnalyzerTool: Reading file content for analysis");
             if let Ok(content) = tokio::fs::read_to_string(&args.path).await {
+                let line_count = content.lines().count();
                 result["content"] = serde_json::Value::String(content.clone());
-                result["lines"] =
-                    serde_json::Value::Number(serde_json::Number::from(content.lines().count()));
+                result["lines"] = serde_json::Value::Number(serde_json::Number::from(line_count));
+
+                log_debug!(
+                    "✅ FileAnalyzerTool: Content read - {} lines, {} chars",
+                    line_count,
+                    content.len()
+                );
+            } else {
+                log_debug!(
+                    "⚠️  FileAnalyzerTool: Failed to read file content for: {}",
+                    args.path
+                );
             }
         }
 
+        log_debug!("✅ FileAnalyzerTool: Analysis complete for {}", args.path);
         Ok(result)
     }
 

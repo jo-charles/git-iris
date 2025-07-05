@@ -9,6 +9,7 @@ use crate::agents::{
     core::{AgentBackend, AgentContext, IrisAgent, TaskResult},
     tools::AgentTool,
 };
+use crate::log_debug;
 
 /// Specialized agent for changelog and release notes generation
 pub struct ChangelogAgent {
@@ -92,6 +93,8 @@ impl ChangelogAgent {
         context: &AgentContext,
         params: &HashMap<String, serde_json::Value>,
     ) -> Result<TaskResult> {
+        log_debug!("📝 ChangelogAgent starting changelog generation");
+
         // Extract parameters
         let version = params
             .get("version")
@@ -109,19 +112,53 @@ impl ChangelogAgent {
             .and_then(|v| v.as_str())
             .unwrap_or("keep-a-changelog");
 
+        log_debug!(
+            "⚙️  ChangelogAgent configuration - Version: {}, Range: {} to {}, Format: {}",
+            version,
+            from_tag.unwrap_or("[initial]"),
+            to_tag,
+            format
+        );
+
         // Get commit history for the range
+        log_debug!("📜 ChangelogAgent: Gathering commit history");
         let commits = self.get_commit_history(context, from_tag, to_tag).await?;
+        log_debug!(
+            "✅ ChangelogAgent: Found {} commits in range",
+            commits.len()
+        );
 
         // Categorize commits
+        log_debug!("🏷️  ChangelogAgent: Categorizing commits by type");
         let categorized_commits = self.categorize_commits(&commits).await?;
+        let total_categories = categorized_commits.sections.len();
+        let total_items: usize = categorized_commits
+            .sections
+            .values()
+            .map(std::vec::Vec::len)
+            .sum();
+        log_debug!(
+            "✅ ChangelogAgent: Commits categorized into {} categories, {} total items",
+            total_categories,
+            total_items
+        );
 
         // Generate changelog entry
+        log_debug!("📋 ChangelogAgent: Building changelog entry");
         let changelog_entry = self
             .build_changelog_entry(version, &categorized_commits, format)
             .await?;
 
         // Format the changelog
+        log_debug!(
+            "🎨 ChangelogAgent: Formatting changelog in {} format",
+            format
+        );
         let formatted_changelog = self.format_changelog(&changelog_entry, format).await?;
+        log_debug!(
+            "✅ ChangelogAgent: Changelog formatted - {} characters",
+            formatted_changelog.len()
+        );
 
         Ok(TaskResult::success_with_data(
             "Changelog generated successfully".to_string(),

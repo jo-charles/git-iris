@@ -9,6 +9,7 @@ use crate::agents::{
     core::{AgentBackend, AgentContext, IrisAgent, TaskResult},
     tools::AgentTool,
 };
+use crate::log_debug;
 
 /// Specialized agent for code review and analysis
 pub struct ReviewAgent {
@@ -131,6 +132,8 @@ impl ReviewAgent {
         context: &AgentContext,
         params: &HashMap<String, serde_json::Value>,
     ) -> Result<TaskResult> {
+        log_debug!("🔍 ReviewAgent starting comprehensive code review");
+
         // Extract parameters
         let _review_type = params
             .get("review_type")
@@ -144,18 +147,48 @@ impl ReviewAgent {
                 |arr| arr.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>(),
             );
 
+        log_debug!(
+            "⚙️  ReviewAgent configuration - Type: {}, Focus areas: {:?}",
+            _review_type,
+            focus_areas
+        );
+
         // Get changes to review
+        log_debug!("📊 ReviewAgent: Gathering changes for review");
         let changes = self.get_changes_for_review(context, params).await?;
+        log_debug!("✅ ReviewAgent: Found {} files to review", changes.len());
 
         // Analyze each file
+        log_debug!("🔬 ReviewAgent: Starting individual file analysis");
         let mut file_reviews = Vec::new();
-        for change in &changes {
+        for (index, change) in changes.iter().enumerate() {
+            log_debug!(
+                "🔍 ReviewAgent: Reviewing file {}/{}: {}",
+                index + 1,
+                changes.len(),
+                change.path
+            );
             let file_review = self.review_file(context, change).await?;
+            log_debug!(
+                "✅ ReviewAgent: File review complete for {} (score: {:.1})",
+                change.path,
+                file_review.score
+            );
             file_reviews.push(file_review);
         }
 
         // Perform overall analysis
+        log_debug!(
+            "📋 ReviewAgent: Synthesizing overall review from {} file reviews",
+            file_reviews.len()
+        );
         let overall_review = self.synthesize_review(&file_reviews, &focus_areas).await?;
+        log_debug!(
+            "✅ ReviewAgent: Overall review complete - Score: {:.1}/10, {} issues, {} suggestions",
+            overall_review.overall_score,
+            overall_review.issues.len(),
+            overall_review.suggestions.len()
+        );
 
         Ok(TaskResult::success_with_data(
             "Code review completed".to_string(),
