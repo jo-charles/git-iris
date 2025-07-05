@@ -1,8 +1,8 @@
 use git_iris::{
     agents::{
         core::{AgentContext, TaskResult},
-        executor::{TaskRequest, TaskPriority},
-        tools::{create_default_tool_registry, GitTool, AgentTool},
+        executor::{TaskPriority, TaskRequest},
+        tools::{AgentTool, GitTool, create_default_tool_registry},
     },
     config::{Config, PerformanceConfig},
     git::GitRepo,
@@ -13,17 +13,17 @@ use tempfile::TempDir;
 async fn create_test_context() -> (AgentContext, TempDir) {
     let temp_dir = TempDir::new().unwrap();
     let repo_path = temp_dir.path().to_path_buf();
-    
+
     // Initialize a git repo in the temp directory
     std::process::Command::new("git")
-        .args(&["init"])
+        .args(["init"])
         .current_dir(&repo_path)
         .output()
         .expect("Failed to initialize git repo");
 
     let config = Config::default();
     let git_repo = GitRepo::new(&repo_path).unwrap();
-    
+
     let context = AgentContext::new(config, git_repo);
     (context, temp_dir)
 }
@@ -31,20 +31,27 @@ async fn create_test_context() -> (AgentContext, TempDir) {
 #[tokio::test]
 async fn test_tool_registry_creation() {
     let registry = create_default_tool_registry();
-    
+
     assert!(!registry.list_tools().is_empty());
     assert!(registry.list_capabilities().contains(&"git".to_string()));
-    assert!(registry.list_capabilities().contains(&"file_analysis".to_string()));
+    assert!(
+        registry
+            .list_capabilities()
+            .contains(&"file_analysis".to_string())
+    );
 }
 
 #[tokio::test]
 async fn test_git_tool_execution() {
     let (context, _temp_dir) = create_test_context().await;
     let git_tool = GitTool::new();
-    
+
     let mut params = HashMap::new();
-    params.insert("operation".to_string(), serde_json::Value::String("status".to_string()));
-    
+    params.insert(
+        "operation".to_string(),
+        serde_json::Value::String("status".to_string()),
+    );
+
     let result = git_tool.execute(&context, &params).await;
     assert!(result.is_ok());
 }
@@ -65,7 +72,10 @@ async fn test_task_result_creation() {
 #[tokio::test]
 async fn test_task_request_builder() {
     let mut params = HashMap::new();
-    params.insert("test".to_string(), serde_json::Value::String("value".to_string()));
+    params.insert(
+        "test".to_string(),
+        serde_json::Value::String("value".to_string()),
+    );
 
     let request = TaskRequest::new("test_task".to_string())
         .with_params(params)
@@ -82,13 +92,13 @@ async fn test_task_request_builder() {
 #[tokio::test]
 async fn test_agent_context_session_data() {
     let (context, _temp_dir) = create_test_context().await;
-    
+
     let key = "test_key".to_string();
     let value = serde_json::json!({"data": "test_value"});
-    
+
     context.set_session_data(key.clone(), value.clone()).await;
     let retrieved = context.get_session_data(&key).await;
-    
+
     assert_eq!(retrieved, Some(value));
 }
 

@@ -29,7 +29,7 @@ impl AgentRegistry {
     /// Register a new agent in the registry
     pub async fn register_agent(&self, agent: Arc<dyn IrisAgent>) -> Result<()> {
         let agent_id = agent.id().to_string();
-        
+
         // Update capability index
         {
             let mut capability_index = self.capability_index.write().await;
@@ -40,13 +40,13 @@ impl AgentRegistry {
                     .push(agent_id.clone());
             }
         }
-        
+
         // Add to agents registry
         {
             let mut agents = self.agents.write().await;
             agents.insert(agent_id, agent);
         }
-        
+
         Ok(())
     }
 
@@ -68,7 +68,7 @@ impl AgentRegistry {
                     }
                 }
             }
-            
+
             // Allow agent to clean up
             agent.cleanup().await?;
         }
@@ -85,10 +85,10 @@ impl AgentRegistry {
     /// Find the best agent for a specific task
     pub async fn find_agent_for_task(&self, task: &str) -> Option<Arc<dyn IrisAgent>> {
         let agents = self.agents.read().await;
-        
+
         let mut best_agent: Option<Arc<dyn IrisAgent>> = None;
         let mut best_priority = 0u8;
-        
+
         for agent in agents.values() {
             if agent.can_handle_task(task) {
                 let priority = agent.task_priority(task);
@@ -98,7 +98,7 @@ impl AgentRegistry {
                 }
             }
         }
-        
+
         best_agent
     }
 
@@ -106,7 +106,7 @@ impl AgentRegistry {
     pub async fn get_agents_for_capability(&self, capability: &str) -> Vec<Arc<dyn IrisAgent>> {
         let capability_index = self.capability_index.read().await;
         let agents = self.agents.read().await;
-        
+
         if let Some(agent_ids) = capability_index.get(capability) {
             agent_ids
                 .iter()
@@ -125,16 +125,18 @@ impl AgentRegistry {
         context: &AgentContext,
         params: &HashMap<String, serde_json::Value>,
     ) -> Result<TaskResult> {
-        let agent = self.find_agent_for_task(task).await
+        let agent = self
+            .find_agent_for_task(task)
+            .await
             .ok_or_else(|| anyhow::anyhow!("No agent found capable of handling task: {}", task))?;
-        
+
         agent.execute_task(task, context, params).await
     }
 
     /// List all registered agents
     pub async fn list_agents(&self) -> Vec<AgentInfo> {
         let agents = self.agents.read().await;
-        
+
         agents
             .values()
             .map(|agent| AgentInfo {
@@ -156,7 +158,7 @@ impl AgentRegistry {
     pub async fn get_statistics(&self) -> RegistryStatistics {
         let agents = self.agents.read().await;
         let capability_index = self.capability_index.read().await;
-        
+
         RegistryStatistics {
             total_agents: agents.len(),
             total_capabilities: capability_index.len(),
@@ -201,7 +203,7 @@ impl AgentRegistry {
     pub async fn health_check(&self) -> HealthStatus {
         let agents = self.agents.read().await;
         let total = agents.len();
-        
+
         // In a real implementation, we'd ping each agent to check its status
         // For now, assume all are healthy if registered
         let healthy = total;
@@ -265,7 +267,7 @@ impl AgentRegistryBuilder {
         backend: crate::agents::core::AgentBackend,
     ) -> Result<AgentRegistry> {
         let tool_registry = self.registry.tool_registry.clone();
-        
+
         // Create and register commit agent
         let commit_tools = tool_registry.get_tools_for_capability("commit").await?;
         let commit_agent = Arc::new(crate::agents::commit::CommitAgent::new(
@@ -283,7 +285,9 @@ impl AgentRegistryBuilder {
         self.registry.register_agent(review_agent).await?;
 
         // Create and register changelog agent
-        let changelog_tools = tool_registry.get_tools_for_capability("changelog").await?;
+        let mut changelog_tools = tool_registry.get_tools_for_capability("changelog").await?;
+        let git_tools = tool_registry.get_tools_for_capability("git").await?;
+        changelog_tools.extend(git_tools);
         let changelog_agent = Arc::new(crate::agents::changelog::ChangelogAgent::new(
             backend,
             changelog_tools,
@@ -308,11 +312,9 @@ impl AgentRegistryBuilder {
 /// Convenience functions for creating pre-configured registries
 impl AgentRegistry {
     /// Create a registry with default agents and tools
-    pub async fn create_default(
-        backend: crate::agents::core::AgentBackend,
-    ) -> Result<Self> {
+    pub async fn create_default(backend: crate::agents::core::AgentBackend) -> Result<Self> {
         let tool_registry = Arc::new(crate::agents::tools::create_default_tool_registry());
-        
+
         AgentRegistryBuilder::new(tool_registry)
             .with_default_agents(backend)
             .await

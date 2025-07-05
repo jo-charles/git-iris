@@ -1,17 +1,17 @@
-pub mod core;
-pub mod commit;
-pub mod review;
 pub mod changelog;
-pub mod tools;
-pub mod registry;
+pub mod commit;
+pub mod core;
 pub mod executor;
 pub mod integration;
+pub mod registry;
+pub mod review;
+pub mod tools;
 
-pub use core::*;
-pub use commit::*;
-pub use review::*;
 pub use changelog::*;
-pub use tools::*;
-pub use registry::*;
+pub use commit::*;
+pub use core::*;
 pub use executor::*;
 pub use integration::*;
+pub use registry::*;
+pub use review::*;
+pub use tools::*;

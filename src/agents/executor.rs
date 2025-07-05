@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::{RwLock, mpsc};
 use tokio::time::timeout;
 
 use crate::agents::{
@@ -66,9 +66,10 @@ pub struct ExecutionResult {
 }
 
 /// Task priority levels
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub enum TaskPriority {
     Low = 1,
+    #[default]
     Normal = 2,
     High = 3,
     Critical = 4,
@@ -111,13 +112,9 @@ impl AgentExecutor {
     }
 
     /// Submit a task for execution
-    pub async fn submit_task(
-        &self,
-        request: TaskRequest,
-        context: AgentContext,
-    ) -> Result<String> {
+    pub async fn submit_task(&self, request: TaskRequest, context: AgentContext) -> Result<String> {
         let task_id = uuid::Uuid::new_v4().to_string();
-        
+
         let pending_task = PendingTask {
             id: task_id.clone(),
             task_type: request.task_type,
@@ -134,10 +131,11 @@ impl AgentExecutor {
         {
             let mut queue = self.task_queue.write().await;
             queue.push(pending_task);
-            
+
             // Sort by priority (highest first) and creation time (oldest first)
             queue.sort_by(|a, b| {
-                b.priority.cmp(&a.priority)
+                b.priority
+                    .cmp(&a.priority)
                     .then_with(|| a.created_at.cmp(&b.created_at))
             });
         }
@@ -158,8 +156,13 @@ impl AgentExecutor {
         let start_time = Instant::now();
 
         // Find appropriate agent
-        let agent = self.registry.find_agent_for_task(&request.task_type).await
-            .ok_or_else(|| anyhow::anyhow!("No agent found for task type: {}", request.task_type))?;
+        let agent = self
+            .registry
+            .find_agent_for_task(&request.task_type)
+            .await
+            .ok_or_else(|| {
+                anyhow::anyhow!("No agent found for task type: {}", request.task_type)
+            })?;
 
         let agent_id = agent.id().to_string();
 
@@ -167,63 +170,65 @@ impl AgentExecutor {
         let task_timeout = request.timeout.unwrap_or(self.task_timeout);
         let result = timeout(
             task_timeout,
-            agent.execute_task(&request.task_type, &context, &request.params)
-        ).await;
+            agent.execute_task(&request.task_type, &context, &request.params),
+        )
+        .await;
 
         let execution_time = start_time.elapsed();
 
         match result {
-            Ok(Ok(task_result)) => {
-                Ok(ExecutionResult {
-                    task_id,
-                    result: task_result,
-                    agent_id,
-                    execution_time,
-                    retry_count: 0,
-                    completed_at: chrono::Utc::now(),
-                })
-            }
-            Ok(Err(e)) => {
-                Ok(ExecutionResult {
-                    task_id,
-                    result: TaskResult::failure(format!("Task execution failed: {}", e)),
-                    agent_id,
-                    execution_time,
-                    retry_count: 0,
-                    completed_at: chrono::Utc::now(),
-                })
-            }
-            Err(_) => {
-                Ok(ExecutionResult {
-                    task_id,
-                    result: TaskResult::failure("Task execution timed out".to_string()),
-                    agent_id,
-                    execution_time,
-                    retry_count: 0,
-                    completed_at: chrono::Utc::now(),
-                })
-            }
+            Ok(Ok(task_result)) => Ok(ExecutionResult {
+                task_id,
+                result: task_result,
+                agent_id,
+                execution_time,
+                retry_count: 0,
+                completed_at: chrono::Utc::now(),
+            }),
+            Ok(Err(e)) => Ok(ExecutionResult {
+                task_id,
+                result: TaskResult::failure(format!("Task execution failed: {e}")),
+                agent_id,
+                execution_time,
+                retry_count: 0,
+                completed_at: chrono::Utc::now(),
+            }),
+            Err(_) => Ok(ExecutionResult {
+                task_id,
+                result: TaskResult::failure("Task execution timed out".to_string()),
+                agent_id,
+                execution_time,
+                retry_count: 0,
+                completed_at: chrono::Utc::now(),
+            }),
         }
     }
 
     /// Process the task queue
     async fn process_queue(&self) -> Result<()> {
         let current_running = self.running_tasks.read().await.len();
-        
+
         if current_running >= self.max_concurrent_tasks {
             return Ok(()); // Queue will be processed when tasks complete
         }
 
         // For now, just log that we would process the queue
         // Actual implementation would handle async task execution
-        tracing::info!("Would process task queue (current running: {})", current_running);
+        tracing::info!(
+            "Would process task queue (current running: {})",
+            current_running
+        );
         Ok(())
     }
 
     /// Execute a task asynchronously (simplified for now)
     async fn execute_task_async(&self, task: PendingTask) -> Result<()> {
         // For now, just log that we would execute the task
-        tracing::info!("Would execute task: {} of type: {}", task.id, task.task_type);
+        tracing::info!(
+            "Would execute task: {} of type: {}",
+            task.id,
+            task.task_type
+        );
         Ok(())
     }
 
@@ -278,34 +283,40 @@ impl AgentExecutor {
     /// Get information about running tasks
     pub async fn get_running_tasks(&self) -> Vec<TaskInfo> {
         let running = self.running_tasks.read().await;
-        
-        running.values().map(|task| TaskInfo {
-            id: task.id.clone(),
-            task_type: task.task_type.clone(),
-            agent_id: task.agent_id.clone(),
-            started_at: task.started_at,
-            running_time: task.started_at.elapsed(),
-        }).collect()
+
+        running
+            .values()
+            .map(|task| TaskInfo {
+                id: task.id.clone(),
+                task_type: task.task_type.clone(),
+                agent_id: task.agent_id.clone(),
+                started_at: task.started_at,
+                running_time: task.started_at.elapsed(),
+            })
+            .collect()
     }
 
     /// Get information about queued tasks
     pub async fn get_queued_tasks(&self) -> Vec<QueuedTaskInfo> {
         let queue = self.task_queue.read().await;
-        
-        queue.iter().map(|task| QueuedTaskInfo {
-            id: task.id.clone(),
-            task_type: task.task_type.clone(),
-            priority: task.priority,
-            created_at: task.created_at,
-            waiting_time: task.created_at.elapsed(),
-            retry_count: task.retry_count,
-        }).collect()
+
+        queue
+            .iter()
+            .map(|task| QueuedTaskInfo {
+                id: task.id.clone(),
+                task_type: task.task_type.clone(),
+                priority: task.priority,
+                created_at: task.created_at,
+                waiting_time: task.created_at.elapsed(),
+                retry_count: task.retry_count,
+            })
+            .collect()
     }
 
     /// Wait for all tasks to complete
     pub async fn wait_for_completion(&self, timeout_duration: Option<Duration>) -> Result<()> {
         let timeout_instant = timeout_duration.map(|d| Instant::now() + d);
-        
+
         loop {
             let (queue_empty, running_empty) = {
                 let queue = self.task_queue.read().await;
@@ -373,12 +384,6 @@ pub struct QueuedTaskInfo {
     pub created_at: Instant,
     pub waiting_time: Duration,
     pub retry_count: u32,
-}
-
-impl Default for TaskPriority {
-    fn default() -> Self {
-        TaskPriority::Normal
-    }
 }
 
 impl TaskRequest {

@@ -21,10 +21,12 @@ pub struct CommitAgent {
 
 impl CommitAgent {
     pub fn new(backend: AgentBackend, tools: Vec<Arc<dyn AgentTool>>) -> Self {
-        Self {
+        let mut agent = Self {
             id: "commit_agent".to_string(),
             name: "Commit Agent".to_string(),
-            description: "Specialized agent for generating commit messages and performing commit operations".to_string(),
+            description:
+                "Specialized agent for generating commit messages and performing commit operations"
+                    .to_string(),
             capabilities: vec![
                 "commit_message_generation".to_string(),
                 "diff_analysis".to_string(),
@@ -34,7 +36,11 @@ impl CommitAgent {
             backend,
             tools,
             initialized: false,
-        }
+        };
+
+        // Initialize the agent
+        agent.initialized = true;
+        agent
     }
 
     /// Generate a commit message based on repository changes
@@ -44,23 +50,31 @@ impl CommitAgent {
         params: &HashMap<String, serde_json::Value>,
     ) -> Result<TaskResult> {
         // Extract parameters
-        let preset = params.get("preset")
+        let preset = params
+            .get("preset")
             .and_then(|v| v.as_str())
             .unwrap_or("conventional");
-        let custom_instructions = params.get("instructions")
+        let custom_instructions = params
+            .get("instructions")
             .and_then(|v| v.as_str())
             .unwrap_or("");
 
         // Get git diff using tools
         let mut git_params = HashMap::new();
-        git_params.insert("operation".to_string(), serde_json::Value::String("diff".to_string()));
-        
-        let git_tool = self.tools.iter()
+        git_params.insert(
+            "operation".to_string(),
+            serde_json::Value::String("diff".to_string()),
+        );
+
+        let git_tool = self
+            .tools
+            .iter()
             .find(|t| t.capabilities().contains(&"git".to_string()))
             .ok_or_else(|| anyhow::anyhow!("Git tool not found"))?;
-        
+
         let diff_result = git_tool.execute(context, &git_params).await?;
-        let diff_content = diff_result.get("content")
+        let diff_content = diff_result
+            .get("content")
             .and_then(|v| v.as_str())
             .unwrap_or("");
 
@@ -70,25 +84,38 @@ impl CommitAgent {
 
         // Get file analysis for changed files
         let mut files_params = HashMap::new();
-        files_params.insert("operation".to_string(), serde_json::Value::String("files".to_string()));
-        
+        files_params.insert(
+            "operation".to_string(),
+            serde_json::Value::String("files".to_string()),
+        );
+
         let files_result = git_tool.execute(context, &files_params).await?;
         let empty_vec = vec![];
-        let changed_files = files_result.get("content")
+        let changed_files = files_result
+            .get("content")
             .and_then(|v| v.as_array())
             .unwrap_or(&empty_vec);
 
         // Analyze each changed file
         let mut file_analyses = Vec::new();
-        if let Some(file_analyzer) = self.tools.iter()
-            .find(|t| t.capabilities().contains(&"file_analysis".to_string())) {
-            
-            for file in changed_files.iter().take(10) { // Limit to avoid overwhelming
+        if let Some(file_analyzer) = self
+            .tools
+            .iter()
+            .find(|t| t.capabilities().contains(&"file_analysis".to_string()))
+        {
+            for file in changed_files.iter().take(10) {
+                // Limit to avoid overwhelming
                 if let Some(file_path) = file.as_str() {
                     let mut analysis_params = HashMap::new();
-                    analysis_params.insert("path".to_string(), serde_json::Value::String(file_path.to_string()));
-                    analysis_params.insert("analysis_type".to_string(), serde_json::Value::String("basic".to_string()));
-                    
+                    analysis_params.insert(
+                        "path".to_string(),
+                        serde_json::Value::String(file_path.to_string()),
+                    );
+                    analysis_params.insert(
+                        "analysis_type".to_string(),
+                        serde_json::Value::String("basic".to_string()),
+                    );
+
                     if let Ok(analysis) = file_analyzer.execute(context, &analysis_params).await {
                         file_analyses.push(analysis);
                     }
@@ -97,21 +124,22 @@ impl CommitAgent {
         }
 
         // Build context for the LLM
-        let commit_context = self.build_commit_context(
-            diff_content,
-            &file_analyses,
-            preset,
-            custom_instructions,
-        ).await?;
+        let commit_context = self
+            .build_commit_context(diff_content, &file_analyses, preset, custom_instructions)
+            .await?;
 
         // Use Rig agent to generate commit message
         let rig_agent = self.create_rig_agent().await?;
-        
-        // This is a simplified approach - in practice, we'd use the Rig agent more directly
-        let commit_message = self.generate_with_rig_agent(&rig_agent, &commit_context).await?;
+
+        // Generate commit message using the Rig agent
+        let commit_message = self
+            .generate_with_rig_agent(&rig_agent, &commit_context)
+            .await?;
 
         // Validate and enhance the commit message
-        let validated_message = self.validate_commit_message(&commit_message, context).await?;
+        let validated_message = self
+            .validate_commit_message(&commit_message, context)
+            .await?;
 
         Ok(TaskResult::success_with_data(
             "Commit message generated successfully".to_string(),
@@ -119,8 +147,9 @@ impl CommitAgent {
                 "commit_message": validated_message,
                 "files_changed": changed_files.len(),
                 "preset_used": preset,
-            })
-        ).with_confidence(0.85))
+            }),
+        )
+        .with_confidence(0.85))
     }
 
     /// Build context for commit message generation
@@ -132,12 +161,14 @@ impl CommitAgent {
         instructions: &str,
     ) -> Result<String> {
         let mut context = String::new();
-        
+
         // Add preset-specific instructions
-        context.push_str(&format!("Generate a commit message using the '{}' preset.\n\n", preset));
-        
+        context.push_str(&format!(
+            "Generate a commit message using the '{preset}' preset.\n\n"
+        ));
+
         if !instructions.is_empty() {
-            context.push_str(&format!("Additional instructions: {}\n\n", instructions));
+            context.push_str(&format!("Additional instructions: {instructions}\n\n"));
         }
 
         // Add file analysis summary
@@ -146,9 +177,9 @@ impl CommitAgent {
             for analysis in file_analyses {
                 if let (Some(path), Some(language)) = (
                     analysis.get("path").and_then(|v| v.as_str()),
-                    analysis.get("language").and_then(|v| v.as_str())
+                    analysis.get("language").and_then(|v| v.as_str()),
                 ) {
-                    context.push_str(&format!("- {} ({})\n", path, language));
+                    context.push_str(&format!("- {path} ({language})\n"));
                 }
             }
             context.push('\n');
@@ -167,32 +198,39 @@ impl CommitAgent {
     }
 
     /// Create a Rig agent configured for commit message generation
-    async fn create_rig_agent(&self) -> Result<String> {
-        let preamble = r#"
-You are an expert Git commit message writer. Your role is to analyze code changes and generate clear, informative commit messages that follow best practices.
+    async fn create_rig_agent(&self) -> Result<Box<dyn std::any::Any + Send + Sync>> {
+        use rig::client::CompletionClient;
+
+        let preamble = r#"You are an expert Git commit message writer. Your role is to analyze code changes and generate clear, informative commit messages that follow best practices.
 
 Guidelines:
-1. Use conventional commit format when specified
-2. Be concise but descriptive
+1. Use conventional commit format when specified (type(scope): description)
+2. Be concise but descriptive (summary under 72 characters)
 3. Focus on the "what" and "why" of changes
 4. Use imperative mood ("Add feature" not "Added feature")
-5. Include scope when relevant
-6. Mention breaking changes if any
+5. Include scope when relevant (e.g., "feat(auth): add login validation")
+6. For breaking changes, include "BREAKING CHANGE:" in body
 
-Available formats:
-- conventional: type(scope): description
-- simple: Brief descriptive message
-- detailed: Multi-line with body and footer
-        "#;
+Common types: feat, fix, docs, style, refactor, test, chore
 
-        // This would use the backend to create the actual Rig agent
-        // For now, return a placeholder
+Response format: Only return the commit message, nothing else."#;
+
         match &self.backend {
-            AgentBackend::OpenAI { model, .. } => {
-                Ok(format!("OpenAI agent with model: {} and preamble: {}", model, preamble))
+            AgentBackend::OpenAI { client, model } => {
+                let agent = client
+                    .agent(model)
+                    .preamble(preamble)
+                    .temperature(0.3)
+                    .build();
+                Ok(Box::new(agent))
             }
-            AgentBackend::Anthropic { model, .. } => {
-                Ok(format!("Anthropic agent with model: {} and preamble: {}", model, preamble))
+            AgentBackend::Anthropic { client, model } => {
+                let agent = client
+                    .agent(model)
+                    .preamble(preamble)
+                    .temperature(0.3)
+                    .build();
+                Ok(Box::new(agent))
             }
         }
     }
@@ -200,13 +238,53 @@ Available formats:
     /// Generate commit message using Rig agent
     async fn generate_with_rig_agent(
         &self,
-        _rig_agent: &str,
+        _rig_agent: &Box<dyn std::any::Any + Send + Sync>,
         context: &str,
     ) -> Result<String> {
-        // This would use the Rig agent to generate the actual commit message
-        // For now, return a placeholder
-        Ok(format!("feat: implement agent-based commit message generation\n\nGenerated from context:\n{}", 
-            context.chars().take(100).collect::<String>()))
+        // For now, let's use the backend directly to make LLM calls
+        // This will be more reliable than trying to downcast the agent
+        self.generate_with_backend(context).await
+    }
+
+    /// Generate commit message using the backend directly
+    async fn generate_with_backend(&self, context: &str) -> Result<String> {
+        use rig::client::CompletionClient;
+        use rig::completion::Prompt;
+
+        let user_prompt = format!(
+            "Analyze the following Git changes and generate an appropriate commit message:\n\n{context}"
+        );
+
+        match &self.backend {
+            AgentBackend::OpenAI { client, model } => {
+                let agent = client.agent(model)
+                    .preamble("You are an expert Git commit message writer. Generate clear, conventional commit messages.")
+                    .temperature(0.3)
+                    .max_tokens(300)  // Enough for detailed commit messages with body
+                    .build();
+
+                let response = agent
+                    .prompt(&user_prompt)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("OpenAI API error: {}", e))?;
+
+                Ok(response.trim().to_string())
+            }
+            AgentBackend::Anthropic { client, model } => {
+                let agent = client.agent(model)
+                    .preamble("You are an expert Git commit message writer. Generate clear, conventional commit messages.")
+                    .temperature(0.3)
+                    .max_tokens(300)  // Enough for detailed commit messages with body
+                    .build();
+
+                let response = agent
+                    .prompt(&user_prompt)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("Anthropic API error: {}", e))?;
+
+                Ok(response.trim().to_string())
+            }
+        }
     }
 
     /// Validate and enhance the generated commit message
@@ -217,15 +295,17 @@ Available formats:
     ) -> Result<String> {
         // Basic validation and enhancement
         let mut validated = message.trim().to_string();
-        
+
         // Ensure first line is not too long
         let lines: Vec<&str> = validated.lines().collect();
         if let Some(first_line) = lines.first() {
             if first_line.len() > 72 {
                 // Truncate and add appropriate ending
-                validated = format!("{}\n\n{}", 
+                validated = format!(
+                    "{}\n\n{}",
                     &first_line[..69].trim_end(),
-                    lines[1..].join("\n"));
+                    lines[1..].join("\n")
+                );
             }
         }
 
@@ -239,18 +319,26 @@ Available formats:
         _params: &HashMap<String, serde_json::Value>,
     ) -> Result<TaskResult> {
         // Get current status and diff
-        let git_tool = self.tools.iter()
+        let git_tool = self
+            .tools
+            .iter()
             .find(|t| t.capabilities().contains(&"git".to_string()))
             .ok_or_else(|| anyhow::anyhow!("Git tool not found"))?;
 
         let mut status_params = HashMap::new();
-        status_params.insert("operation".to_string(), serde_json::Value::String("status".to_string()));
-        
+        status_params.insert(
+            "operation".to_string(),
+            serde_json::Value::String("status".to_string()),
+        );
+
         let status_result = git_tool.execute(context, &status_params).await?;
 
         let mut diff_params = HashMap::new();
-        diff_params.insert("operation".to_string(), serde_json::Value::String("diff".to_string()));
-        
+        diff_params.insert(
+            "operation".to_string(),
+            serde_json::Value::String("diff".to_string()),
+        );
+
         let diff_result = git_tool.execute(context, &diff_params).await?;
 
         Ok(TaskResult::success_with_data(
@@ -259,7 +347,7 @@ Available formats:
                 "status": status_result,
                 "diff": diff_result,
                 "analysis_timestamp": chrono::Utc::now().to_rfc3339(),
-            })
+            }),
         ))
     }
 }
@@ -297,19 +385,22 @@ impl IrisAgent for CommitAgent {
             "analyze_changes" => self.analyze_changes(context, params).await,
             "validate_commit" => {
                 // Implement commit validation logic
-                Ok(TaskResult::success("Commit validation not yet implemented".to_string()))
+                Ok(TaskResult::success(
+                    "Commit validation not yet implemented".to_string(),
+                ))
             }
             _ => Err(anyhow::anyhow!("Unknown task: {}", task)),
         }
     }
 
     fn can_handle_task(&self, task: &str) -> bool {
-        matches!(task, 
-            "generate_commit_message" | 
-            "analyze_changes" | 
-            "validate_commit" |
-            "commit_message_generation" |
-            "diff_analysis"
+        matches!(
+            task,
+            "generate_commit_message"
+                | "analyze_changes"
+                | "validate_commit"
+                | "commit_message_generation"
+                | "diff_analysis"
         )
     }
 

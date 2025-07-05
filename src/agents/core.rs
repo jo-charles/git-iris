@@ -1,15 +1,11 @@
 use anyhow::Result;
 use async_trait::async_trait;
+use rig::providers::{anthropic, openai};
 use serde::{Deserialize, Serialize};
-use rig::{
-    providers::{openai, anthropic},
-};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::{
-    config::Config,
-};
+use crate::config::Config;
 
 /// Agent execution context containing shared state and configuration
 #[derive(Debug, Clone)]
@@ -20,10 +16,7 @@ pub struct AgentContext {
 }
 
 impl AgentContext {
-    pub fn new(
-        config: Config,
-        git_repo: crate::git::GitRepo,
-    ) -> Self {
+    pub fn new(config: Config, git_repo: crate::git::GitRepo) -> Self {
         Self {
             config: Arc::new(config),
             git_repo: Arc::new(git_repo),
@@ -97,16 +90,16 @@ impl TaskResult {
 pub trait IrisAgent: Send + Sync {
     /// Get the agent's unique identifier
     fn id(&self) -> &str;
-    
+
     /// Get the agent's display name
     fn name(&self) -> &str;
-    
+
     /// Get the agent's description
     fn description(&self) -> &str;
-    
+
     /// Get the capabilities this agent provides
     fn capabilities(&self) -> Vec<String>;
-    
+
     /// Execute a task with the given context and parameters
     async fn execute_task(
         &self,
@@ -114,16 +107,16 @@ pub trait IrisAgent: Send + Sync {
         context: &AgentContext,
         params: &HashMap<String, serde_json::Value>,
     ) -> Result<TaskResult>;
-    
+
     /// Check if this agent can handle the given task
     fn can_handle_task(&self, task: &str) -> bool;
-    
+
     /// Get the agent's priority for handling a task (higher = more likely to be chosen)
     fn task_priority(&self, task: &str) -> u8;
-    
+
     /// Initialize the agent with configuration
     async fn initialize(&mut self, context: &AgentContext) -> Result<()>;
-    
+
     /// Clean up resources when agent is shutting down
     async fn cleanup(&self) -> Result<()>;
 }
@@ -143,8 +136,60 @@ pub enum AgentBackend {
 
 impl AgentBackend {
     pub fn from_provider_name(provider_name: &str) -> Result<Self> {
-        // For now, just return an error since we need to check what providers are actually available
-        Err(anyhow::anyhow!("Agent backend creation needs to be implemented for provider: {}", provider_name))
+        Err(anyhow::anyhow!(
+            "Agent backend creation needs to be implemented for provider: {}",
+            provider_name
+        ))
+    }
+
+    pub fn from_config(config: &Config) -> Result<Self> {
+        let provider_name = config
+            .provider()
+            .ok_or_else(|| anyhow::anyhow!("No provider configured"))?;
+
+        let provider_config = config.providers.get(&provider_name).ok_or_else(|| {
+            anyhow::anyhow!("Provider '{}' not found in configuration", provider_name)
+        })?;
+
+        if provider_config.api_key.is_empty() {
+            return Err(anyhow::anyhow!(
+                "API key not configured for provider '{}'",
+                provider_name
+            ));
+        }
+
+        match provider_name.to_lowercase().as_str() {
+            "openai" => {
+                let client = openai::Client::new(&provider_config.api_key);
+                let model = if provider_config.model.is_empty() {
+                    "gpt-4".to_string() // Default model
+                } else {
+                    provider_config.model.clone()
+                };
+
+                Ok(AgentBackend::OpenAI { client, model })
+            }
+            "anthropic" => {
+                // Anthropic client constructor requires more parameters
+                let client = anthropic::Client::new(
+                    &provider_config.api_key,
+                    "https://api.anthropic.com", // base_url
+                    None,                        // betas
+                    "2023-06-01",                // version
+                );
+                let model = if provider_config.model.is_empty() {
+                    "claude-3-sonnet-20240229".to_string() // Default model
+                } else {
+                    provider_config.model.clone()
+                };
+
+                Ok(AgentBackend::Anthropic { client, model })
+            }
+            _ => Err(anyhow::anyhow!(
+                "Unsupported provider for agent framework: {}",
+                provider_name
+            )),
+        }
     }
 }
 
@@ -184,7 +229,7 @@ impl BaseAgent {
     /// Create a Rig agent with the configured tools
     pub async fn create_rig_agent(&self, preamble: &str) -> Result<String> {
         // For now, just return a placeholder until we properly implement Rig integration
-        Ok(format!("Rig agent created with preamble: {}", preamble))
+        Ok(format!("Rig agent created with preamble: {preamble}"))
     }
 }
 
@@ -195,7 +240,10 @@ pub struct AgentFactory {
 }
 
 impl AgentFactory {
-    pub fn new(backend: AgentBackend, tool_registry: Arc<crate::agents::tools::ToolRegistry>) -> Self {
+    pub fn new(
+        backend: AgentBackend,
+        tool_registry: Arc<crate::agents::tools::ToolRegistry>,
+    ) -> Self {
         Self {
             backend,
             tool_registry,
@@ -203,29 +251,29 @@ impl AgentFactory {
     }
 
     pub async fn create_commit_agent(&self) -> Result<Box<dyn IrisAgent>> {
-        let tools = self.tool_registry.get_tools_for_capability("commit").await?;
-        let agent = crate::agents::commit::CommitAgent::new(
-            self.backend.clone(),
-            tools,
-        );
+        let tools = self
+            .tool_registry
+            .get_tools_for_capability("commit")
+            .await?;
+        let agent = crate::agents::commit::CommitAgent::new(self.backend.clone(), tools);
         Ok(Box::new(agent))
     }
 
     pub async fn create_review_agent(&self) -> Result<Box<dyn IrisAgent>> {
-        let tools = self.tool_registry.get_tools_for_capability("review").await?;
-        let agent = crate::agents::review::ReviewAgent::new(
-            self.backend.clone(),
-            tools,
-        );
+        let tools = self
+            .tool_registry
+            .get_tools_for_capability("review")
+            .await?;
+        let agent = crate::agents::review::ReviewAgent::new(self.backend.clone(), tools);
         Ok(Box::new(agent))
     }
 
     pub async fn create_changelog_agent(&self) -> Result<Box<dyn IrisAgent>> {
-        let tools = self.tool_registry.get_tools_for_capability("changelog").await?;
-        let agent = crate::agents::changelog::ChangelogAgent::new(
-            self.backend.clone(),
-            tools,
-        );
+        let tools = self
+            .tool_registry
+            .get_tools_for_capability("changelog")
+            .await?;
+        let agent = crate::agents::changelog::ChangelogAgent::new(self.backend.clone(), tools);
         Ok(Box::new(agent))
     }
 }

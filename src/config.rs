@@ -397,7 +397,7 @@ impl Config {
         self.is_project_config
     }
 
-    /// Get the current provider as LLMProvider enum (placeholder - needs actual LLMProvider variants)
+    /// Get the current provider as `LLMProvider` enum (placeholder - needs actual `LLMProvider` variants)
     pub fn provider(&self) -> Option<String> {
         // For now, just return the provider name as a string
         // This will need to be updated when we know the actual LLMProvider enum structure

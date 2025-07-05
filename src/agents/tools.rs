@@ -11,26 +11,26 @@ use crate::agents::core::AgentContext;
 pub trait AgentTool: Send + Sync {
     /// Get the tool's unique identifier
     fn id(&self) -> &str;
-    
+
     /// Get the tool's display name
     fn name(&self) -> &str;
-    
+
     /// Get the tool's description
     fn description(&self) -> &str;
-    
+
     /// Get the capabilities this tool provides
     fn capabilities(&self) -> Vec<String>;
-    
+
     /// Execute the tool with given parameters
     async fn execute(
         &self,
         _context: &AgentContext,
         params: &HashMap<String, serde_json::Value>,
     ) -> Result<serde_json::Value>;
-    
+
     /// Get the tool's parameter schema
     fn parameter_schema(&self) -> serde_json::Value;
-    
+
     /// Convert to Rig Tool trait object (placeholder for future integration)
     fn as_rig_tool_placeholder(&self) -> String;
 }
@@ -39,6 +39,12 @@ pub trait AgentTool: Send + Sync {
 pub struct ToolRegistry {
     tools: HashMap<String, Arc<dyn AgentTool>>,
     capability_index: HashMap<String, Vec<String>>,
+}
+
+impl Default for ToolRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ToolRegistry {
@@ -51,15 +57,15 @@ impl ToolRegistry {
 
     pub fn register_tool(&mut self, tool: Arc<dyn AgentTool>) {
         let id = tool.id().to_string();
-        
+
         // Add to capability index
         for capability in tool.capabilities() {
             self.capability_index
                 .entry(capability)
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(id.clone());
         }
-        
+
         // Add to tools registry
         self.tools.insert(id, tool);
     }
@@ -68,19 +74,20 @@ impl ToolRegistry {
         self.tools.get(id).cloned()
     }
 
-    pub async fn get_tools_for_capability(&self, capability: &str) -> Result<Vec<Arc<dyn AgentTool>>> {
+    pub async fn get_tools_for_capability(
+        &self,
+        capability: &str,
+    ) -> Result<Vec<Arc<dyn AgentTool>>> {
         let empty_vec = Vec::new();
-        let tool_ids = self.capability_index
-            .get(capability)
-            .unwrap_or(&empty_vec);
-        
+        let tool_ids = self.capability_index.get(capability).unwrap_or(&empty_vec);
+
         let mut tools = Vec::new();
         for id in tool_ids {
             if let Some(tool) = self.tools.get(id) {
                 tools.push(tool.clone());
             }
         }
-        
+
         Ok(tools)
     }
 
@@ -96,6 +103,12 @@ impl ToolRegistry {
 /// Git repository operations tool
 pub struct GitTool {
     id: String,
+}
+
+impl Default for GitTool {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl GitTool {
@@ -119,16 +132,20 @@ impl AgentTool for GitTool {
         &self.id
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Git Operations"
     }
 
-    fn description(&self) -> &str {
+    fn description(&self) -> &'static str {
         "Perform git repository operations like getting diff, status, log, etc."
     }
 
     fn capabilities(&self) -> Vec<String> {
-        vec!["git".to_string(), "commit".to_string(), "review".to_string()]
+        vec![
+            "git".to_string(),
+            "commit".to_string(),
+            "review".to_string(),
+        ]
     }
 
     async fn execute(
@@ -137,17 +154,25 @@ impl AgentTool for GitTool {
         params: &HashMap<String, serde_json::Value>,
     ) -> Result<serde_json::Value> {
         let args: GitToolArgs = serde_json::from_value(serde_json::Value::Object(
-            params.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
+            params.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
         ))?;
 
         let repo = &context.git_repo;
-        
+
         match args.operation.as_str() {
             "diff" => {
-                // For now, return a placeholder since we need to map to actual GitRepo methods
+                // Get the actual git context which includes diffs
+                let git_context = repo.get_git_info(&context.config).await?;
+                let combined_diff = git_context
+                    .staged_files
+                    .iter()
+                    .map(|f| format!("{}:\n{}", f.path, f.diff))
+                    .collect::<Vec<_>>()
+                    .join("\n\n");
+
                 Ok(serde_json::json!({
                     "operation": "diff",
-                    "content": "placeholder diff content",
+                    "content": combined_diff,
                 }))
             }
             "status" => {
@@ -165,7 +190,13 @@ impl AgentTool for GitTool {
                 }))
             }
             "files" => {
-                let files = repo.get_unstaged_files()?;
+                let git_context = repo.get_git_info(&context.config).await?;
+                let files: Vec<String> = git_context
+                    .staged_files
+                    .iter()
+                    .map(|f| f.path.clone())
+                    .collect();
+
                 Ok(serde_json::json!({
                     "operation": "files",
                     "content": files,
@@ -202,10 +233,15 @@ impl AgentTool for GitTool {
     }
 }
 
-
 /// File reading and analysis tool
 pub struct FileAnalyzerTool {
     id: String,
+}
+
+impl Default for FileAnalyzerTool {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl FileAnalyzerTool {
@@ -229,16 +265,20 @@ impl AgentTool for FileAnalyzerTool {
         &self.id
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "File Analyzer"
     }
 
-    fn description(&self) -> &str {
+    fn description(&self) -> &'static str {
         "Analyze files for content, structure, and language-specific information"
     }
 
     fn capabilities(&self) -> Vec<String> {
-        vec!["file_analysis".to_string(), "code_review".to_string(), "commit".to_string()]
+        vec![
+            "file_analysis".to_string(),
+            "code_review".to_string(),
+            "commit".to_string(),
+        ]
     }
 
     async fn execute(
@@ -247,13 +287,13 @@ impl AgentTool for FileAnalyzerTool {
         params: &HashMap<String, serde_json::Value>,
     ) -> Result<serde_json::Value> {
         let args: FileAnalyzerArgs = serde_json::from_value(serde_json::Value::Object(
-            params.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
+            params.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
         ))?;
 
         let analyzer = crate::file_analyzers::get_analyzer(&args.path);
         let file_type = analyzer.get_file_type();
         let include_content = args.include_content.unwrap_or(false);
-        
+
         let mut result = serde_json::json!({
             "path": args.path,
             "file_type": file_type,
@@ -262,7 +302,8 @@ impl AgentTool for FileAnalyzerTool {
         if include_content {
             if let Ok(content) = tokio::fs::read_to_string(&args.path).await {
                 result["content"] = serde_json::Value::String(content.clone());
-                result["lines"] = serde_json::Value::Number(serde_json::Number::from(content.lines().count()));
+                result["lines"] =
+                    serde_json::Value::Number(serde_json::Number::from(content.lines().count()));
             }
         }
 
@@ -296,10 +337,15 @@ impl AgentTool for FileAnalyzerTool {
     }
 }
 
-
 /// Code search tool for finding related files and functions
 pub struct CodeSearchTool {
     id: String,
+}
+
+impl Default for CodeSearchTool {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl CodeSearchTool {
@@ -324,16 +370,20 @@ impl AgentTool for CodeSearchTool {
         &self.id
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Code Search"
     }
 
-    fn description(&self) -> &str {
+    fn description(&self) -> &'static str {
         "Search for code patterns, functions, classes, and related files in the repository"
     }
 
     fn capabilities(&self) -> Vec<String> {
-        vec!["search".to_string(), "code_analysis".to_string(), "review".to_string()]
+        vec![
+            "search".to_string(),
+            "code_analysis".to_string(),
+            "review".to_string(),
+        ]
     }
 
     async fn execute(
@@ -342,7 +392,7 @@ impl AgentTool for CodeSearchTool {
         params: &HashMap<String, serde_json::Value>,
     ) -> Result<serde_json::Value> {
         let args: CodeSearchArgs = serde_json::from_value(serde_json::Value::Object(
-            params.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
+            params.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
         ))?;
 
         // This would implement actual code search functionality using _context.git_repo
@@ -386,14 +436,13 @@ impl AgentTool for CodeSearchTool {
     }
 }
 
-
 /// Creates the default tool registry with all built-in tools
 pub fn create_default_tool_registry() -> ToolRegistry {
     let mut registry = ToolRegistry::new();
-    
+
     registry.register_tool(Arc::new(GitTool::new()));
     registry.register_tool(Arc::new(FileAnalyzerTool::new()));
     registry.register_tool(Arc::new(CodeSearchTool::new()));
-    
+
     registry
 }

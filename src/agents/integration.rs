@@ -5,13 +5,13 @@ use std::sync::Arc;
 use crate::{
     agents::{
         core::{AgentBackend, AgentContext},
-        executor::{AgentExecutor, TaskRequest, TaskPriority},
+        executor::{AgentExecutor, TaskPriority, TaskRequest},
         registry::AgentRegistry,
         tools::create_default_tool_registry,
     },
+    common::CommonParams,
     config::Config,
     git::GitRepo,
-    common::CommonParams,
 };
 
 /// Integration layer between Git-Iris services and the agent framework
@@ -23,10 +23,7 @@ pub struct AgentIntegration {
 
 impl AgentIntegration {
     /// Create a new agent integration with the given configuration
-    pub async fn new(
-        config: Config,
-        git_repo: GitRepo,
-    ) -> Result<Self> {
+    pub async fn new(config: Config, git_repo: GitRepo) -> Result<Self> {
         // Create agent context
         let context = AgentContext::new(config.clone(), git_repo);
 
@@ -42,8 +39,8 @@ impl AgentIntegration {
             AgentExecutor::new(registry.clone())
                 .with_max_concurrent_tasks(config.performance.max_concurrent_tasks.unwrap_or(5))
                 .with_default_timeout(std::time::Duration::from_secs(
-                    config.performance.default_timeout_seconds.unwrap_or(300)
-                ))
+                    config.performance.default_timeout_seconds.unwrap_or(300),
+                )),
         );
 
         Ok(Self {
@@ -55,10 +52,7 @@ impl AgentIntegration {
 
     /// Create agent backend from Git-Iris configuration
     fn create_backend_from_config(config: &Config) -> Result<AgentBackend> {
-        // Get the primary provider from config
-        let provider_name = config.provider().ok_or_else(|| anyhow::anyhow!("No provider configured"))?;
-        
-        AgentBackend::from_provider_name(&provider_name)
+        AgentBackend::from_config(config)
     }
 
     /// Generate commit message using agent framework
@@ -68,13 +62,19 @@ impl AgentIntegration {
         instructions: Option<&str>,
     ) -> Result<String> {
         let mut params = HashMap::new();
-        
+
         if let Some(preset) = preset {
-            params.insert("preset".to_string(), serde_json::Value::String(preset.to_string()));
+            params.insert(
+                "preset".to_string(),
+                serde_json::Value::String(preset.to_string()),
+            );
         }
-        
+
         if let Some(instructions) = instructions {
-            params.insert("instructions".to_string(), serde_json::Value::String(instructions.to_string()));
+            params.insert(
+                "instructions".to_string(),
+                serde_json::Value::String(instructions.to_string()),
+            );
         }
 
         self.generate_commit_message_with_params(params).await
@@ -90,7 +90,10 @@ impl AgentIntegration {
             .with_priority(TaskPriority::High)
             .with_timeout(std::time::Duration::from_secs(120));
 
-        let result = self.executor.execute_task_immediately(request, self.context.clone()).await?;
+        let result = self
+            .executor
+            .execute_task_immediately(request, self.context.clone())
+            .await?;
 
         if result.result.success {
             if let Some(data) = result.result.data {
@@ -100,7 +103,10 @@ impl AgentIntegration {
             }
             Ok(result.result.message)
         } else {
-            Err(anyhow::anyhow!("Commit message generation failed: {}", result.result.message))
+            Err(anyhow::anyhow!(
+                "Commit message generation failed: {}",
+                result.result.message
+            ))
         }
     }
 
@@ -111,16 +117,23 @@ impl AgentIntegration {
         focus_areas: Option<Vec<&str>>,
     ) -> Result<serde_json::Value> {
         let mut params = HashMap::new();
-        
+
         if let Some(range) = commit_range {
-            params.insert("commit_range".to_string(), serde_json::Value::String(range.to_string()));
+            params.insert(
+                "commit_range".to_string(),
+                serde_json::Value::String(range.to_string()),
+            );
         }
-        
+
         if let Some(areas) = focus_areas {
-            let areas_json: Vec<serde_json::Value> = areas.iter()
-                .map(|s| serde_json::Value::String(s.to_string()))
+            let areas_json: Vec<serde_json::Value> = areas
+                .iter()
+                .map(|s| serde_json::Value::String((*s).to_string()))
                 .collect();
-            params.insert("focus_areas".to_string(), serde_json::Value::Array(areas_json));
+            params.insert(
+                "focus_areas".to_string(),
+                serde_json::Value::Array(areas_json),
+            );
         }
 
         let request = TaskRequest::new("review_code".to_string())
@@ -128,12 +141,21 @@ impl AgentIntegration {
             .with_priority(TaskPriority::Normal)
             .with_timeout(std::time::Duration::from_secs(300));
 
-        let result = self.executor.execute_task_immediately(request, self.context.clone()).await?;
+        let result = self
+            .executor
+            .execute_task_immediately(request, self.context.clone())
+            .await?;
 
         if result.result.success {
-            result.result.data.ok_or_else(|| anyhow::anyhow!("No review data returned"))
+            result
+                .result
+                .data
+                .ok_or_else(|| anyhow::anyhow!("No review data returned"))
         } else {
-            Err(anyhow::anyhow!("Code review failed: {}", result.result.message))
+            Err(anyhow::anyhow!(
+                "Code review failed: {}",
+                result.result.message
+            ))
         }
     }
 
@@ -146,18 +168,30 @@ impl AgentIntegration {
         format: Option<&str>,
     ) -> Result<String> {
         let mut params = HashMap::new();
-        params.insert("version".to_string(), serde_json::Value::String(version.to_string()));
-        
+        params.insert(
+            "version".to_string(),
+            serde_json::Value::String(version.to_string()),
+        );
+
         if let Some(from) = from_tag {
-            params.insert("from_tag".to_string(), serde_json::Value::String(from.to_string()));
+            params.insert(
+                "from_tag".to_string(),
+                serde_json::Value::String(from.to_string()),
+            );
         }
-        
+
         if let Some(to) = to_tag {
-            params.insert("to_tag".to_string(), serde_json::Value::String(to.to_string()));
+            params.insert(
+                "to_tag".to_string(),
+                serde_json::Value::String(to.to_string()),
+            );
         }
-        
+
         if let Some(fmt) = format {
-            params.insert("format".to_string(), serde_json::Value::String(fmt.to_string()));
+            params.insert(
+                "format".to_string(),
+                serde_json::Value::String(fmt.to_string()),
+            );
         }
 
         let request = TaskRequest::new("generate_changelog".to_string())
@@ -165,7 +199,10 @@ impl AgentIntegration {
             .with_priority(TaskPriority::Normal)
             .with_timeout(std::time::Duration::from_secs(180));
 
-        let result = self.executor.execute_task_immediately(request, self.context.clone()).await?;
+        let result = self
+            .executor
+            .execute_task_immediately(request, self.context.clone())
+            .await?;
 
         if result.result.success {
             if let Some(data) = result.result.data {
@@ -175,7 +212,10 @@ impl AgentIntegration {
             }
             Ok(result.result.message)
         } else {
-            Err(anyhow::anyhow!("Changelog generation failed: {}", result.result.message))
+            Err(anyhow::anyhow!(
+                "Changelog generation failed: {}",
+                result.result.message
+            ))
         }
     }
 
@@ -187,14 +227,23 @@ impl AgentIntegration {
         to_tag: Option<&str>,
     ) -> Result<String> {
         let mut params = HashMap::new();
-        params.insert("version".to_string(), serde_json::Value::String(version.to_string()));
-        
+        params.insert(
+            "version".to_string(),
+            serde_json::Value::String(version.to_string()),
+        );
+
         if let Some(from) = from_tag {
-            params.insert("from_tag".to_string(), serde_json::Value::String(from.to_string()));
+            params.insert(
+                "from_tag".to_string(),
+                serde_json::Value::String(from.to_string()),
+            );
         }
-        
+
         if let Some(to) = to_tag {
-            params.insert("to_tag".to_string(), serde_json::Value::String(to.to_string()));
+            params.insert(
+                "to_tag".to_string(),
+                serde_json::Value::String(to.to_string()),
+            );
         }
 
         let request = TaskRequest::new("generate_release_notes".to_string())
@@ -202,7 +251,10 @@ impl AgentIntegration {
             .with_priority(TaskPriority::Normal)
             .with_timeout(std::time::Duration::from_secs(240));
 
-        let result = self.executor.execute_task_immediately(request, self.context.clone()).await?;
+        let result = self
+            .executor
+            .execute_task_immediately(request, self.context.clone())
+            .await?;
 
         if result.result.success {
             if let Some(data) = result.result.data {
@@ -212,7 +264,10 @@ impl AgentIntegration {
             }
             Ok(result.result.message)
         } else {
-            Err(anyhow::anyhow!("Release notes generation failed: {}", result.result.message))
+            Err(anyhow::anyhow!(
+                "Release notes generation failed: {}",
+                result.result.message
+            ))
         }
     }
 
@@ -228,7 +283,9 @@ impl AgentIntegration {
             .with_priority(priority)
             .with_retries(2);
 
-        self.executor.submit_task(request, self.context.clone()).await
+        self.executor
+            .submit_task(request, self.context.clone())
+            .await
     }
 
     /// Get executor statistics
@@ -285,16 +342,16 @@ impl AgentIntegration {
 pub struct AgentConfig {
     /// Whether to use the agent framework
     pub enabled: bool,
-    
+
     /// Maximum number of concurrent tasks
     pub max_concurrent_tasks: Option<usize>,
-    
+
     /// Default task timeout in seconds
     pub default_timeout_seconds: Option<u64>,
-    
+
     /// Whether to enable async task execution
     pub async_execution: bool,
-    
+
     /// Agent-specific settings
     pub agents: HashMap<String, AgentSettings>,
 }
@@ -303,10 +360,10 @@ pub struct AgentConfig {
 pub struct AgentSettings {
     /// Whether this agent is enabled
     pub enabled: bool,
-    
+
     /// Agent-specific timeout in seconds
     pub timeout_seconds: Option<u64>,
-    
+
     /// Agent-specific configuration
     pub config: HashMap<String, serde_json::Value>,
 }
@@ -358,7 +415,7 @@ pub async fn handle_gen_with_agent(
 ) -> Result<()> {
     let mut config = Config::load()?;
     common.apply_to_config(&mut config)?;
-    
+
     let git_repo = if let Some(_url) = repository_url {
         // For remote repos, we'd need different handling
         // For now, use current directory
@@ -366,39 +423,50 @@ pub async fn handle_gen_with_agent(
     } else {
         crate::git::GitRepo::new(&std::env::current_dir()?)?
     };
-    
+
     let integration = create_agent_integration_from_context(config, git_repo).await?;
-    
+
     if let Some(integration) = integration {
         // Use agent framework with gitmoji and verification settings
         let preset = common.preset.as_deref();
         let instructions = common.instructions.as_deref();
-        
+
         // Pass additional parameters to the agent
         let mut agent_params = HashMap::new();
         if let Some(preset) = preset {
-            agent_params.insert("preset".to_string(), serde_json::Value::String(preset.to_string()));
+            agent_params.insert(
+                "preset".to_string(),
+                serde_json::Value::String(preset.to_string()),
+            );
         }
         if let Some(instructions) = instructions {
-            agent_params.insert("instructions".to_string(), serde_json::Value::String(instructions.to_string()));
+            agent_params.insert(
+                "instructions".to_string(),
+                serde_json::Value::String(instructions.to_string()),
+            );
         }
-        agent_params.insert("use_gitmoji".to_string(), serde_json::Value::Bool(use_gitmoji));
+        agent_params.insert(
+            "use_gitmoji".to_string(),
+            serde_json::Value::Bool(use_gitmoji),
+        );
         agent_params.insert("verify".to_string(), serde_json::Value::Bool(verify));
-        
-        let commit_message = integration.generate_commit_message_with_params(agent_params).await?;
-        
+
+        let commit_message = integration
+            .generate_commit_message_with_params(agent_params)
+            .await?;
+
         if print_only {
-            println!("{}", commit_message);
+            println!("{commit_message}");
         } else {
             // Handle auto-commit logic here
-            crate::ui::print_success(&format!("Generated commit message: {}", commit_message));
-            
+            crate::ui::print_success(&format!("Generated commit message: {commit_message}"));
+
             if auto_commit {
                 // Perform actual commit - this would need to be implemented
                 crate::ui::print_success("Committed changes using agent framework");
             }
         }
-        
+
         Ok(())
     } else {
         Err(anyhow::anyhow!("Agent framework not available"))
@@ -417,36 +485,35 @@ pub async fn handle_review_with_agent(
 ) -> Result<()> {
     let mut config = Config::load()?;
     common.apply_to_config(&mut config)?;
-    
+
     let git_repo = if let Some(_url) = repository_url {
         crate::git::GitRepo::new(&std::env::current_dir()?)?
     } else {
         crate::git::GitRepo::new(&std::env::current_dir()?)?
     };
-    
+
     let integration = create_agent_integration_from_context(config, git_repo).await?;
-    
+
     if let Some(integration) = integration {
         // Build commit range from parameters
         let commit_range = if let Some(commit) = commit {
             Some(commit)
         } else if let (Some(from), Some(to)) = (from, to) {
-            Some(format!("{}..{}", from, to))
+            Some(format!("{from}..{to}"))
         } else {
             None
         };
-        
+
         // Build focus areas and options
         let mut focus_areas = vec!["security", "performance", "maintainability"];
         if include_unstaged {
             focus_areas.push("unstaged_changes");
         }
-        
-        let review_data = integration.review_changes(
-            commit_range.as_deref(),
-            Some(focus_areas),
-        ).await?;
-        
+
+        let review_data = integration
+            .review_changes(commit_range.as_deref(), Some(focus_areas))
+            .await?;
+
         if print {
             println!("{}", serde_json::to_string_pretty(&review_data)?);
         } else {
@@ -454,7 +521,7 @@ pub async fn handle_review_with_agent(
             crate::ui::print_success("Code review completed using agent framework");
             println!("{}", serde_json::to_string_pretty(&review_data)?);
         }
-        
+
         Ok(())
     } else {
         Err(anyhow::anyhow!("Agent framework not available"))
@@ -473,33 +540,30 @@ pub async fn handle_changelog_with_agent(
 ) -> Result<()> {
     let mut config = Config::load()?;
     common.apply_to_config(&mut config)?;
-    
+
     let git_repo = if let Some(_url) = repository_url {
         crate::git::GitRepo::new(&std::env::current_dir()?)?
     } else {
         crate::git::GitRepo::new(&std::env::current_dir()?)?
     };
-    
+
     let integration = create_agent_integration_from_context(config, git_repo).await?;
-    
+
     if let Some(integration) = integration {
         let version = version_name.as_deref().unwrap_or("Latest");
-        
-        let changelog = integration.generate_changelog(
-            version,
-            Some(&from),
-            to.as_deref(),
-            Some("markdown"),
-        ).await?;
-        
+
+        let changelog = integration
+            .generate_changelog(version, Some(&from), to.as_deref(), Some("markdown"))
+            .await?;
+
         if update {
             let file_path = file.as_deref().unwrap_or("CHANGELOG.md");
             tokio::fs::write(file_path, &changelog).await?;
-            crate::ui::print_success(&format!("Updated changelog: {}", file_path));
+            crate::ui::print_success(&format!("Updated changelog: {file_path}"));
         } else {
-            println!("{}", changelog);
+            println!("{changelog}");
         }
-        
+
         Ok(())
     } else {
         Err(anyhow::anyhow!("Agent framework not available"))
@@ -516,26 +580,24 @@ pub async fn handle_release_notes_with_agent(
 ) -> Result<()> {
     let mut config = Config::load()?;
     common.apply_to_config(&mut config)?;
-    
+
     let git_repo = if let Some(_url) = repository_url {
         crate::git::GitRepo::new(&std::env::current_dir()?)?
     } else {
         crate::git::GitRepo::new(&std::env::current_dir()?)?
     };
-    
+
     let integration = create_agent_integration_from_context(config, git_repo).await?;
-    
+
     if let Some(integration) = integration {
         let version = version_name.as_deref().unwrap_or("Latest");
-        
-        let release_notes = integration.generate_release_notes(
-            version,
-            Some(&from),
-            to.as_deref(),
-        ).await?;
-        
-        println!("{}", release_notes);
-        
+
+        let release_notes = integration
+            .generate_release_notes(version, Some(&from), to.as_deref())
+            .await?;
+
+        println!("{release_notes}");
+
         Ok(())
     } else {
         Err(anyhow::anyhow!("Agent framework not available"))
@@ -552,43 +614,43 @@ pub async fn handle_pr_with_agent(
 ) -> Result<()> {
     let mut config = Config::load()?;
     common.apply_to_config(&mut config)?;
-    
+
     let git_repo = if let Some(_url) = repository_url {
         crate::git::GitRepo::new(&std::env::current_dir()?)?
     } else {
         crate::git::GitRepo::new(&std::env::current_dir()?)?
     };
-    
+
     let integration = create_agent_integration_from_context(config, git_repo).await?;
-    
+
     if let Some(integration) = integration {
         // Build commit range for PR analysis
         let commit_range = if let (Some(from_ref), Some(to_ref)) = (&from, &to) {
-            Some(format!("{}..{}", from_ref, to_ref))
+            Some(format!("{from_ref}..{to_ref}"))
         } else if let Some(from_ref) = &from {
-            Some(format!("{}..HEAD", from_ref))
-        } else if let Some(to_ref) = &to {
-            Some(format!("HEAD..{}", to_ref))
+            Some(format!("{from_ref}..HEAD"))
         } else {
-            None
+            to.as_ref().map(|to_ref| format!("HEAD..{to_ref}"))
         };
-        
+
         // For PR description, we use the review agent but with different parameters
-        let review_data = integration.review_changes(
-            commit_range.as_deref(),
-            Some(vec!["summary", "changes", "testing"]), // Focus on PR-relevant aspects
-        ).await?;
-        
+        let review_data = integration
+            .review_changes(
+                commit_range.as_deref(),
+                Some(vec!["summary", "changes", "testing"]), // Focus on PR-relevant aspects
+            )
+            .await?;
+
         // Format as PR description
         let pr_description = format_pr_description(&review_data)?;
-        
+
         if print {
-            println!("{}", pr_description);
+            println!("{pr_description}");
         } else {
             crate::ui::print_success("PR description generated using agent framework");
-            println!("{}", pr_description);
+            println!("{pr_description}");
         }
-        
+
         Ok(())
     } else {
         Err(anyhow::anyhow!("Agent framework not available"))
@@ -599,21 +661,21 @@ pub async fn handle_pr_with_agent(
 fn format_pr_description(review_data: &serde_json::Value) -> Result<String> {
     // This is a simplified formatter - in a real implementation this would be more sophisticated
     let mut description = String::new();
-    
+
     description.push_str("## Summary\n\n");
     if let Some(summary) = review_data.get("summary") {
-        description.push_str(&format!("{}\n\n", summary));
+        description.push_str(&format!("{summary}\n\n"));
     }
-    
+
     description.push_str("## Changes\n\n");
     if let Some(changes) = review_data.get("changes") {
-        description.push_str(&format!("{}\n\n", changes));
+        description.push_str(&format!("{changes}\n\n"));
     }
-    
+
     description.push_str("## Testing\n\n");
     if let Some(testing) = review_data.get("testing") {
-        description.push_str(&format!("{}\n\n", testing));
+        description.push_str(&format!("{testing}\n\n"));
     }
-    
+
     Ok(description)
 }

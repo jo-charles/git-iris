@@ -538,13 +538,27 @@ async fn handle_changelog(
     if use_agent {
         // Use agent framework for changelog generation
         crate::agents::integration::handle_changelog_with_agent(
-            common, from, to, repository_url, update, file, version_name
+            common,
+            from,
+            to,
+            repository_url,
+            update,
+            file,
+            version_name,
         )
         .await
     } else {
         // Use existing implementation
-        changes::handle_changelog_command(common, from, to, repository_url, update, file, version_name)
-            .await
+        changes::handle_changelog_command(
+            common,
+            from,
+            to,
+            repository_url,
+            update,
+            file,
+            version_name,
+        )
+        .await
     }
 }
 
@@ -568,7 +582,11 @@ async fn handle_release_notes(
     if use_agent {
         // Use agent framework for release notes generation
         crate::agents::integration::handle_release_notes_with_agent(
-            common, from, to, repository_url, version_name
+            common,
+            from,
+            to,
+            repository_url,
+            version_name,
         )
         .await
     } else {
@@ -655,7 +673,19 @@ pub async fn handle_command(
             update,
             file,
             version_name,
-        } => handle_changelog(common, from, to, repository_url, update, file, version_name, use_agent).await,
+        } => {
+            handle_changelog(
+                common,
+                from,
+                to,
+                repository_url,
+                update,
+                file,
+                version_name,
+                use_agent,
+            )
+            .await
+        }
         Commands::ReleaseNotes {
             common,
             from,
@@ -706,10 +736,8 @@ async fn handle_pr(
     ui::print_newline();
     if use_agent {
         // Use agent framework for PR description generation
-        crate::agents::integration::handle_pr_with_agent(
-            common, print, repository_url, from, to
-        )
-        .await
+        crate::agents::integration::handle_pr_with_agent(common, print, repository_url, from, to)
+            .await
     } else {
         // Use existing implementation
         commit::handle_pr_command(common, print, repository_url, from, to).await
