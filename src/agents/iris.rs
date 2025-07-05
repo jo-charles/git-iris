@@ -1,8 +1,10 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use rig::client::CompletionClient;
+use rig::completion::Prompt;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fmt::Write;
 use std::sync::Arc;
 
 use crate::agents::{
@@ -23,6 +25,7 @@ use crate::{
 };
 
 /// The unified Iris agent - an AI assistant for all Git-Iris operations
+/// Optimized for maximum Rig framework efficiency
 pub struct IrisAgent {
     id: String,
     name: String,
@@ -30,7 +33,6 @@ pub struct IrisAgent {
     capabilities: Vec<String>,
     backend: AgentBackend,
     tools: Vec<Arc<dyn AgentTool>>,
-    knowledge: std::sync::Mutex<IrisKnowledge>,
     initialized: bool,
 }
 
@@ -106,7 +108,7 @@ impl IrisKnowledge {
         if !self.project_insights.is_empty() {
             summary.push_str("**Project Insights:**\n");
             for insight in &self.project_insights {
-                summary.push_str(&format!("- {insight}\n"));
+                writeln!(summary, "- {insight}").unwrap();
             }
             summary.push('\n');
         }
@@ -114,7 +116,7 @@ impl IrisKnowledge {
         if !self.code_patterns.is_empty() {
             summary.push_str("**Code Patterns Observed:**\n");
             for pattern in &self.code_patterns {
-                summary.push_str(&format!("- {pattern}\n"));
+                writeln!(summary, "- {pattern}").unwrap();
             }
             summary.push('\n');
         }
@@ -122,7 +124,7 @@ impl IrisKnowledge {
         if !self.discovered_issues.is_empty() {
             summary.push_str("**Issues Discovered:**\n");
             for issue in &self.discovered_issues {
-                summary.push_str(&format!("- {issue}\n"));
+                writeln!(summary, "- {issue}").unwrap();
             }
             summary.push('\n');
         }
@@ -130,7 +132,7 @@ impl IrisKnowledge {
         if !self.security_findings.is_empty() {
             summary.push_str("**Security Findings:**\n");
             for finding in &self.security_findings {
-                summary.push_str(&format!("- {finding}\n"));
+                writeln!(summary, "- {finding}").unwrap();
             }
             summary.push('\n');
         }
@@ -167,78 +169,11 @@ impl IrisAgent {
             ],
             backend,
             tools,
-            knowledge: std::sync::Mutex::new(IrisKnowledge::default()),
             initialized: false,
         };
 
         agent.initialized = true;
         agent
-    }
-
-    /// Add knowledge learned during task execution
-    fn add_knowledge(&self, category: &str, insight: String) {
-        if let Ok(mut knowledge) = self.knowledge.lock() {
-            log_debug!("🧠 Iris: Added {} insight: {}", category, insight);
-            knowledge.add_insight(category, insight);
-        }
-    }
-
-    /// Get current knowledge summary for context
-    fn get_knowledge_context(&self) -> String {
-        if let Ok(knowledge) = self.knowledge.lock() {
-            knowledge.get_summary()
-        } else {
-            String::new()
-        }
-    }
-
-    /// Ask LLM to extract insights from a result and add to knowledge base
-    async fn learn_from_result(&self, task_type: &str, result: &str) -> Result<()> {
-        let learning_prompt = format!(
-            "You are Iris. Analyze this {task_type} result and extract key insights for future tasks.
-
-            Result:
-            {result}
-
-            Extract insights in these categories (return only insights that are genuinely useful):
-            1. **project**: General project architecture or patterns
-            2. **patterns**: Code patterns, conventions, or styles observed
-            3. **issues**: Common issues or anti-patterns found
-            4. **architecture**: Architectural decisions or design patterns
-            5. **performance**: Performance considerations or optimizations
-            6. **security**: Security patterns or vulnerabilities
-            7. **context**: Important context about this specific codebase
-
-            Respond with JSON:
-            {{
-              \"insights\": [
-                {{\"category\": \"project\", \"insight\": \"This project uses X pattern for Y\"}},
-                {{\"category\": \"patterns\", \"insight\": \"Code follows Z convention\"}}
-              ]
-            }}
-
-            Only include insights that would be helpful for future code analysis."
-        );
-
-        if let Ok(learning_response) = self.analyze_with_backend(&learning_prompt).await {
-            if let Ok(insights) = self
-                .parse_json_response::<serde_json::Value>(&learning_response)
-                .await
-            {
-                if let Some(insights_array) = insights.get("insights").and_then(|i| i.as_array()) {
-                    for insight in insights_array {
-                        if let (Some(category), Some(text)) = (
-                            insight.get("category").and_then(|c| c.as_str()),
-                            insight.get("insight").and_then(|i| i.as_str()),
-                        ) {
-                            self.add_knowledge(category, text.to_string());
-                        }
-                    }
-                }
-            }
-        }
-
-        Ok(())
     }
 
     /// Use LLM to intelligently manage context for code reviews
@@ -347,9 +282,7 @@ impl IrisAgent {
             .await?;
 
         // Step 5: Parse and validate response
-        let parsed_response = self
-            .parse_json_response::<GeneratedMessage>(&generated_message)
-            .await?;
+        let parsed_response = self.parse_json_response::<GeneratedMessage>(&generated_message)?;
 
         log_debug!(
             "✅ Iris: Commit message generated - Title: '{}', {} chars total",
@@ -386,9 +319,7 @@ impl IrisAgent {
         let generated_review = self
             .generate_with_backend(&system_prompt, &managed_user_prompt)
             .await?;
-        let parsed_response = self
-            .parse_json_response::<GeneratedReview>(&generated_review)
-            .await?;
+        let parsed_response = self.parse_json_response::<GeneratedReview>(&generated_review)?;
 
         log_debug!(
             "✅ Iris: Code review completed with {} issues",
@@ -435,9 +366,7 @@ impl IrisAgent {
         let generated_pr = self
             .generate_with_backend(&system_prompt, &user_prompt)
             .await?;
-        let parsed_response = self
-            .parse_json_response::<GeneratedPullRequest>(&generated_pr)
-            .await?;
+        let parsed_response = self.parse_json_response::<GeneratedPullRequest>(&generated_pr)?;
 
         log_debug!(
             "✅ Iris: PR description generated - Title: '{}'",
@@ -474,7 +403,7 @@ impl IrisAgent {
         // Step 3: Use LLM to synthesize tool results into intelligent context
         log_debug!("🤖 Iris: Synthesizing tool results with LLM");
         iris_status_synthesis!();
-        let synthesis_prompt = self.build_tool_synthesis_prompt(&tool_results).await?;
+        let synthesis_prompt = self.build_tool_synthesis_prompt(&tool_results)?;
         log_debug!(
             "🛠️ Iris: Synthesis prompt built - {} chars",
             synthesis_prompt.len()
@@ -493,9 +422,8 @@ impl IrisAgent {
         // For now, fall back to basic git context to maintain compatibility
         // TODO: Build IntelligentContext entirely from tool synthesis
         let git_context = context.git_repo.get_git_info(&context.config).await?;
-        let intelligent_context = self
-            .parse_intelligence_result(&intelligence_result, &git_context)
-            .await?;
+        let intelligent_context =
+            self.parse_intelligence_result(&intelligence_result, &git_context)?;
 
         log_debug!(
             "✅ Iris: Intelligent context gathered via agent-driven tools - {} files analyzed",
@@ -672,8 +600,9 @@ impl IrisAgent {
         // Analyze current results to determine if we need more tools
         let mut context_summary = String::new();
         for result in current_results {
-            context_summary.push_str(&format!(
-                "Tool '{}' revealed: {}\n",
+            writeln!(
+                context_summary,
+                "Tool '{}' revealed: {}",
                 result.tool_name,
                 match &result.result {
                     serde_json::Value::Object(obj) => {
@@ -684,7 +613,8 @@ impl IrisAgent {
                     }
                     _ => "Non-object result".to_string(),
                 }
-            ));
+            )
+            .unwrap();
         }
 
         // Get available tools not in current plan
@@ -737,7 +667,8 @@ impl IrisAgent {
     }
 
     /// Build prompt to synthesize tool results into intelligent context
-    async fn build_tool_synthesis_prompt(&self, tool_results: &[ToolResult]) -> Result<String> {
+    #[allow(clippy::unused_self, clippy::unnecessary_wraps)]
+    fn build_tool_synthesis_prompt(&self, tool_results: &[ToolResult]) -> Result<String> {
         let mut prompt = String::from(
             "You are Iris, an expert AI assistant synthesizing information from multiple tools to understand Git changes.\n\n\
             Your task is to analyze the tool results and provide intelligent insights about file relevance, change purpose, and overall impact.\n\n\
@@ -745,7 +676,8 @@ impl IrisAgent {
         );
 
         for (i, result) in tool_results.iter().enumerate() {
-            prompt.push_str(&format!(
+            write!(
+                prompt,
                 "=== TOOL RESULT {} ===\n\
                 Tool: {}\n\
                 Operation: {}\n\
@@ -757,7 +689,8 @@ impl IrisAgent {
                 result.reason,
                 serde_json::to_string_pretty(&result.result)
                     .unwrap_or_else(|_| "Unable to serialize".to_string())
-            ));
+            )
+            .unwrap();
         }
 
         prompt.push_str(
@@ -782,6 +715,7 @@ impl IrisAgent {
     }
 
     /// Parse tool planning response into structured tool plan
+    #[allow(clippy::unused_self, clippy::unnecessary_wraps)]
     fn parse_tool_plan(&self, planning_result: &str) -> Result<Vec<ToolPlan>> {
         log_debug!("📋 Iris: Parsing tool plan from LLM response");
 
@@ -832,399 +766,9 @@ impl IrisAgent {
         }])
     }
 
-    /// Extract meaningful search terms from code changes for deeper analysis
-    fn extract_search_terms_from_changes(
-        &self,
-        git_context: &crate::context::CommitContext,
-    ) -> Vec<String> {
-        let mut search_terms = Vec::new();
-
-        for file in &git_context.staged_files {
-            // Extract function names, class names, and important identifiers from diffs
-            let lines: Vec<&str> = file.diff.lines().collect();
-            for line in lines {
-                if line.starts_with('+') || line.starts_with('-') {
-                    // Look for function definitions, struct/class declarations
-                    if line.contains("fn ") || line.contains("struct ") || line.contains("impl ") {
-                        if let Some(term) = self.extract_identifier_from_line(line) {
-                            if !search_terms.contains(&term) {
-                                search_terms.push(term);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Limit search terms to avoid too many tool calls
-        search_terms.truncate(5);
-        log_debug!(
-            "🔍 Iris: Extracted {} search terms: {:?}",
-            search_terms.len(),
-            search_terms
-        );
-
-        search_terms
-    }
-
-    /// Extract identifier from a code line
-    fn extract_identifier_from_line(&self, line: &str) -> Option<String> {
-        // Simple extraction logic - can be enhanced
-        if line.contains("fn ") {
-            if let Some(start) = line.find("fn ") {
-                let after_fn = &line[start + 3..];
-                if let Some(end) = after_fn.find('(') {
-                    let name = after_fn[..end].trim();
-                    if !name.is_empty() {
-                        return Some(name.to_string());
-                    }
-                }
-            }
-        }
-
-        if line.contains("struct ") {
-            if let Some(start) = line.find("struct ") {
-                let after_struct = &line[start + 7..];
-                if let Some(end) = after_struct.find(' ') {
-                    let name = after_struct[..end].trim();
-                    if !name.is_empty() {
-                        return Some(name.to_string());
-                    }
-                }
-            }
-        }
-
-        None
-    }
-
-    /// Gather Git context using available tools
-    async fn gather_git_context_with_tools(
-        &self,
-        context: &AgentContext,
-    ) -> Result<crate::context::CommitContext> {
-        log_debug!(
-            "🔧 Iris: Gathering Git context using {} available tools",
-            self.tools.len()
-        );
-
-        // Find Git tool
-        let git_tool = self
-            .tools
-            .iter()
-            .find(|tool| tool.capabilities().contains(&"git".to_string()))
-            .ok_or_else(|| anyhow::anyhow!("No Git tool available"))?;
-
-        log_debug!("🔧 Iris: Found Git tool: {}", git_tool.name());
-
-        // Execute multiple tool calls to gather comprehensive data
-        let tool_results = self.execute_multiple_tool_calls(git_tool, context).await?;
-
-        log_debug!(
-            "✅ Iris: All Git tool calls completed - {} results",
-            tool_results.len()
-        );
-
-        // For now, still use direct git context but enhance with tool data
-        // TODO: Build CommitContext entirely from tool results
-        let git_context = context.git_repo.get_git_info(&context.config).await?;
-
-        Ok(git_context)
-    }
-
-    /// Execute multiple tool calls to gather comprehensive information
-    async fn execute_multiple_tool_calls(
-        &self,
-        git_tool: &Arc<dyn crate::agents::tools::AgentTool>,
-        context: &AgentContext,
-    ) -> Result<Vec<serde_json::Value>> {
-        let mut results = Vec::new();
-
-        // Call 1: Get diff data
-        log_debug!("🔧 Iris: Tool call 1/4 - Getting diff data");
-        let mut diff_params = std::collections::HashMap::new();
-        diff_params.insert(
-            "operation".to_string(),
-            serde_json::Value::String("diff".to_string()),
-        );
-
-        let diff_result = git_tool.execute(context, &diff_params).await?;
-        log_debug!("✅ Iris: Diff tool call completed");
-        results.push(diff_result);
-
-        // Call 2: Get status
-        log_debug!("🔧 Iris: Tool call 2/4 - Getting repository status");
-        let mut status_params = std::collections::HashMap::new();
-        status_params.insert(
-            "operation".to_string(),
-            serde_json::Value::String("status".to_string()),
-        );
-
-        let status_result = git_tool.execute(context, &status_params).await?;
-        log_debug!("✅ Iris: Status tool call completed");
-        results.push(status_result);
-
-        // Call 3: Get commit log
-        log_debug!("🔧 Iris: Tool call 3/4 - Getting commit history");
-        let mut log_params = std::collections::HashMap::new();
-        log_params.insert(
-            "operation".to_string(),
-            serde_json::Value::String("log".to_string()),
-        );
-
-        let log_result = git_tool.execute(context, &log_params).await?;
-        log_debug!("✅ Iris: Log tool call completed");
-        results.push(log_result);
-
-        // Call 4: Get files list
-        log_debug!("🔧 Iris: Tool call 4/4 - Getting changed files list");
-        let mut files_params = std::collections::HashMap::new();
-        files_params.insert(
-            "operation".to_string(),
-            serde_json::Value::String("files".to_string()),
-        );
-
-        let files_result = git_tool.execute(context, &files_params).await?;
-        log_debug!("✅ Iris: Files tool call completed");
-        results.push(files_result);
-
-        log_debug!(
-            "🎯 Iris: All {} tool calls executed successfully",
-            results.len()
-        );
-        Ok(results)
-    }
-
-    /// Use file analyzer tool for deeper code analysis
-    async fn analyze_files_with_tools(
-        &self,
-        context: &AgentContext,
-        files: &[String],
-    ) -> Result<Vec<serde_json::Value>> {
-        log_debug!(
-            "🔍 Iris: Analyzing {} files with file analyzer tools",
-            files.len()
-        );
-
-        // Find file analyzer tool
-        let analyzer_tool = self
-            .tools
-            .iter()
-            .find(|tool| tool.capabilities().contains(&"file_analysis".to_string()));
-
-        if let Some(tool) = analyzer_tool {
-            log_debug!("🔍 Iris: Found file analyzer tool: {}", tool.name());
-
-            let mut results = Vec::new();
-            for file_path in files {
-                log_debug!("🔍 Iris: Analyzing file: {}", file_path);
-
-                let mut params = std::collections::HashMap::new();
-                params.insert(
-                    "file_path".to_string(),
-                    serde_json::Value::String(file_path.clone()),
-                );
-                params.insert(
-                    "analysis_type".to_string(),
-                    serde_json::Value::String("comprehensive".to_string()),
-                );
-
-                match tool.execute(context, &params).await {
-                    Ok(result) => {
-                        log_debug!("✅ Iris: File analysis completed for: {}", file_path);
-                        results.push(result);
-                    }
-                    Err(e) => {
-                        log_debug!("⚠️ Iris: File analysis failed for {}: {}", file_path, e);
-                    }
-                }
-            }
-
-            log_debug!(
-                "🔍 Iris: File analysis completed - {} results",
-                results.len()
-            );
-            Ok(results)
-        } else {
-            log_debug!("⚠️ Iris: No file analyzer tool available");
-            Ok(Vec::new())
-        }
-    }
-
-    /// Use code search tool for finding related code patterns
-    async fn search_codebase_with_tools(
-        &self,
-        context: &AgentContext,
-        search_terms: &[String],
-    ) -> Result<Vec<serde_json::Value>> {
-        log_debug!(
-            "🔍 Iris: Searching codebase for {} terms",
-            search_terms.len()
-        );
-
-        // Find code search tool
-        let search_tool = self.tools.iter().find(|tool| {
-            tool.id().contains("search") || tool.capabilities().contains(&"search".to_string())
-        });
-
-        if let Some(tool) = search_tool {
-            log_debug!("🔍 Iris: Found search tool: {}", tool.name());
-
-            let mut results = Vec::new();
-            for term in search_terms {
-                log_debug!("🔍 Iris: Searching for: {}", term);
-
-                let mut params = std::collections::HashMap::new();
-                params.insert("query".to_string(), serde_json::Value::String(term.clone()));
-                params.insert(
-                    "search_type".to_string(),
-                    serde_json::Value::String("comprehensive".to_string()),
-                );
-
-                match tool.execute(context, &params).await {
-                    Ok(result) => {
-                        log_debug!("✅ Iris: Search completed for: {}", term);
-                        results.push(result);
-                    }
-                    Err(e) => {
-                        log_debug!("⚠️ Iris: Search failed for {}: {}", term, e);
-                    }
-                }
-            }
-
-            log_debug!("🔍 Iris: Code search completed - {} results", results.len());
-            Ok(results)
-        } else {
-            log_debug!("⚠️ Iris: No code search tool available");
-            Ok(Vec::new())
-        }
-    }
-
-    /// Build enhanced context analysis prompt with tool data
-    async fn build_enhanced_context_analysis_prompt(
-        &self,
-        git_context: &CommitContext,
-        file_analysis_results: &[serde_json::Value],
-        search_results: &[serde_json::Value],
-    ) -> Result<String> {
-        log_debug!("🛠️ Iris: Building enhanced context analysis prompt with tool data");
-
-        let mut prompt = self.build_context_analysis_prompt(git_context).await?;
-
-        // Add file analysis results if available
-        if !file_analysis_results.is_empty() {
-            prompt.push_str("\n\n=== ADDITIONAL FILE ANALYSIS ===\n");
-            for (i, result) in file_analysis_results.iter().enumerate() {
-                prompt.push_str(&format!(
-                    "Analysis Result {}:\n{}\n\n",
-                    i + 1,
-                    serde_json::to_string_pretty(result)
-                        .unwrap_or_else(|_| "Unable to serialize".to_string())
-                ));
-            }
-        }
-
-        // Add search results if available
-        if !search_results.is_empty() {
-            prompt.push_str("\n\n=== CODEBASE SEARCH RESULTS ===\n");
-            for (i, result) in search_results.iter().enumerate() {
-                prompt.push_str(&format!(
-                    "Search Result {}:\n{}\n\n",
-                    i + 1,
-                    serde_json::to_string_pretty(result)
-                        .unwrap_or_else(|_| "Unable to serialize".to_string())
-                ));
-            }
-        }
-
-        log_debug!(
-            "🛠️ Iris: Enhanced prompt built with {} file analyses and {} search results",
-            file_analysis_results.len(),
-            search_results.len()
-        );
-
-        Ok(prompt)
-    }
-
-    /// Build context analysis prompt for LLM
-    async fn build_context_analysis_prompt(&self, git_context: &CommitContext) -> Result<String> {
-        log_debug!(
-            "🛠️ Iris: Building context analysis prompt for {} files",
-            git_context.staged_files.len()
-        );
-
-        let mut prompt = String::from(
-            "You are an expert software engineer analyzing Git changes for context and relevance. \
-            Your task is to intelligently analyze the provided changes and score their relevance \
-            to understanding the overall purpose and impact of this commit.\n\n\
-            For each file, provide:\n\
-            1. Relevance score (0.0-1.0) based on how important this file is to understanding the change\n\
-            2. Analysis of what changed and why it matters\n\
-            3. Key changes that are most significant\n\
-            4. Impact assessment on the overall system\n\n\
-            Also provide:\n\
-            - Overall change summary (what is the main purpose)\n\
-            - Technical analysis (implementation details, patterns, architecture)\n\
-            - Project insights (how this fits into the larger codebase)\n\n\
-            Files to analyze:\n\n",
-        );
-
-        for (index, file) in git_context.staged_files.iter().enumerate() {
-            log_debug!(
-                "📄 Iris: Adding file {} to analysis prompt: {}",
-                index + 1,
-                file.path
-            );
-            prompt.push_str(&format!(
-                "=== FILE {} ===\n\
-                Path: {}\n\
-                Change Type: {:?}\n\
-                Diff:\n{}\n\n",
-                index + 1,
-                file.path,
-                file.change_type,
-                file.diff
-            ));
-
-            if let Some(content) = &file.content {
-                log_debug!(
-                    "📄 Iris: Including full content for file: {} ({} chars)",
-                    file.path,
-                    content.len()
-                );
-                prompt.push_str(&format!(
-                    "Full Content:\n{content}\n\
-                    --- End of File ---\n\n"
-                ));
-            }
-        }
-
-        prompt.push_str(
-            "\nRespond with a JSON object in this exact format:\n\
-            {\n\
-              \"files\": [\n\
-                {\n\
-                  \"path\": \"file_path\",\n\
-                  \"relevance_score\": 0.85,\n\
-                  \"analysis\": \"What changed and why it matters\",\n\
-                  \"key_changes\": [\"change 1\", \"change 2\"],\n\
-                  \"impact_assessment\": \"How this affects the system\"\n\
-                }\n\
-              ],\n\
-              \"change_summary\": \"Overall purpose of these changes\",\n\
-              \"technical_analysis\": \"Implementation details and patterns\",\n\
-              \"project_insights\": \"How this fits into the larger codebase\"\n\
-            }",
-        );
-
-        log_debug!(
-            "🛠️ Iris: Context analysis prompt complete - {} chars total",
-            prompt.len()
-        );
-        Ok(prompt)
-    }
-
     /// Parse LLM intelligence result into structured context
-    async fn parse_intelligence_result(
+    #[allow(clippy::unused_self, clippy::unnecessary_wraps, clippy::too_many_lines)]
+    fn parse_intelligence_result(
         &self,
         result: &str,
         git_context: &CommitContext,
@@ -1250,6 +794,7 @@ impl IrisAgent {
                         .filter_map(|(i, file)| {
                             let file_result = Some(FileRelevance {
                                 path: file.get("path")?.as_str()?.to_string(),
+                                #[allow(clippy::cast_possible_truncation, clippy::as_conversions)]
                                 relevance_score: file.get("relevance_score")?.as_f64()? as f32,
                                 analysis: file.get("analysis")?.as_str()?.to_string(),
                                 key_changes: file
@@ -1418,139 +963,125 @@ impl IrisAgent {
         })
     }
 
-    /// Generate text using the configured backend
+    /// Generate text using Rig's optimized agent builder pattern
     async fn generate_with_backend(
         &self,
         system_prompt: &str,
         user_prompt: &str,
     ) -> Result<String> {
-        use rig::completion::Prompt;
-
-        log_debug!("🔮 Iris: Preparing LLM request with backend");
+        log_debug!("🔮 Iris: Preparing optimized LLM request with Rig");
         log_debug!("📊 System prompt: {} chars", system_prompt.len());
         log_debug!("👤 User prompt: {} chars", user_prompt.len());
 
-        match &self.backend {
+        // Use Rig's fluent builder pattern for optimal configuration
+        let response_text = match &self.backend {
             AgentBackend::OpenAI { client, model } => {
-                log_debug!("🤖 Using OpenAI backend with model: {}", model);
-                let agent = client
+                log_debug!("🤖 Using Rig-optimized OpenAI agent builder");
+
+                // Leverage Rig's chainable configuration for generation tasks
+                let response = client
                     .agent(model)
                     .preamble(system_prompt)
                     .temperature(0.7)
                     .max_tokens(800)
-                    .build();
-
-                log_debug!("🚀 Sending OpenAI API request...");
-                let response = agent
+                    .build()
                     .prompt(user_prompt)
                     .await
                     .map_err(|e| anyhow::anyhow!("OpenAI API error: {}", e))?;
 
-                log_debug!("✅ OpenAI response received: {} chars", response.len());
-                log_debug!(
-                    "📝 Response preview: {}",
-                    response.chars().take(100).collect::<String>()
-                );
-                Ok(response.trim().to_string())
+                log_debug!("✅ OpenAI response received via Rig");
+                response
             }
             AgentBackend::Anthropic { client, model } => {
-                log_debug!("🧠 Using Anthropic backend with model: {}", model);
-                let agent = client
+                log_debug!("🧠 Using Rig-optimized Anthropic agent builder");
+
+                // Leverage Rig's unified API for different providers
+                let response = client
                     .agent(model)
                     .preamble(system_prompt)
                     .temperature(0.7)
                     .max_tokens(800)
-                    .build();
-
-                log_debug!("🚀 Sending Anthropic API request...");
-                let response = agent
+                    .build()
                     .prompt(user_prompt)
                     .await
                     .map_err(|e| anyhow::anyhow!("Anthropic API error: {}", e))?;
 
-                log_debug!("✅ Anthropic response received: {} chars", response.len());
-                log_debug!(
-                    "📝 Response preview: {}",
-                    response.chars().take(100).collect::<String>()
-                );
-                Ok(response.trim().to_string())
+                log_debug!("✅ Anthropic response received via Rig");
+                response
             }
-        }
+        };
+
+        log_debug!("✅ Response processed: {} chars", response_text.len());
+        log_debug!(
+            "📝 Response preview: {}",
+            response_text.chars().take(100).collect::<String>()
+        );
+
+        Ok(response_text.trim().to_string())
     }
 
-    /// Analyze context using the backend (for intelligence gathering)
+    /// Analyze context using Rig's optimized analysis configuration
     async fn analyze_with_backend(&self, prompt: &str) -> Result<String> {
-        use rig::completion::Prompt;
-
         let system_prompt = "You are Iris, an expert AI assistant specializing in Git workflow automation and code analysis. \
                             Provide intelligent, structured analysis in the requested JSON format. \
                             You have deep understanding of software development patterns and can provide insightful analysis.";
 
-        log_debug!("🤖 Iris: Preparing intelligence analysis request");
+        log_debug!("🤖 Iris: Preparing Rig-optimized intelligence analysis");
         log_debug!("📊 Analysis prompt: {} chars", prompt.len());
 
-        match &self.backend {
+        // Use Rig's optimized configuration for analysis tasks
+        let response_text = match &self.backend {
             AgentBackend::OpenAI { client, model } => {
-                log_debug!(
-                    "🤖 Using OpenAI backend for intelligence analysis with model: {}",
-                    model
-                );
-                let agent = client
+                log_debug!("🤖 Using Rig-optimized OpenAI analysis configuration");
+
+                // Configure agent specifically for analysis with Rig's builder pattern
+                let response = client
                     .agent(model)
                     .preamble(system_prompt)
-                    .temperature(0.3) // Lower temperature for analysis
+                    .temperature(0.3) // Lower temperature for consistent analysis
                     .max_tokens(1500) // More tokens for detailed analysis
-                    .build();
-
-                log_debug!("🚀 Sending OpenAI intelligence analysis request...");
-                let response = agent
+                    .build()
                     .prompt(prompt)
                     .await
-                    .map_err(|e| anyhow::anyhow!("OpenAI API error: {}", e))?;
+                    .map_err(|e| anyhow::anyhow!("OpenAI analysis error: {}", e))?;
 
-                log_debug!(
-                    "✅ OpenAI intelligence analysis response received: {} chars",
-                    response.len()
-                );
-                log_debug!(
-                    "📝 Analysis response preview: {}",
-                    response.chars().take(200).collect::<String>()
-                );
-                Ok(response.trim().to_string())
+                log_debug!("✅ OpenAI analysis completed via Rig");
+                response
             }
             AgentBackend::Anthropic { client, model } => {
-                log_debug!(
-                    "🧠 Using Anthropic backend for intelligence analysis with model: {}",
-                    model
-                );
-                let agent = client
+                log_debug!("🧠 Using Rig-optimized Anthropic analysis configuration");
+
+                // Leverage Rig's provider abstraction for consistent interface
+                let response = client
                     .agent(model)
                     .preamble(system_prompt)
                     .temperature(0.3)
                     .max_tokens(1500)
-                    .build();
-
-                log_debug!("🚀 Sending Anthropic intelligence analysis request...");
-                let response = agent
+                    .build()
                     .prompt(prompt)
                     .await
-                    .map_err(|e| anyhow::anyhow!("Anthropic API error: {}", e))?;
+                    .map_err(|e| anyhow::anyhow!("Anthropic analysis error: {}", e))?;
 
-                log_debug!(
-                    "✅ Anthropic intelligence analysis response received: {} chars",
-                    response.len()
-                );
-                log_debug!(
-                    "📝 Analysis response preview: {}",
-                    response.chars().take(200).collect::<String>()
-                );
-                Ok(response.trim().to_string())
+                log_debug!("✅ Anthropic analysis completed via Rig");
+                response
             }
-        }
+        };
+
+        log_debug!(
+            "✅ Intelligence analysis response received: {} chars",
+            response_text.len()
+        );
+        log_debug!(
+            "📝 Analysis response preview: {}",
+            response_text.chars().take(200).collect::<String>()
+        );
+
+        Ok(response_text.trim().to_string())
     }
 
     /// Parse JSON response with fallback handling
-    async fn parse_json_response<T>(&self, response: &str) -> Result<T>
+    #[allow(clippy::unused_self, clippy::cognitive_complexity)]
+    fn parse_json_response<T>(&self, response: &str) -> Result<T>
     where
         T: for<'de> Deserialize<'de>,
     {
@@ -1759,9 +1290,13 @@ impl super::core::IrisAgent for IrisAgent {
 
     fn task_priority(&self, task: &str) -> u8 {
         match task {
-            "generate_commit_message" | "commit_message_generation" => 10,
-            "generate_code_review" | "code_review" | "review_code" => 10,
-            "generate_pull_request" | "pull_request_description" => 10,
+            "generate_commit_message"
+            | "commit_message_generation"
+            | "generate_code_review"
+            | "code_review"
+            | "review_code"
+            | "generate_pull_request"
+            | "pull_request_description" => 10,
             "changelog_generation" => 9,
             "file_analysis" | "relevance_scoring" => 8,
             _ => 0,

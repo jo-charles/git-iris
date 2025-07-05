@@ -84,10 +84,7 @@ impl ToolRegistry {
         self.tools.get(id).cloned()
     }
 
-    pub async fn get_tools_for_capability(
-        &self,
-        capability: &str,
-    ) -> Result<Vec<Arc<dyn AgentTool>>> {
+    pub fn get_tools_for_capability(&self, capability: &str) -> Result<Vec<Arc<dyn AgentTool>>> {
         let empty_vec = Vec::new();
         let tool_ids = self.capability_index.get(capability).unwrap_or(&empty_vec);
 

@@ -6,9 +6,9 @@ pub mod registry;
 pub mod status;
 pub mod tools;
 
-pub use core::*;
-pub use executor::*;
-pub use integration::*;
-pub use iris::*;
-pub use registry::*;
-pub use tools::*;
+pub use core::{AgentBackend, AgentContext, TaskResult};
+pub use executor::{AgentExecutor, ExecutionStatistics, TaskPriority, TaskRequest};
+pub use integration::{AgentIntegration, create_agent_integration_from_context};
+pub use iris::IrisAgent;
+pub use registry::{AgentInfo, AgentRegistry};
+pub use tools::{AgentTool, ToolRegistry, create_default_tool_registry};

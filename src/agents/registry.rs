@@ -269,15 +269,13 @@ impl AgentRegistryBuilder {
         let tool_registry = self.registry.tool_registry.clone();
 
         // Create and register the unified Iris agent with all tools
-        let mut all_tools = Vec::new();
+        let mut all_tools: Vec<Arc<dyn crate::agents::tools::AgentTool>> = Vec::new();
 
         // Gather all available tools for comprehensive capability
-        let git_tools = tool_registry.get_tools_for_capability("git").await?;
-        let commit_tools = tool_registry.get_tools_for_capability("commit").await?;
-        let review_tools = tool_registry.get_tools_for_capability("review").await?;
-        let file_analysis_tools = tool_registry
-            .get_tools_for_capability("file_analysis")
-            .await?;
+        let git_tools = tool_registry.get_tools_for_capability("git")?;
+        let commit_tools = tool_registry.get_tools_for_capability("commit")?;
+        let review_tools = tool_registry.get_tools_for_capability("review")?;
+        let file_analysis_tools = tool_registry.get_tools_for_capability("file_analysis")?;
 
         all_tools.extend(git_tools);
         all_tools.extend(commit_tools);

@@ -101,11 +101,13 @@ impl AgentExecutor {
     }
 
     /// Configure executor settings
+    #[must_use]
     pub fn with_max_concurrent_tasks(mut self, max: usize) -> Self {
         self.max_concurrent_tasks = max;
         self
     }
 
+    #[must_use]
     pub fn with_default_timeout(mut self, timeout: Duration) -> Self {
         self.task_timeout = timeout;
         self
@@ -218,28 +220,6 @@ impl AgentExecutor {
             "Would process task queue (current running: {})",
             current_running
         );
-        Ok(())
-    }
-
-    /// Execute a task asynchronously (simplified for now)
-    async fn execute_task_async(&self, task: PendingTask) -> Result<()> {
-        // For now, just log that we would execute the task
-        tracing::info!(
-            "Would execute task: {} of type: {}",
-            task.id,
-            task.task_type
-        );
-        Ok(())
-    }
-
-    /// Static method to process queue (for use in spawned tasks)
-    async fn try_process_queue_static(
-        _registry: Arc<AgentRegistry>,
-        _task_queue: Arc<RwLock<Vec<PendingTask>>>,
-        _running_tasks: Arc<RwLock<HashMap<String, RunningTask>>>,
-        _max_concurrent_tasks: usize,
-    ) -> Result<()> {
-        // Simplified for now
         Ok(())
     }
 
@@ -397,21 +377,25 @@ impl TaskRequest {
         }
     }
 
+    #[must_use]
     pub fn with_params(mut self, params: HashMap<String, serde_json::Value>) -> Self {
         self.params = params;
         self
     }
 
+    #[must_use]
     pub fn with_priority(mut self, priority: TaskPriority) -> Self {
         self.priority = priority;
         self
     }
 
+    #[must_use]
     pub fn with_timeout(mut self, timeout: Duration) -> Self {
         self.timeout = Some(timeout);
         self
     }
 
+    #[must_use]
     pub fn with_retries(mut self, max_retries: u32) -> Self {
         self.max_retries = max_retries;
         self

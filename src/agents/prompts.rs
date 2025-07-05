@@ -1,4 +1,5 @@
 use anyhow::Result;
+use std::fmt::Write;
 use crate::config::Config;
 use crate::context::CommitContext;
 
@@ -34,23 +35,14 @@ impl PromptLibrary {
         );
 
         for (index, file) in git_context.staged_files.iter().enumerate() {
-            prompt.push_str(&format!(
-                "=== FILE {} ===\n\
+            write!(prompt, "=== FILE {} ===\n\
                 Path: {}\n\
                 Change Type: {:?}\n\
-                Diff:\n{}\n\n",
-                index + 1,
-                file.path,
-                file.change_type,
-                file.diff
-            ));
+                Diff:\n{}\n\n", index + 1, file.path, file.change_type, file.diff).unwrap();
 
             if let Some(content) = &file.content {
-                prompt.push_str(&format!(
-                    "Full Content:\n{}\n\
-                    --- End of File ---\n\n",
-                    content
-                ));
+                write!(prompt, "Full Content:\n{}\n\
+                    --- End of File ---\n\n", content).unwrap();
             }
         }
 
@@ -139,26 +131,22 @@ impl PromptLibrary {
         if !commit_context.recent_commits.is_empty() {
             prompt.push_str("Recent commits:\n");
             for commit in commit_context.recent_commits.iter().take(3) {
-                prompt.push_str(&format!("{} - {}\n", commit.hash[..7].to_string(), commit.message));
+                writeln!(prompt, "{} - {}", &commit.hash[..7], commit.message).unwrap();
             }
             prompt.push('\n');
         }
 
         prompt.push_str("Staged changes:\n");
         for file in &commit_context.staged_files {
-            prompt.push_str(&format!(
-                "{} - {}\n",
-                file.path,
-                match file.change_type {
-                    crate::context::ChangeType::Added => "Added",
-                    crate::context::ChangeType::Modified => "Modified", 
-                    crate::context::ChangeType::Deleted => "Deleted",
-                }
-            ));
+            writeln!(prompt, "{} - {}", file.path, match file.change_type {
+                crate::context::ChangeType::Added => "Added",
+                crate::context::ChangeType::Modified => "Modified", 
+                crate::context::ChangeType::Deleted => "Deleted",
+            }).unwrap();
         }
 
         if let Some(lang) = &commit_context.project_metadata.language {
-            prompt.push_str(&format!("\nProject language: {}\n", lang));
+            writeln!(prompt, "\nProject language: {}", lang).unwrap();
         }
 
         prompt
@@ -183,10 +171,7 @@ impl PromptLibrary {
         );
 
         if let Some(lang) = config.project_metadata.language.as_ref() {
-            prompt.push_str(&format!(
-                "Consider best practices specific to {} development.\n\n",
-                lang
-            ));
+            writeln!(prompt, "Consider best practices specific to {} development.\n", lang).unwrap();
         }
 
         prompt.push_str(
@@ -209,18 +194,11 @@ impl PromptLibrary {
         );
 
         for (index, file) in commit_context.staged_files.iter().enumerate() {
-            prompt.push_str(&format!(
-                "=== FILE {} ===\n\
+            write!(prompt, "=== FILE {} ===\n\
                 Path: {}\n\
                 Change Type: {:?}\n\
                 Analysis: {:?}\n\
-                Diff:\n{}\n\n",
-                index + 1,
-                file.path,
-                file.change_type,
-                file.analysis,
-                file.diff
-            ));
+                Diff:\n{}\n\n", index + 1, file.path, file.change_type, file.analysis, file.diff).unwrap();
         }
 
         prompt.push_str(
@@ -277,22 +255,18 @@ impl PromptLibrary {
         if !commit_messages.is_empty() {
             prompt.push_str("Commit messages in this PR:\n");
             for (i, msg) in commit_messages.iter().enumerate() {
-                prompt.push_str(&format!("{}. {}\n", i + 1, msg));
+                writeln!(prompt, "{}. {}", i + 1, msg).unwrap();
             }
             prompt.push('\n');
         }
 
         prompt.push_str("Changed files:\n");
         for file in &commit_context.staged_files {
-            prompt.push_str(&format!(
-                "- {} ({})\n",
-                file.path,
-                match file.change_type {
-                    crate::context::ChangeType::Added => "added",
-                    crate::context::ChangeType::Modified => "modified",
-                    crate::context::ChangeType::Deleted => "deleted",
-                }
-            ));
+            writeln!(prompt, "- {} ({})", file.path, match file.change_type {
+                crate::context::ChangeType::Added => "added",
+                crate::context::ChangeType::Modified => "modified",
+                crate::context::ChangeType::Deleted => "deleted",
+            }).unwrap();
         }
 
         prompt.push_str(

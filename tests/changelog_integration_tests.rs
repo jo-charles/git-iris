@@ -11,13 +11,12 @@ use git_iris::config::Config;
 use git_iris::logger;
 use git2::Repository;
 use std::env;
-use std::path::Path;
 use tempfile::TempDir;
 
 // Use our centralized test infrastructure
 #[path = "test_utils.rs"]
 mod test_utils;
-use test_utils::{TestEnvironment, setup_git_repo_with_tags};
+use test_utils::setup_git_repo_with_tags;
 
 fn setup_test_repo() -> Result<(TempDir, Repository)> {
     let _ = logger::init(); // Initialize the logger

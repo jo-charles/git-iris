@@ -392,6 +392,7 @@ impl Default for AgentConfig {
 /// Extension trait to add agent configuration to the main Config
 pub trait ConfigAgentExt {
     fn agent_config(&self) -> AgentConfig;
+    #[must_use]
     fn with_agent_config(self, config: AgentConfig) -> Self;
 }
 
@@ -412,8 +413,9 @@ pub async fn create_agent_integration_from_context(
 }
 
 /// CLI command handlers using agent framework
-
+///
 /// Handle gen command with agent framework
+#[allow(clippy::fn_params_excessive_bools)]
 pub async fn handle_gen_with_agent(
     common: CommonParams,
     auto_commit: bool,
@@ -681,7 +683,7 @@ pub async fn handle_pr_with_agent(
             .await?;
 
         // Format as PR description
-        let pr_description = format_pr_description(&review_data)?;
+        let pr_description = format_pr_description(&review_data);
 
         if print {
             println!("{pr_description}");
@@ -697,24 +699,26 @@ pub async fn handle_pr_with_agent(
 }
 
 /// Helper function to format review data as PR description
-fn format_pr_description(review_data: &serde_json::Value) -> Result<String> {
+fn format_pr_description(review_data: &serde_json::Value) -> String {
+    use std::fmt::Write;
+
     // This is a simplified formatter - in a real implementation this would be more sophisticated
     let mut description = String::new();
 
     description.push_str("## Summary\n\n");
     if let Some(summary) = review_data.get("summary") {
-        description.push_str(&format!("{summary}\n\n"));
+        writeln!(description, "{summary}\n").unwrap();
     }
 
     description.push_str("## Changes\n\n");
     if let Some(changes) = review_data.get("changes") {
-        description.push_str(&format!("{changes}\n\n"));
+        writeln!(description, "{changes}\n").unwrap();
     }
 
     description.push_str("## Testing\n\n");
     if let Some(testing) = review_data.get("testing") {
-        description.push_str(&format!("{testing}\n\n"));
+        writeln!(description, "{testing}\n").unwrap();
     }
 
-    Ok(description)
+    description
 }

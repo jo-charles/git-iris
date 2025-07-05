@@ -10,8 +10,8 @@ use git_iris::{
 use std::collections::HashMap;
 use tempfile::TempDir;
 
-async fn create_test_context() -> (AgentContext, TempDir) {
-    let temp_dir = TempDir::new().unwrap();
+fn create_test_context() -> (AgentContext, TempDir) {
+    let temp_dir = TempDir::new().expect("Failed to create temporary directory");
     let repo_path = temp_dir.path().to_path_buf();
 
     // Initialize a git repo in the temp directory
@@ -22,7 +22,7 @@ async fn create_test_context() -> (AgentContext, TempDir) {
         .expect("Failed to initialize git repo");
 
     let config = Config::default();
-    let git_repo = GitRepo::new(&repo_path).unwrap();
+    let git_repo = GitRepo::new(&repo_path).expect("Failed to create GitRepo");
 
     let context = AgentContext::new(config, git_repo);
     (context, temp_dir)
@@ -43,7 +43,7 @@ async fn test_tool_registry_creation() {
 
 #[tokio::test]
 async fn test_git_tool_execution() {
-    let (context, _temp_dir) = create_test_context().await;
+    let (context, _temp_dir) = create_test_context();
     let git_tool = GitTool::new();
 
     let mut params = HashMap::new();
@@ -61,12 +61,12 @@ async fn test_task_result_creation() {
     let result = TaskResult::success("Test completed".to_string());
     assert!(result.success);
     assert_eq!(result.message, "Test completed");
-    assert_eq!(result.confidence, 1.0);
+    assert!((result.confidence - 1.0).abs() < f32::EPSILON);
 
     let failure = TaskResult::failure("Test failed".to_string());
     assert!(!failure.success);
     assert_eq!(failure.message, "Test failed");
-    assert_eq!(failure.confidence, 0.0);
+    assert!((failure.confidence - 0.0).abs() < f32::EPSILON);
 }
 
 #[tokio::test]
@@ -91,7 +91,7 @@ async fn test_task_request_builder() {
 
 #[tokio::test]
 async fn test_agent_context_session_data() {
-    let (context, _temp_dir) = create_test_context().await;
+    let (context, _temp_dir) = create_test_context();
 
     let key = "test_key".to_string();
     let value = serde_json::json!({"data": "test_value"});

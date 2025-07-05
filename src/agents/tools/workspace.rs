@@ -13,6 +13,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fmt::Write;
 use std::sync::{Arc, Mutex};
 
 use crate::agents::core::AgentContext;
@@ -122,7 +123,8 @@ impl IrisWorkspace {
             .filter(|t| t.status == "completed")
             .count();
 
-        summary.push_str(&format!(
+        write!(
+            summary,
             "**Iris Workspace Summary**\n\
             Tasks: {} pending, {} in progress, {} completed\n\
             Notes: {} total\n\n",
@@ -130,19 +132,22 @@ impl IrisWorkspace {
             in_progress_tasks,
             completed_tasks,
             self.notes.len()
-        ));
+        )
+        .unwrap();
 
         // Active tasks
         if in_progress_tasks > 0 || pending_tasks > 0 {
             summary.push_str("**Active Tasks:**\n");
             for task in &self.tasks {
                 if task.status == "in_progress" || task.status == "pending" {
-                    summary.push_str(&format!(
-                        "- [{}] {} ({})\n",
+                    writeln!(
+                        summary,
+                        "- [{}] {} ({})",
                         task.status.to_uppercase(),
                         task.description,
                         task.priority
-                    ));
+                    )
+                    .unwrap();
                 }
             }
             summary.push('\n');
@@ -157,7 +162,7 @@ impl IrisWorkspace {
                 } else {
                     note.content.clone()
                 };
-                summary.push_str(&format!("- {preview}\n"));
+                writeln!(summary, "- {preview}").unwrap();
             }
         }
 
@@ -174,7 +179,8 @@ impl IrisWorkspace {
         if !self.tasks.is_empty() {
             content.push_str("**TASKS:**\n");
             for task in &self.tasks {
-                content.push_str(&format!(
+                write!(
+                    content,
                     "ID: {} | Status: {} | Priority: {}\n\
                     Description: {}\n\
                     Created: {} | Updated: {}\n",
@@ -184,12 +190,13 @@ impl IrisWorkspace {
                     task.description,
                     task.created,
                     task.updated
-                ));
+                )
+                .unwrap();
 
                 if !task.notes.is_empty() {
                     content.push_str("Notes:\n");
                     for note in &task.notes {
-                        content.push_str(&format!("  - {note}\n"));
+                        writeln!(content, "  - {note}").unwrap();
                     }
                 }
                 content.push('\n');
@@ -200,14 +207,16 @@ impl IrisWorkspace {
         if !self.notes.is_empty() {
             content.push_str("**NOTES:**\n");
             for note in &self.notes {
-                content.push_str(&format!(
+                write!(
+                    content,
                     "ID: {} | Time: {}\n\
                     Content: {}\n",
                     note.id, note.timestamp, note.content
-                ));
+                )
+                .unwrap();
 
                 if !note.tags.is_empty() {
-                    content.push_str(&format!("Tags: {}\n", note.tags.join(", ")));
+                    writeln!(content, "Tags: {}", note.tags.join(", ")).unwrap();
                 }
                 content.push('\n');
             }

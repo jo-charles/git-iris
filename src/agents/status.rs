@@ -176,6 +176,7 @@ impl IrisStatus {
         self.started_at.elapsed()
     }
 
+    #[allow(clippy::cast_precision_loss, clippy::as_conversions)]
     pub fn progress_percentage(&self) -> f32 {
         if let Some(total) = self.total_steps {
             (self.current_step as f32 / total as f32) * 100.0

@@ -22,6 +22,7 @@ const LOG_FILE: &str = "git-iris-debug.log";
     after_help = get_dynamic_help(),
     styles = get_styles(),
 )]
+#[allow(clippy::struct_excessive_bools)]
 pub struct Cli {
     /// Subcommands available for the CLI
     #[command(subcommand)]
@@ -468,6 +469,7 @@ fn handle_config(
 }
 
 /// Handle the `Review` command
+#[allow(clippy::too_many_arguments)]
 async fn handle_review(
     common: CommonParams,
     print: bool,
@@ -521,6 +523,7 @@ async fn handle_review(
 }
 
 /// Handle the `Changelog` command
+#[allow(clippy::too_many_arguments)]
 async fn handle_changelog(
     common: CommonParams,
     from: String,

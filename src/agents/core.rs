@@ -74,11 +74,13 @@ impl TaskResult {
         }
     }
 
+    #[must_use]
     pub fn with_follow_up(mut self, tasks: Vec<String>) -> Self {
         self.follow_up_tasks = tasks;
         self
     }
 
+    #[must_use]
     pub fn with_confidence(mut self, confidence: f32) -> Self {
         self.confidence = confidence;
         self
@@ -221,13 +223,14 @@ impl BaseAgent {
         }
     }
 
+    #[must_use]
     pub fn with_tools(mut self, tools: Vec<Arc<dyn crate::agents::tools::AgentTool>>) -> Self {
         self.tools = tools;
         self
     }
 
     /// Create a Rig agent with the configured tools
-    pub async fn create_rig_agent(&self, preamble: &str) -> Result<String> {
+    pub fn create_rig_agent(&self, preamble: &str) -> Result<String> {
         // For now, just return a placeholder until we properly implement Rig integration
         Ok(format!("Rig agent created with preamble: {preamble}"))
     }
@@ -250,11 +253,17 @@ impl AgentFactory {
         }
     }
 
-    pub async fn create_iris_agent(&self) -> Result<Box<dyn IrisAgent>> {
+    pub fn create_iris_agent(&self) -> Result<Box<dyn IrisAgent>> {
         let tools = vec![
-            self.tool_registry.get_tool("git_operations").unwrap(),
-            self.tool_registry.get_tool("file_analyzer").unwrap(),
-            self.tool_registry.get_tool("code_search").unwrap(),
+            self.tool_registry
+                .get_tool("git_operations")
+                .expect("git_operations tool should be available"),
+            self.tool_registry
+                .get_tool("file_analyzer")
+                .expect("file_analyzer tool should be available"),
+            self.tool_registry
+                .get_tool("code_search")
+                .expect("code_search tool should be available"),
         ];
         let agent = crate::agents::iris::IrisAgent::new(self.backend.clone(), tools);
         Ok(Box::new(agent))
