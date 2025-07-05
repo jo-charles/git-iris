@@ -38,6 +38,18 @@ pub async fn serve(config: MCPServerConfig) -> Result<()> {
         }
 
         crate::logger::enable_logging();
+
+        // Load config to check for verbose logging settings
+        if let Ok(git_iris_config) = GitIrisConfig::load() {
+            crate::logger::set_verbose_logging(git_iris_config.performance.verbose_logging);
+            if git_iris_config.performance.verbose_logging {
+                log_debug!(
+                    "Verbose logging enabled - will show HTTP requests and external library logs"
+                );
+            } else {
+                log_debug!("Verbose logging disabled - hiding noisy external library logs");
+            }
+        }
     }
 
     log_debug!("Starting MCP server with config: {:?}", config);

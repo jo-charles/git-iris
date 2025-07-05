@@ -106,7 +106,7 @@ impl TokenOptimizer {
             }
         }
 
-        log_debug!("Final token count after optimization: {}", total_tokens);
+        // Optimization complete
     }
 
     // Truncate a string to fit within the specified token limit

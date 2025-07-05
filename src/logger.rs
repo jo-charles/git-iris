@@ -13,10 +13,42 @@ static LOG_FILE: std::sync::LazyLock<Mutex<Option<std::fs::File>>> =
     std::sync::LazyLock::new(|| Mutex::new(None));
 static LOG_TO_STDOUT: std::sync::LazyLock<Mutex<bool>> =
     std::sync::LazyLock::new(|| Mutex::new(false));
+static VERBOSE_LOGGING: std::sync::LazyLock<Mutex<bool>> =
+    std::sync::LazyLock::new(|| Mutex::new(false));
 
 impl log::Log for GitIrisLogger {
     fn enabled(&self, metadata: &Metadata) -> bool {
-        *LOGGING_ENABLED.lock() && metadata.level() <= Level::Debug
+        if !*LOGGING_ENABLED.lock() {
+            return false;
+        }
+
+        // Always allow our own logs
+        if metadata.target().starts_with("git_iris") {
+            return metadata.level() <= Level::Debug;
+        }
+
+        // Filter external library logs unless verbose logging is enabled
+        let verbose_enabled = *VERBOSE_LOGGING.lock();
+        if !verbose_enabled {
+            // Block common noisy external libraries
+            let target = metadata.target();
+            if target.starts_with("reqwest")
+                || target.starts_with("hyper")
+                || target.starts_with("h2")
+                || target.starts_with("rustls")
+                || target.starts_with("want")
+                || target.starts_with("mio")
+                || target.starts_with("rig")
+                || target.contains("anthropic")
+                || target.contains("openai")
+                || target.contains("completion")
+                || target.contains("connection")
+            {
+                return false;
+            }
+        }
+
+        metadata.level() <= Level::Debug
     }
 
     fn log(&self, record: &Record) {
@@ -50,6 +82,11 @@ pub fn enable_logging() {
 pub fn disable_logging() {
     let mut logging_enabled = LOGGING_ENABLED.lock();
     *logging_enabled = false;
+}
+
+pub fn set_verbose_logging(enabled: bool) {
+    let mut verbose_logging = VERBOSE_LOGGING.lock();
+    *verbose_logging = enabled;
 }
 
 pub fn set_log_file(file_path: &str) -> std::io::Result<()> {

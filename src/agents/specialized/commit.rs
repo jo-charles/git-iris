@@ -96,12 +96,6 @@ impl CommitAgent {
         let system_prompt = create_system_prompt(&config_clone)?;
         let user_prompt = create_user_prompt(&commit_context);
 
-        log_debug!(
-            "📏 CommitAgent: Prompts built - System: {} chars, User: {} chars",
-            system_prompt.len(),
-            user_prompt.len()
-        );
-
         // Step 4: Generate using LLM service
         let request = GenerationRequest::builder()
             .system_prompt(system_prompt)
@@ -121,9 +115,8 @@ impl CommitAgent {
             .parse_json_response::<GeneratedMessage>(&generated_message)?;
 
         log_debug!(
-            "✅ CommitAgent: Commit message generated - Title: '{}', {} chars total",
-            parsed_response.title,
-            parsed_response.message.len()
+            "✅ CommitAgent: Generated commit message '{}'",
+            parsed_response.title
         );
 
         iris_status_completed!();
@@ -199,9 +192,8 @@ impl CommitAgent {
             .parse_json_response::<GeneratedMessage>(&generated_message)?;
 
         log_debug!(
-            "✅ CommitAgent: Streaming commit message generated - Title: '{}', {} chars total",
-            parsed_response.title,
-            parsed_response.message.len()
+            "✅ CommitAgent: Generated streaming commit message '{}'",
+            parsed_response.title
         );
 
         iris_status_completed!();

@@ -374,6 +374,18 @@ pub async fn main() -> anyhow::Result<()> {
         crate::logger::enable_logging();
         let log_file = cli.log_file.as_deref().unwrap_or(LOG_FILE);
         crate::logger::set_log_file(log_file)?;
+
+        // Load config to check for verbose logging settings
+        if let Ok(config) = crate::config::Config::load() {
+            crate::logger::set_verbose_logging(config.performance.verbose_logging);
+            if config.performance.verbose_logging {
+                log_debug!(
+                    "Verbose logging enabled - will show HTTP requests and external library logs"
+                );
+            } else {
+                log_debug!("Verbose logging disabled - hiding noisy external library logs");
+            }
+        }
     } else {
         crate::logger::disable_logging();
     }

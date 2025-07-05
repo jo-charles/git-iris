@@ -62,6 +62,9 @@ pub struct PerformanceConfig {
     pub default_timeout_seconds: Option<u64>,
     /// Whether to use agent framework when available
     pub use_agent_framework: bool,
+    /// Whether to enable verbose logging (includes HTTP requests/responses)
+    #[serde(default = "default_verbose_logging")]
+    pub verbose_logging: bool,
 }
 
 impl Default for PerformanceConfig {
@@ -70,6 +73,7 @@ impl Default for PerformanceConfig {
             max_concurrent_tasks: Some(5),
             default_timeout_seconds: Some(300),
             use_agent_framework: true,
+            verbose_logging: false,
         }
     }
 }
@@ -82,6 +86,11 @@ fn default_gitmoji() -> bool {
 // Default instruction preset to use
 fn default_instruction_preset() -> String {
     "default".to_string()
+}
+
+/// Default function for `verbose_logging`
+fn default_verbose_logging() -> bool {
+    false
 }
 
 /// Project configuration filename

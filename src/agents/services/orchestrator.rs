@@ -14,10 +14,7 @@ use crate::agents::{
     tools::{AgentTool, ToolRegistry},
 };
 use crate::context::CommitContext;
-use crate::{
-    iris_status_analysis, iris_status_expansion, iris_status_planning, iris_status_synthesis,
-    iris_status_tool,
-};
+use crate::{iris_status_expansion, iris_status_tool};
 
 use super::{LLMService, ResponseParser};
 
@@ -87,55 +84,26 @@ impl WorkflowOrchestrator {
         &self,
         context: &AgentContext,
     ) -> Result<IntelligentContext> {
-        crate::log_debug!(
-            "🧠 Orchestrator: Starting intelligent context analysis with agent-driven tool selection"
-        );
+        crate::log_debug!("🔍 Starting intelligent context gathering...");
 
-        // Step 1: Let the agent decide which tools to use
-        crate::log_debug!("🤖 Orchestrator: Planning tool usage strategy");
-        iris_status_planning!();
-        let tool_plan = self.plan_tool_usage_for_context_analysis(context).await?;
-        crate::log_debug!(
-            "📋 Orchestrator: Agent planned {} tool operations",
-            tool_plan.len()
-        );
+        // Phase 1: Get agent-planned tool usage strategy
+        let plan = self.plan_tool_usage_for_context_analysis(context).await?;
 
-        // Step 2: Execute the planned tool calls
-        crate::log_debug!("🔧 Orchestrator: Executing agent-planned tool calls");
-        let tool_results = self.execute_planned_tool_calls(context, &tool_plan).await?;
-        crate::log_debug!(
-            "✅ Orchestrator: Completed {} tool operations",
-            tool_results.len()
-        );
+        // Phase 2: Execute the planned tools
+        let tool_results = self.execute_planned_tool_calls(context, &plan).await?;
 
-        // Step 3: Use LLM to synthesize tool results into intelligent context
-        crate::log_debug!("🤖 Orchestrator: Synthesizing tool results with LLM");
-        iris_status_synthesis!();
+        // Phase 3: Synthesize results using LLM
+        crate::log_debug!("🤖 Synthesizing {} tool results...", tool_results.len());
+
         let synthesis_prompt = Self::build_tool_synthesis_prompt(&tool_results);
-        crate::log_debug!(
-            "🛠️ Orchestrator: Synthesis prompt built - {} chars",
-            synthesis_prompt.len()
-        );
+        let synthesis_result = self.llm_service.analyze(&synthesis_prompt).await?;
 
-        let intelligence_result = self.llm_service.analyze(&synthesis_prompt).await?;
-        crate::log_debug!(
-            "🤖 Orchestrator: LLM synthesis response received - {} chars",
-            intelligence_result.len()
-        );
+        // Phase 4: Parse the intelligent analysis
+        let intelligent_context = self
+            .parse_intelligence_result(&synthesis_result, context)
+            .await?;
 
-        // Step 4: Parse the synthesized analysis
-        crate::log_debug!("🔍 Orchestrator: Parsing synthesized analysis result");
-        iris_status_analysis!();
-
-        // For now, fall back to basic git context to maintain compatibility
-        let git_context = context.git_repo.get_git_info(&context.config).await?;
-        let intelligent_context =
-            self.parse_intelligence_result(&intelligence_result, &git_context)?;
-
-        crate::log_debug!(
-            "✅ Orchestrator: Intelligent context gathered via agent-driven tools - {} files analyzed",
-            intelligent_context.files_with_relevance.len()
-        );
+        crate::log_debug!("✅ Context gathering completed");
 
         Ok(intelligent_context)
     }
@@ -145,7 +113,7 @@ impl WorkflowOrchestrator {
         &self,
         _context: &AgentContext,
     ) -> Result<Vec<ToolPlan>> {
-        crate::log_debug!("🤖 Orchestrator: Agent planning tool usage strategy");
+        crate::log_debug!("🤖 Planning tool usage strategy...");
 
         // Get available tools
         let available_tools: Vec<String> = self
@@ -161,11 +129,6 @@ impl WorkflowOrchestrator {
             })
             .collect();
 
-        crate::log_debug!(
-            "🔧 Orchestrator: Available tools: {}",
-            available_tools.len()
-        );
-
         // Create initial tool planning prompt
         let planning_prompt = format!(
             "You are Iris, an intelligent AI assistant specialized in Git workflow automation and analysis. Create an initial plan for tools to use to gather comprehensive context.\n\n\
@@ -176,34 +139,44 @@ impl WorkflowOrchestrator {
             - You need to understand what changed and why\n\
             - You should gather enough context to assess file relevance and change impact\n\
             - You can expand or adjust this plan as you discover more context\n\n\
-            As Iris, respond with a JSON array of tool calls in the order you want to execute them:\n\
+            IMPORTANT: Respond with ONLY a valid JSON array, nothing else. No explanations, no markdown formatting, just the raw JSON.\n\n\
+            Expected format:\n\
             [\n\
               {{\n\
                 \"tool_name\": \"Git Operations\",\n\
                 \"operation\": \"diff\",\n\
                 \"parameters\": {{\"from_ref\": \"HEAD~1\", \"to_ref\": \"HEAD\"}},\n\
-                \"reason\": \"I need to see the actual code changes to understand what was modified\",\n\
-                \"priority\": \"high\"\n\
+                \"reason\": \"I need to see the actual code changes to understand what was modified\"\n\
               }}\n\
             ]\n\n\
-            Note: For Git Operations with \"diff\" operation, always include \"from_ref\" and \"to_ref\" parameters.\n\
-            Start with 2-3 essential tool calls. You can expand your plan based on what you discover.",
+            Available tool names: \"Git Operations\", \"File Analyzer\", \"Code Search\", \"Workspace Management\"\n\
+            Common operations: \"diff\", \"status\", \"analyze\", \"search\", \"list\"\n\
+            \n\
+            Start with 2-3 essential tool calls:",
             available_tools.join("\n")
         );
 
-        crate::log_debug!("🤖 Orchestrator: Sending tool planning request to LLM");
         let planning_result = self.llm_service.analyze(&planning_prompt).await?;
-        crate::log_debug!(
-            "📋 Orchestrator: Tool planning response received - {} chars",
-            planning_result.len()
-        );
 
         // Parse the tool plan
         let tool_plan = Self::parse_tool_plan(&planning_result);
-        crate::log_debug!(
-            "📋 Orchestrator: Parsed {} planned tool operations",
-            tool_plan.len()
-        );
+
+        // Log the actual plan that was generated
+        crate::log_debug!("📋 Generated tool execution plan:");
+        for (i, plan) in tool_plan.iter().enumerate() {
+            let operation_info = if let Some(op) = &plan.operation {
+                format!(" ({op})")
+            } else {
+                String::new()
+            };
+            crate::log_debug!(
+                "  {}. {} {} - {}",
+                i + 1,
+                plan.tool_name,
+                operation_info,
+                plan.reason
+            );
+        }
 
         Ok(tool_plan)
     }
@@ -218,10 +191,7 @@ impl WorkflowOrchestrator {
         let mut current_plan = initial_plan.to_vec();
         let mut executed_tools = std::collections::HashSet::new();
 
-        crate::log_debug!(
-            "🔧 Orchestrator: Starting adaptive tool execution with {} initial tools",
-            current_plan.len()
-        );
+        crate::log_debug!("🔧 Executing {} planned tools...", current_plan.len());
 
         while !current_plan.is_empty() {
             // Execute the next tool in the plan
@@ -234,18 +204,16 @@ impl WorkflowOrchestrator {
 
             // Skip if we've already executed this exact tool+operation combination
             if executed_tools.contains(&plan_key) {
-                crate::log_debug!(
-                    "⏭️ Orchestrator: Skipping already executed tool: {}",
-                    plan_key
-                );
+                crate::log_debug!("⏭️ Skipping duplicate: {}", plan_key);
                 continue;
             }
 
-            crate::log_debug!(
-                "🔧 Orchestrator: Executing tool: {} ({})",
-                plan.tool_name,
-                plan.reason
-            );
+            let operation_display = if let Some(op) = &plan.operation {
+                format!(" ({op})")
+            } else {
+                String::new()
+            };
+            crate::log_debug!("🔧 Running: {}{}", plan.tool_name, operation_display);
             iris_status_tool!(&plan.tool_name, &plan.reason);
 
             // Find the tool by name
@@ -264,7 +232,33 @@ impl WorkflowOrchestrator {
 
             match tool.execute(context, &params).await {
                 Ok(result) => {
-                    crate::log_debug!("✅ Orchestrator: Tool call completed: {}", plan.tool_name);
+                    // Log a brief summary of what we got back
+                    let result_summary = match &result {
+                        serde_json::Value::Object(obj) => {
+                            if let Some(content) = obj.get("content").and_then(|v| v.as_str()) {
+                                let lines = content.lines().count();
+                                let chars = content.len();
+                                if chars > 500 {
+                                    format!("{lines}+ lines, {chars}+ chars")
+                                } else {
+                                    format!("{lines} lines, {chars} chars")
+                                }
+                            } else if let Some(files) = obj.get("files").and_then(|v| v.as_array())
+                            {
+                                format!("{} files analyzed", files.len())
+                            } else {
+                                "structured data".to_string()
+                            }
+                        }
+                        serde_json::Value::Array(arr) => format!("{} items", arr.len()),
+                        serde_json::Value::String(s) => {
+                            let lines = s.lines().count();
+                            format!("{lines} lines")
+                        }
+                        _ => "data".to_string(),
+                    };
+
+                    crate::log_debug!("✅ {}: {}", plan.tool_name, result_summary);
                     executed_tools.insert(plan_key);
 
                     let tool_result = ToolResult {
@@ -279,37 +273,41 @@ impl WorkflowOrchestrator {
                     // After each tool execution, check if we need to expand the plan
                     if results.len() <= 2 {
                         // Only expand during early execution
-                        crate::log_debug!(
-                            "🤖 Orchestrator: Checking if plan needs expansion based on new context"
-                        );
-                        iris_status_expansion!();
                         let expanded_plan = self
                             .expand_plan_based_on_context(context, &results, &current_plan)
                             .await?;
                         if !expanded_plan.is_empty() {
                             crate::log_debug!(
-                                "📋 Orchestrator: Plan expanded with {} additional tools",
+                                "📋 Plan expanded with {} additional tools:",
                                 expanded_plan.len()
                             );
+                            for (i, plan) in expanded_plan.iter().enumerate() {
+                                let operation_info = if let Some(op) = &plan.operation {
+                                    format!(" ({op})")
+                                } else {
+                                    String::new()
+                                };
+                                crate::log_debug!(
+                                    "  {}. {}{} - {}",
+                                    i + 1,
+                                    plan.tool_name,
+                                    operation_info,
+                                    plan.reason
+                                );
+                            }
+                            iris_status_expansion!();
                             current_plan.extend(expanded_plan);
                         }
                     }
                 }
                 Err(e) => {
-                    crate::log_debug!(
-                        "❌ Orchestrator: Tool call failed for {}: {}",
-                        plan.tool_name,
-                        e
-                    );
+                    crate::log_debug!("❌ {} failed: {}", plan.tool_name, e);
                     // Continue with other tools even if one fails
                 }
             }
         }
 
-        crate::log_debug!(
-            "🎯 Orchestrator: Completed {} tool executions through adaptive planning",
-            results.len()
-        );
+        crate::log_debug!("🎯 Completed {} tool executions", results.len());
         Ok(results)
     }
 
@@ -413,18 +411,15 @@ impl WorkflowOrchestrator {
 
         crate::log_debug!("🤖 Orchestrator: Requesting plan expansion from LLM");
         let expansion_result = self.llm_service.analyze(&expansion_prompt).await?;
+
+        // Parse the expanded plan
+        let expanded_plan = Self::parse_tool_plan(&expansion_result);
         crate::log_debug!(
-            "📋 Orchestrator: Plan expansion response received - {} chars",
-            expansion_result.len()
+            "📋 Orchestrator: Parsed {} additional tool operations",
+            expanded_plan.len()
         );
 
-        let expanded_tools = Self::parse_tool_plan(&expansion_result);
-        crate::log_debug!(
-            "📋 Orchestrator: Parsed {} additional tools for plan expansion",
-            expanded_tools.len()
-        );
-
-        Ok(expanded_tools)
+        Ok(expanded_plan)
     }
 
     /// Build prompt to synthesize tool results into intelligent context
@@ -476,47 +471,83 @@ impl WorkflowOrchestrator {
 
     /// Parse tool planning response into structured tool plan
     fn parse_tool_plan(planning_result: &str) -> Vec<ToolPlan> {
-        crate::log_debug!("📋 Orchestrator: Parsing tool plan from LLM response");
+        crate::log_debug!("📋 Parsing tool plan from LLM response");
+
+        // Log a snippet of what we received for debugging
+        let preview = if planning_result.len() > 200 {
+            format!("{}...", &planning_result[..200])
+        } else {
+            planning_result.to_string()
+        };
+        crate::log_debug!("📄 LLM response preview: {}", preview);
+
+        // Try to extract JSON from the response if it's wrapped in text
+        let json_content = if let Some(start) = planning_result.find('[') {
+            if let Some(end) = planning_result.rfind(']') {
+                if end > start {
+                    &planning_result[start..=end]
+                } else {
+                    planning_result
+                }
+            } else {
+                planning_result
+            }
+        } else {
+            planning_result
+        };
 
         // Try to parse JSON response
-        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(planning_result) {
-            if let Some(array) = parsed.as_array() {
-                let mut tool_plan = Vec::new();
+        match serde_json::from_str::<serde_json::Value>(json_content) {
+            Ok(parsed) => {
+                if let Some(array) = parsed.as_array() {
+                    let mut tool_plan = Vec::new();
 
-                for item in array {
-                    if let (Some(tool_name), Some(reason)) = (
-                        item.get("tool_name").and_then(|v| v.as_str()),
-                        item.get("reason").and_then(|v| v.as_str()),
-                    ) {
-                        let operation = item
-                            .get("operation")
-                            .and_then(|v| v.as_str())
-                            .map(std::string::ToString::to_string);
-                        let parameters = item
-                            .get("parameters")
-                            .and_then(|v| v.as_object())
-                            .map(|obj| obj.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
-                            .unwrap_or_default();
+                    for item in array {
+                        if let (Some(tool_name), Some(reason)) = (
+                            item.get("tool_name").and_then(|v| v.as_str()),
+                            item.get("reason").and_then(|v| v.as_str()),
+                        ) {
+                            let operation = item
+                                .get("operation")
+                                .and_then(|v| v.as_str())
+                                .map(std::string::ToString::to_string);
+                            let parameters = item
+                                .get("parameters")
+                                .and_then(|v| v.as_object())
+                                .map(|obj| {
+                                    obj.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
+                                })
+                                .unwrap_or_default();
 
-                        tool_plan.push(ToolPlan {
-                            tool_name: tool_name.to_string(),
-                            operation,
-                            parameters,
-                            reason: reason.to_string(),
-                        });
+                            tool_plan.push(ToolPlan {
+                                tool_name: tool_name.to_string(),
+                                operation,
+                                parameters,
+                                reason: reason.to_string(),
+                            });
+                        }
+                    }
+
+                    if !tool_plan.is_empty() {
+                        crate::log_debug!(
+                            "✅ Successfully parsed {} tool operations",
+                            tool_plan.len()
+                        );
+                        return tool_plan;
                     }
                 }
-
-                crate::log_debug!(
-                    "✅ Orchestrator: Successfully parsed {} tool operations",
-                    tool_plan.len()
-                );
-                return tool_plan;
+                crate::log_debug!("⚠️ JSON parsed but no valid tool plans found");
+            }
+            Err(e) => {
+                crate::log_debug!("⚠️ JSON parse failed: {}", e);
+                if json_content != planning_result {
+                    crate::log_debug!("📄 Extracted JSON: {}", json_content);
+                }
             }
         }
 
         // Fallback: create basic tool plan if parsing fails
-        crate::log_debug!("⚠️ Orchestrator: Failed to parse tool plan, using fallback");
+        crate::log_debug!("🔧 Using fallback tool plan");
         let mut git_params = HashMap::new();
         git_params.insert(
             "from_ref".to_string(),
@@ -535,16 +566,19 @@ impl WorkflowOrchestrator {
         }]
     }
 
-    /// Parse LLM intelligence result into structured context
-    fn parse_intelligence_result(
+    /// Parse intelligence result into structured context
+    async fn parse_intelligence_result(
         &self,
         result: &str,
-        git_context: &CommitContext,
+        context: &AgentContext,
     ) -> Result<IntelligentContext> {
         crate::log_debug!(
-            "🔍 Orchestrator: Parsing LLM analysis result: {}",
-            result.chars().take(200).collect::<String>()
+            "🔍 Orchestrator: Parsing intelligence result ({} chars)",
+            result.len()
         );
+
+        // Get git context for fallback
+        let git_context = context.git_repo.get_git_info(&context.config).await?;
 
         // Try to parse JSON response using our parser
         let parsed_response: serde_json::Value = self.parser.parse_json_response(result)?;
@@ -559,30 +593,24 @@ impl WorkflowOrchestrator {
                     git_context
                         .staged_files
                         .iter()
-                        .enumerate()
-                        .map(|(i, file)| {
-                            crate::log_debug!(
-                                "📄 Orchestrator: Creating fallback analysis for file {}: {}",
-                                i + 1,
-                                file.path
-                            );
-                            FileRelevance {
-                                path: file.path.clone(),
-                                relevance_score: 0.7, // Default relevance
-                                analysis: format!("File {} was modified", file.path),
-                                key_changes: vec!["Content changes detected".to_string()],
-                                impact_assessment: "Part of the overall changeset".to_string(),
-                            }
+                        .map(|file| FileRelevance {
+                            path: file.path.clone(),
+                            relevance_score: 0.7,
+                            analysis: format!("File {} was modified", file.path),
+                            key_changes: vec!["Content changes detected".to_string()],
+                            impact_assessment: "Part of the overall changeset".to_string(),
                         })
                         .collect()
                 },
                 |files| {
-                    crate::log_debug!("📊 Orchestrator: Processing {} file analyses from LLM", files.len());
+                    crate::log_debug!(
+                        "📊 Orchestrator: Processing {} file analyses from LLM",
+                        files.len()
+                    );
                     files
                         .iter()
-                        .enumerate()
-                        .filter_map(|(i, file)| {
-                            let file_result = Some(FileRelevance {
+                        .filter_map(|file| {
+                            Some(FileRelevance {
                                 path: file.get("path")?.as_str()?.to_string(),
                                 #[allow(clippy::cast_possible_truncation, clippy::as_conversions)]
                                 relevance_score: file.get("relevance_score")?.as_f64()? as f32,
@@ -591,28 +619,13 @@ impl WorkflowOrchestrator {
                                     .get("key_changes")?
                                     .as_array()?
                                     .iter()
-                                    .filter_map(|v| {
-                                        v.as_str().map(std::string::ToString::to_string)
-                                    })
+                                    .filter_map(|v| v.as_str().map(ToString::to_string))
                                     .collect(),
                                 impact_assessment: file
                                     .get("impact_assessment")?
                                     .as_str()?
                                     .to_string(),
-                            });
-
-                            if let Some(ref fr) = file_result {
-                                crate::log_debug!(
-                                    "📄 Orchestrator: File {} analysis - relevance: {:.2}, {} key changes",
-                                    fr.path,
-                                    fr.relevance_score,
-                                    fr.key_changes.len()
-                                );
-                            } else {
-                                crate::log_debug!("⚠️ Orchestrator: Failed to parse file analysis #{}", i + 1);
-                            }
-
-                            file_result
+                            })
                         })
                         .collect()
                 },
@@ -637,7 +650,7 @@ impl WorkflowOrchestrator {
             .to_string();
 
         crate::log_debug!(
-            "✅ Orchestrator: Successfully parsed intelligent context with {} file analyses",
+            "📋 Orchestrator: Parsed {} files with relevance scores",
             files_with_relevance.len()
         );
 

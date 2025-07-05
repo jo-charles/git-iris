@@ -3,15 +3,16 @@ use async_trait::async_trait;
 use serde_json;
 use std::collections::HashMap;
 
-use crate::agents::{
-    core::{AgentBackend, AgentContext, IrisAgent, TaskResult},
-    services::{GenerationRequest, LLMService, ResponseParser, WorkflowOrchestrator},
-    status::IrisPhase,
-};
-use crate::commit::prompt::{create_pr_system_prompt, create_pr_user_prompt};
-use crate::commit::types::GeneratedPullRequest;
-use crate::iris_status_completed;
 use crate::log_debug;
+use crate::{
+    agents::{
+        core::{AgentBackend, AgentContext, IrisAgent, TaskResult},
+        services::{GenerationRequest, LLMService, ResponseParser, WorkflowOrchestrator},
+        status::IrisPhase,
+    },
+    commit::prompt::{create_pr_system_prompt, create_pr_user_prompt},
+    commit::types::GeneratedPullRequest,
+};
 
 /// Specialized agent for pull request description generation
 /// Focused on creating comprehensive PR descriptions and analysis
@@ -103,46 +104,34 @@ impl PullRequestAgent {
         let system_prompt = create_pr_system_prompt(&context.config)?;
         let user_prompt = create_pr_user_prompt(&commit_context, &commit_messages);
 
-        log_debug!(
-            "📏 PullRequestAgent: Prompts built - System: {} chars, User: {} chars",
-            system_prompt.len(),
-            user_prompt.len()
-        );
-
         // Step 4: Generate using LLM service
         let request = GenerationRequest::builder()
             .system_prompt(system_prompt)
             .user_prompt(user_prompt)
             .phase(IrisPhase::Generation)
-            .operation_type("pull_request_generation")
-            .context_hint("creating comprehensive PR description from changes")
-            .current_step(1)
-            .total_steps(Some(1))
+            .operation_type("pull request generation")
+            .with_context("generating comprehensive PR description")
+            .current_step(4)
+            .total_steps(Some(5))
             .build()?;
 
-        let generated_pr = self.llm_service.generate(request).await?;
+        let generated_description = self.llm_service.generate(request).await?;
 
         // Step 5: Parse and validate response
         let parsed_response = self
             .parser
-            .parse_json_response::<GeneratedPullRequest>(&generated_pr)?;
+            .parse_json_response::<GeneratedPullRequest>(&generated_description)?;
 
         log_debug!(
-            "✅ PullRequestAgent: PR description generated - Title: '{}', {} sections",
-            parsed_response.title,
-            if parsed_response.description.contains("## ") {
-                parsed_response.description.matches("## ").count()
-            } else {
-                1
-            }
+            "✅ PullRequestAgent: Generated PR '{}'",
+            parsed_response.title
         );
 
-        iris_status_completed!();
         Ok(TaskResult::success_with_data(
             "Pull request description generated successfully".to_string(),
             serde_json::to_value(parsed_response)?,
         )
-        .with_confidence(0.89))
+        .with_confidence(0.88))
     }
 
     /// Build context from provided commit messages

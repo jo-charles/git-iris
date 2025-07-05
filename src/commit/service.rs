@@ -172,18 +172,13 @@ impl IrisCommitService {
         let optimizer = TokenOptimizer::new(token_limit);
         let system_tokens = optimizer.count_tokens(system_prompt);
 
-        log_debug!("Token limit: {}", token_limit);
-        log_debug!("System prompt tokens: {}", system_tokens);
-
         // Reserve tokens for system prompt and some buffer for formatting
         // 1000 token buffer provides headroom for model responses and formatting
         let context_token_limit = token_limit.saturating_sub(system_tokens + 1000);
-        log_debug!("Available tokens for context: {}", context_token_limit);
 
         // Count tokens before optimization
         let user_prompt_before = create_user_prompt_fn(&context);
         let total_tokens_before = system_tokens + optimizer.count_tokens(&user_prompt_before);
-        log_debug!("Total tokens before optimization: {}", total_tokens_before);
 
         // Optimize the context with remaining token budget
         context.optimize(context_token_limit);
@@ -192,14 +187,11 @@ impl IrisCommitService {
         let user_tokens = optimizer.count_tokens(&user_prompt);
         let total_tokens = system_tokens + user_tokens;
 
-        log_debug!("User prompt tokens after optimization: {}", user_tokens);
-        log_debug!("Total tokens after optimization: {}", total_tokens);
-
         // If we're still over the limit, truncate the user prompt directly
         // 100 token safety buffer ensures we stay under the limit
         let final_user_prompt = if total_tokens > token_limit {
             log_debug!(
-                "Total tokens {} still exceeds limit {}, truncating user prompt",
+                "Prompt truncated: {} tokens → {} limit",
                 total_tokens,
                 token_limit
             );
@@ -210,10 +202,13 @@ impl IrisCommitService {
         };
 
         let final_tokens = system_tokens + optimizer.count_tokens(&final_user_prompt);
-        log_debug!(
-            "Final total tokens after potential truncation: {}",
-            final_tokens
-        );
+        if total_tokens_before > final_tokens {
+            log_debug!(
+                "Context optimized: {} → {} tokens",
+                total_tokens_before,
+                final_tokens
+            );
+        }
 
         (context, final_user_prompt)
     }
