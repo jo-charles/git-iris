@@ -14,10 +14,10 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::Write;
-use std::sync::{Arc, Mutex};
+use std::fs;
+use std::path::Path;
 
 use crate::agents::core::AgentContext;
-use crate::log_debug;
 
 /// Iris's workspace for notes, tasks, and workflow management
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -226,43 +226,283 @@ impl IrisWorkspace {
     }
 }
 
-/// Tool for Iris's workspace management - notes and tasks
+/// Workspace management tool for file operations and workspace state
 pub struct WorkspaceTool {
     id: String,
-    workspace: Arc<Mutex<IrisWorkspace>>,
+}
+
+impl Default for WorkspaceTool {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl WorkspaceTool {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             id: "workspace".to_string(),
-            workspace: Arc::new(Mutex::new(IrisWorkspace::default())),
         }
     }
 
-    /// Get access to the workspace for external use
-    pub fn get_workspace(&self) -> Arc<Mutex<IrisWorkspace>> {
-        Arc::clone(&self.workspace)
+    /// List files and directories in a given path
+    async fn list_directory(
+        &self,
+        context: &AgentContext,
+        path: Option<String>,
+    ) -> Result<serde_json::Value> {
+        let repo_path = context.git_repo.repo_path();
+        let target_path = if let Some(p) = path {
+            repo_path.join(p)
+        } else {
+            repo_path.clone()
+        };
+
+        if !target_path.exists() {
+            return Err(anyhow::anyhow!("Path does not exist: {:?}", target_path));
+        }
+
+        if !target_path.is_dir() {
+            return Err(anyhow::anyhow!(
+                "Path is not a directory: {:?}",
+                target_path
+            ));
+        }
+
+        let mut entries = Vec::new();
+        for entry in fs::read_dir(&target_path)? {
+            let entry = entry?;
+            let metadata = entry.metadata()?;
+            let path = entry.path();
+            let relative_path = path.strip_prefix(repo_path).unwrap_or(&path);
+
+            entries.push(serde_json::json!({
+                "name": entry.file_name().to_string_lossy(),
+                "path": relative_path.to_string_lossy(),
+                "is_dir": metadata.is_dir(),
+                "is_file": metadata.is_file(),
+                "size": metadata.len(),
+                "modified": metadata.modified()
+                    .ok()
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|d| d.as_secs())
+            }));
+        }
+
+        // Sort entries: directories first, then files, both alphabetically
+        entries.sort_by(|a, b| {
+            let a_is_dir = a["is_dir"].as_bool().unwrap_or(false);
+            let b_is_dir = b["is_dir"].as_bool().unwrap_or(false);
+
+            match (a_is_dir, b_is_dir) {
+                (true, false) => std::cmp::Ordering::Less,
+                (false, true) => std::cmp::Ordering::Greater,
+                _ => a["name"]
+                    .as_str()
+                    .unwrap_or("")
+                    .cmp(b["name"].as_str().unwrap_or("")),
+            }
+        });
+
+        Ok(serde_json::json!({
+            "path": target_path.to_string_lossy(),
+            "entries": entries,
+            "total_count": entries.len()
+        }))
+    }
+
+    /// Read file contents
+    async fn read_file(
+        &self,
+        context: &AgentContext,
+        file_path: &str,
+    ) -> Result<serde_json::Value> {
+        let repo_path = context.git_repo.repo_path();
+        let target_path = repo_path.join(file_path);
+
+        if !target_path.exists() {
+            return Err(anyhow::anyhow!("File does not exist: {:?}", target_path));
+        }
+
+        if !target_path.is_file() {
+            return Err(anyhow::anyhow!("Path is not a file: {:?}", target_path));
+        }
+
+        let file_content = fs::read_to_string(&target_path)?;
+        let metadata = fs::metadata(&target_path)?;
+
+        Ok(serde_json::json!({
+            "path": file_path,
+            "content": file_content,
+            "size": file_content.len(),
+            "lines": file_content.lines().count(),
+            "file_size": metadata.len(),
+            "modified": metadata.modified()
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs())
+        }))
+    }
+
+    /// Find files matching patterns
+    async fn find_files(
+        &self,
+        context: &AgentContext,
+        pattern: &str,
+        directory: Option<String>,
+    ) -> Result<serde_json::Value> {
+        let repo_path = context.git_repo.repo_path();
+        let search_path = if let Some(dir) = directory {
+            repo_path.join(dir)
+        } else {
+            repo_path.clone()
+        };
+
+        let mut matches = Vec::new();
+        let pattern_lower = pattern.to_lowercase();
+
+        fn search_recursive(
+            path: &Path,
+            pattern: &str,
+            repo_root: &Path,
+            matches: &mut Vec<serde_json::Value>,
+        ) -> Result<()> {
+            if !path.is_dir() {
+                return Ok(());
+            }
+
+            for entry in fs::read_dir(path)? {
+                let entry = entry?;
+                let entry_path = entry.path();
+                let filename = entry.file_name().to_string_lossy().to_lowercase();
+
+                // Skip hidden files and directories
+                if filename.starts_with('.') {
+                    continue;
+                }
+
+                if entry_path.is_dir() {
+                    // Recurse into subdirectories
+                    search_recursive(&entry_path, pattern, repo_root, matches)?;
+                } else if filename.contains(pattern) {
+                    let relative_path = entry_path.strip_prefix(repo_root).unwrap_or(&entry_path);
+                    let metadata = entry.metadata()?;
+
+                    matches.push(serde_json::json!({
+                        "name": entry.file_name().to_string_lossy(),
+                        "path": relative_path.to_string_lossy(),
+                        "size": metadata.len(),
+                        "modified": metadata.modified()
+                            .ok()
+                            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                            .map(|d| d.as_secs())
+                    }));
+                }
+            }
+            Ok(())
+        }
+
+        search_recursive(&search_path, &pattern_lower, repo_path, &mut matches)?;
+
+        // Sort by relevance (exact matches first, then by name)
+        matches.sort_by(|a, b| {
+            let a_name = a["name"].as_str().unwrap_or("").to_lowercase();
+            let b_name = b["name"].as_str().unwrap_or("").to_lowercase();
+
+            let a_exact = a_name == pattern_lower;
+            let b_exact = b_name == pattern_lower;
+
+            match (a_exact, b_exact) {
+                (true, false) => std::cmp::Ordering::Less,
+                (false, true) => std::cmp::Ordering::Greater,
+                _ => a_name.cmp(&b_name),
+            }
+        });
+
+        Ok(serde_json::json!({
+            "pattern": pattern,
+            "search_path": search_path.to_string_lossy(),
+            "matches": matches,
+            "total_matches": matches.len()
+        }))
+    }
+
+    /// Get workspace summary
+    async fn get_workspace_info(&self, context: &AgentContext) -> Result<serde_json::Value> {
+        let repo_path = context.git_repo.repo_path();
+        let current_branch = context.git_repo.get_current_branch()?;
+
+        // Count files and directories
+        let mut file_count = 0;
+        let mut dir_count = 0;
+
+        fn count_recursive(
+            path: &Path,
+            file_count: &mut usize,
+            dir_count: &mut usize,
+        ) -> Result<()> {
+            for entry in fs::read_dir(path)? {
+                let entry = entry?;
+                let entry_path = entry.path();
+                let filename = entry.file_name().to_string_lossy().to_string();
+
+                // Skip .git and other hidden directories
+                if filename.starts_with('.') {
+                    continue;
+                }
+
+                if entry_path.is_dir() {
+                    *dir_count += 1;
+                    count_recursive(&entry_path, file_count, dir_count)?;
+                } else {
+                    *file_count += 1;
+                }
+            }
+            Ok(())
+        }
+
+        count_recursive(repo_path, &mut file_count, &mut dir_count)?;
+
+        Ok(serde_json::json!({
+            "workspace_path": repo_path.to_string_lossy(),
+            "current_branch": current_branch,
+            "is_remote": context.git_repo.is_remote(),
+            "remote_url": context.git_repo.get_remote_url(),
+            "file_count": file_count,
+            "directory_count": dir_count,
+            "workspace_exists": repo_path.exists(),
+            "is_git_repo": repo_path.join(".git").exists()
+        }))
+    }
+
+    /// Check if a path exists
+    fn path_exists(context: &AgentContext, path: &str) -> Result<serde_json::Value> {
+        let repo_path = context.git_repo.repo_path();
+        let target_path = repo_path.join(path);
+
+        let exists = target_path.exists();
+        let mut info = serde_json::json!({
+            "path": path,
+            "exists": exists
+        });
+
+        if exists {
+            let metadata = fs::metadata(&target_path)?;
+            info["is_file"] = serde_json::Value::Bool(metadata.is_file());
+            info["is_dir"] = serde_json::Value::Bool(metadata.is_dir());
+            info["size"] = serde_json::Value::Number(metadata.len().into());
+        }
+
+        Ok(info)
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct WorkspaceInput {
-    action: String, // "add_note", "add_task", "update_task", "get_summary", "get_all"
-    content: Option<String>,
-    task_id: Option<String>,
-    status: Option<String>,
-    priority: Option<String>,
-    tags: Option<Vec<String>>,
-    note: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct WorkspaceOutput {
-    success: bool,
-    message: String,
-    workspace_summary: Option<String>,
-    item_id: Option<String>,
+#[derive(Deserialize, Serialize)]
+pub struct WorkspaceArgs {
+    pub operation: String, // "list", "read", "find", "info", "exists"
+    pub path: Option<String>,
+    pub pattern: Option<String>,
+    pub directory: Option<String>,
 }
 
 #[async_trait]
@@ -272,20 +512,20 @@ impl crate::agents::tools::AgentTool for WorkspaceTool {
     }
 
     fn name(&self) -> &'static str {
-        "Iris Workspace"
+        "Workspace Management"
     }
 
     fn description(&self) -> &'static str {
-        "Iris's personal workspace for taking notes, creating task lists, and managing workflow. Use this to organize your thoughts, track progress, and plan next steps."
+        "Manage workspace state, file operations, directory navigation, and workspace context"
     }
 
     fn capabilities(&self) -> Vec<String> {
         vec![
             "workspace".to_string(),
-            "notes".to_string(),
-            "tasks".to_string(),
-            "planning".to_string(),
-            "organization".to_string(),
+            "file_management".to_string(),
+            "directory_navigation".to_string(),
+            "file_search".to_string(),
+            "workspace_info".to_string(),
         ]
     }
 
@@ -293,148 +533,66 @@ impl crate::agents::tools::AgentTool for WorkspaceTool {
         serde_json::json!({
             "type": "object",
             "properties": {
-                "action": {
+                "operation": {
                     "type": "string",
-                    "enum": ["add_note", "add_task", "update_task", "get_summary", "get_all"],
-                    "description": "Action: add_note, add_task, update_task, get_summary, get_all"
+                    "enum": ["list", "read", "find", "info", "exists"],
+                    "description": "Workspace operation to perform"
                 },
-                "content": {
+                "path": {
                     "type": "string",
-                    "description": "Note content or task description"
+                    "description": "File or directory path for operations"
                 },
-                "task_id": {
+                "pattern": {
                     "type": "string",
-                    "description": "Task ID for updating (from previous task creation)"
+                    "description": "Search pattern for find operation"
                 },
-                "status": {
+                "directory": {
                     "type": "string",
-                    "enum": ["pending", "in_progress", "completed", "blocked"],
-                    "description": "Task status for updates"
-                },
-                "priority": {
-                    "type": "string",
-                    "enum": ["low", "medium", "high", "critical"],
-                    "description": "Task priority (default: medium)"
-                },
-                "tags": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Tags for notes (optional)"
-                },
-                "note": {
-                    "type": "string",
-                    "description": "Additional note when updating a task"
+                    "description": "Directory to search in for find operation"
                 }
             },
-            "required": ["action"]
+            "required": ["operation"]
         })
     }
 
     async fn execute(
         &self,
-        _context: &AgentContext,
+        context: &AgentContext,
         params: &HashMap<String, serde_json::Value>,
     ) -> Result<serde_json::Value> {
-        let input: WorkspaceInput = serde_json::from_value(serde_json::Value::Object(
+        let args: WorkspaceArgs = serde_json::from_value(serde_json::Value::Object(
             params.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
         ))?;
 
-        let mut workspace = self
-            .workspace
-            .lock()
-            .map_err(|e| anyhow::anyhow!("Failed to lock workspace: {}", e))?;
-
-        match input.action.as_str() {
-            "add_note" => {
-                let content = input
-                    .content
-                    .ok_or_else(|| anyhow::anyhow!("Content is required for add_note action"))?;
-                let tags = input.tags.unwrap_or_default();
-
-                let note_id = workspace.add_note(content.clone(), tags);
-                log_debug!("📝 Workspace: Added note {}: {}", note_id, content);
-
-                Ok(serde_json::to_value(WorkspaceOutput {
-                    success: true,
-                    message: format!("Added note: {content}"),
-                    workspace_summary: None,
-                    item_id: Some(note_id),
-                })?)
+        match args.operation.as_str() {
+            "list" => self.list_directory(context, args.path).await,
+            "read" => {
+                let path = args
+                    .path
+                    .ok_or_else(|| anyhow::anyhow!("path required for read operation"))?;
+                self.read_file(context, &path).await
             }
-
-            "add_task" => {
-                let description = input.content.ok_or_else(|| {
-                    anyhow::anyhow!("Content (task description) is required for add_task action")
-                })?;
-                let priority = input.priority.unwrap_or_else(|| "medium".to_string());
-
-                let task_id = workspace.add_task(description.clone(), priority.clone());
-                log_debug!(
-                    "✅ Workspace: Added task {}: {} ({})",
-                    task_id,
-                    description,
-                    priority
-                );
-
-                Ok(serde_json::to_value(WorkspaceOutput {
-                    success: true,
-                    message: format!("Added task: {description} ({priority})"),
-                    workspace_summary: None,
-                    item_id: Some(task_id),
-                })?)
+            "find" => {
+                let pattern = args
+                    .pattern
+                    .ok_or_else(|| anyhow::anyhow!("pattern required for find operation"))?;
+                self.find_files(context, &pattern, args.directory).await
             }
-
-            "update_task" => {
-                let task_id = input
-                    .task_id
-                    .ok_or_else(|| anyhow::anyhow!("task_id is required for update_task action"))?;
-
-                let updated = workspace.update_task(&task_id, input.status, input.note);
-
-                if updated {
-                    log_debug!("🔄 Workspace: Updated task {}", task_id);
-                    Ok(serde_json::to_value(WorkspaceOutput {
-                        success: true,
-                        message: format!("Updated task {task_id}"),
-                        workspace_summary: None,
-                        item_id: Some(task_id),
-                    })?)
-                } else {
-                    Err(anyhow::anyhow!("Task {} not found", task_id))
-                }
+            "info" => self.get_workspace_info(context).await,
+            "exists" => {
+                let path = args
+                    .path
+                    .ok_or_else(|| anyhow::anyhow!("path required for exists operation"))?;
+                Self::path_exists(context, &path)
             }
-
-            "get_summary" => {
-                let summary = workspace.get_summary();
-                Ok(serde_json::to_value(WorkspaceOutput {
-                    success: true,
-                    message: "Workspace summary retrieved".to_string(),
-                    workspace_summary: Some(summary),
-                    item_id: None,
-                })?)
-            }
-
-            "get_all" => {
-                let all_content = workspace.get_all_content();
-                Ok(serde_json::to_value(WorkspaceOutput {
-                    success: true,
-                    message: "All workspace content retrieved".to_string(),
-                    workspace_summary: Some(all_content),
-                    item_id: None,
-                })?)
-            }
-
-            _ => Err(anyhow::anyhow!("Unknown action: {}", input.action)),
+            _ => Err(anyhow::anyhow!(
+                "Unknown workspace operation: {}",
+                args.operation
+            )),
         }
     }
 
     fn as_rig_tool_placeholder(&self) -> String {
         format!("WorkspaceTool: {}", self.name())
-    }
-}
-
-impl Default for WorkspaceTool {
-    fn default() -> Self {
-        Self::new()
     }
 }

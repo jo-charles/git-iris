@@ -248,7 +248,8 @@ impl AgentRegistry {
             crate::git::GitRepo::new(&std::env::current_dir().unwrap_or_default()).unwrap_or_else(
                 |_| {
                     // Fallback for tests or environments without git repo
-                    crate::git::GitRepo::new(&std::path::PathBuf::from("/tmp")).unwrap()
+                    crate::git::GitRepo::new(&std::path::PathBuf::from("/tmp"))
+                        .expect("Failed to create temporary GitRepo for testing")
                 },
             ),
         );

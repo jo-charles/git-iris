@@ -10,6 +10,8 @@ pub struct CommitContext {
     pub project_metadata: ProjectMetadata,
     pub user_name: String,
     pub user_email: String,
+    pub summary: String,
+    pub diff_stat: String,
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -97,6 +99,8 @@ impl CommitContext {
             project_metadata,
             user_name,
             user_email,
+            summary: String::new(),
+            diff_stat: String::new(),
         }
     }
     pub fn optimize(&mut self, max_tokens: usize) {

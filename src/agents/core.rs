@@ -259,8 +259,8 @@ impl AgentFactory {
     pub fn create_iris_agent(&self) -> Result<Box<dyn IrisAgent>> {
         let tools = vec![
             self.tool_registry
-                .get_tool("git_operations")
-                .expect("git_operations tool should be available"),
+                .get_tool("git")
+                .expect("git tool should be available"),
             self.tool_registry
                 .get_tool("file_analyzer")
                 .expect("file_analyzer tool should be available"),

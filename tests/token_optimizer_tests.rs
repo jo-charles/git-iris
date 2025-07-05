@@ -275,6 +275,8 @@ fn create_test_context_with_large_data() -> CommitContext {
         },
         user_name: "Test User".to_string(),
         user_email: "test@example.com".to_string(),
+        summary: "Large test data for token optimization testing".to_string(),
+        diff_stat: "2 files changed, 400 insertions(+), 0 deletions(-)".to_string(),
     }
 }
 

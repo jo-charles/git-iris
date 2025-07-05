@@ -117,6 +117,31 @@ impl IrisStatus {
         }
     }
 
+    /// Create a dynamic status with custom message
+    pub fn dynamic(phase: IrisPhase, message: String, step: usize, total: Option<usize>) -> Self {
+        let color = match phase {
+            IrisPhase::Initializing => CELESTIAL_BLUE,
+            IrisPhase::Planning => NEBULA_PURPLE,
+            IrisPhase::ToolExecution { .. } => AURORA_GREEN,
+            IrisPhase::PlanExpansion => PLASMA_CYAN,
+            IrisPhase::Synthesis => GALAXY_PINK,
+            IrisPhase::Analysis => SOLAR_YELLOW,
+            IrisPhase::Generation => STARLIGHT,
+            IrisPhase::Completed => AURORA_GREEN,
+            IrisPhase::Error(_) => METEOR_RED,
+        };
+
+        Self {
+            phase,
+            message,
+            color,
+            started_at: Instant::now(),
+            tools_executed: Vec::new(),
+            current_step: step,
+            total_steps: total,
+        }
+    }
+
     pub fn analysis() -> Self {
         Self {
             phase: IrisPhase::Analysis,

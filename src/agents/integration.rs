@@ -639,12 +639,27 @@ pub async fn handle_review_with_agent(
         // Stop the spinner
         spinner.finish_and_clear();
 
-        if print {
-            println!("{}", serde_json::to_string_pretty(&review_data)?);
+        // Parse the review data to format it properly
+        if let Ok(generated_review) =
+            serde_json::from_value::<crate::commit::review::GeneratedReview>(review_data.clone())
+        {
+            // Use the same beautiful formatting as non-agent review
+            let formatted_review = generated_review.format();
+
+            if print {
+                println!("{formatted_review}");
+            } else {
+                crate::ui::print_success("Code review completed using agent framework");
+                println!("{formatted_review}");
+            }
         } else {
-            // Format and display review nicely
-            crate::ui::print_success("Code review completed using agent framework");
-            println!("{}", serde_json::to_string_pretty(&review_data)?);
+            // Fallback to JSON if parsing fails
+            if print {
+                println!("{}", serde_json::to_string_pretty(&review_data)?);
+            } else {
+                crate::ui::print_success("Code review completed using agent framework");
+                println!("{}", serde_json::to_string_pretty(&review_data)?);
+            }
         }
 
         Ok(())

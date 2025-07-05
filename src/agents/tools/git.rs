@@ -1,7 +1,7 @@
-//! Git repository operations tool
+//! Git operations tool
 //!
-//! This tool provides Iris with the ability to interact with Git repositories,
-//! including getting diffs, status, commit history, and file lists.
+//! This tool provides Iris with the ability to perform Git operations
+//! like examining commits, branches, file status, and repository information.
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -10,9 +10,8 @@ use std::collections::HashMap;
 
 use super::AgentTool;
 use crate::agents::core::AgentContext;
-use crate::log_debug;
 
-/// Git repository operations tool
+/// Git operations tool for repository management and analysis
 pub struct GitTool {
     id: String,
 }
@@ -26,16 +25,154 @@ impl Default for GitTool {
 impl GitTool {
     pub fn new() -> Self {
         Self {
-            id: "git_operations".to_string(),
+            id: "git".to_string(),
         }
+    }
+
+    /// Get detailed repository information
+    async fn get_repo_info(&self, context: &AgentContext) -> Result<serde_json::Value> {
+        let repo = &context.git_repo;
+        let current_branch = repo.get_current_branch()?;
+        let recent_commits = repo.get_recent_commits(5)?;
+
+        Ok(serde_json::json!({
+            "current_branch": current_branch,
+            "repo_path": repo.repo_path(),
+            "is_remote": repo.is_remote(),
+            "remote_url": repo.get_remote_url(),
+            "recent_commits": recent_commits.iter().map(|c| serde_json::json!({
+                "hash": c.hash,
+                "message": c.message,
+                "author": c.author,
+                "timestamp": c.timestamp
+            })).collect::<Vec<_>>()
+        }))
+    }
+
+    /// Get commit information for a specific commit
+    async fn get_commit_info(
+        &self,
+        context: &AgentContext,
+        commit_id: &str,
+    ) -> Result<serde_json::Value> {
+        let repo = &context.git_repo;
+        let files = repo.get_commit_files(commit_id)?;
+        let date = repo.get_commit_date(commit_id)?;
+
+        Ok(serde_json::json!({
+            "commit_id": commit_id,
+            "date": date,
+            "files": files.iter().map(|f| serde_json::json!({
+                "path": f.path,
+                "change_type": f.change_type,
+                "analysis": f.analysis
+            })).collect::<Vec<_>>()
+        }))
+    }
+
+    /// Get file changes between commits or branches
+    async fn get_diff_info(
+        &self,
+        context: &AgentContext,
+        from: &str,
+        to: &str,
+    ) -> Result<serde_json::Value> {
+        let repo = &context.git_repo;
+        let files = repo.get_commit_range_files(from, to)?;
+        let commits = repo.get_commits_for_pr(from, to)?;
+
+        Ok(serde_json::json!({
+            "from": from,
+            "to": to,
+            "commits": commits,
+            "changed_files": files.iter().map(|f| serde_json::json!({
+                "path": f.path,
+                "change_type": f.change_type,
+                "diff": f.diff,
+                "analysis": f.analysis
+            })).collect::<Vec<_>>(),
+            "total_changes": files.len()
+        }))
+    }
+
+    /// Get current repository status
+    async fn get_status(
+        &self,
+        context: &AgentContext,
+        include_unstaged: bool,
+    ) -> Result<serde_json::Value> {
+        let repo = &context.git_repo;
+
+        let files_info = repo.extract_files_info(include_unstaged)?;
+        let current_branch = repo.get_current_branch()?;
+
+        let mut status = serde_json::json!({
+            "current_branch": current_branch,
+            "staged_files": files_info.staged_files.iter().map(|f| serde_json::json!({
+                "path": f.path,
+                "change_type": f.change_type,
+                "content_excluded": f.content_excluded
+            })).collect::<Vec<_>>()
+        });
+
+        if include_unstaged {
+            let unstaged_files = repo.get_unstaged_files()?;
+            status["unstaged_files"] = serde_json::json!(
+                unstaged_files
+                    .iter()
+                    .map(|f| serde_json::json!({
+                        "path": f.path,
+                        "change_type": f.change_type
+                    }))
+                    .collect::<Vec<_>>()
+            );
+        }
+
+        Ok(status)
+    }
+
+    /// Get project metadata based on changed files
+    async fn get_project_metadata(
+        &self,
+        context: &AgentContext,
+        file_paths: Option<Vec<String>>,
+    ) -> Result<serde_json::Value> {
+        let repo = &context.git_repo;
+
+        let files = if let Some(paths) = file_paths {
+            paths
+        } else {
+            // Use currently staged files
+            let files_info = repo.extract_files_info(false)?;
+            files_info
+                .staged_files
+                .iter()
+                .map(|f| f.path.clone())
+                .collect()
+        };
+
+        let metadata = repo.get_project_metadata(&files).await?;
+
+        Ok(serde_json::json!({
+            "language": metadata.language,
+            "framework": metadata.framework,
+            "dependencies": metadata.dependencies,
+            "version": metadata.version,
+            "build_system": metadata.build_system,
+            "test_framework": metadata.test_framework,
+            "plugins": metadata.plugins
+        }))
     }
 }
 
 #[derive(Deserialize, Serialize)]
-pub struct GitToolArgs {
-    pub operation: String,
-    pub path: Option<String>,
-    pub commit_range: Option<String>,
+pub struct GitArgs {
+    pub operation: String, // "info", "commit_info", "diff", "status", "metadata"
+    pub commit_id: Option<String>,
+    pub from_ref: Option<String>,
+    pub to_ref: Option<String>,
+    pub include_unstaged: Option<bool>,
+    pub file_paths: Option<Vec<String>>,
 }
 
 #[async_trait]
@@ -49,14 +186,17 @@ impl AgentTool for GitTool {
     }
 
     fn description(&self) -> &'static str {
-        "Perform git repository operations like getting diff, status, log, etc."
+        "Perform Git operations like examining commits, branches, file status, and repository information"
     }
 
     fn capabilities(&self) -> Vec<String> {
         vec![
             "git".to_string(),
-            "commit".to_string(),
-            "review".to_string(),
+            "version_control".to_string(),
+            "commit_analysis".to_string(),
+            "diff_analysis".to_string(),
+            "repository_info".to_string(),
+            "project_metadata".to_string(),
         ]
     }
 
@@ -65,88 +205,33 @@ impl AgentTool for GitTool {
         context: &AgentContext,
         params: &HashMap<String, serde_json::Value>,
     ) -> Result<serde_json::Value> {
-        log_debug!("🔧 GitTool executing with params: {:?}", params);
-
-        let args: GitToolArgs = serde_json::from_value(serde_json::Value::Object(
+        let args: GitArgs = serde_json::from_value(serde_json::Value::Object(
             params.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
         ))?;
 
-        log_debug!("⚙️  GitTool operation: {}", args.operation);
-        let repo = &context.git_repo;
-
         match args.operation.as_str() {
+            "info" => self.get_repo_info(context).await,
+            "commit_info" => {
+                let commit_id = args.commit_id.ok_or_else(|| {
+                    anyhow::anyhow!("commit_id required for commit_info operation")
+                })?;
+                self.get_commit_info(context, &commit_id).await
+            }
             "diff" => {
-                log_debug!("📄 GitTool: Getting staged files with diffs");
-                // Get the actual git context which includes diffs
-                let git_context = repo.get_git_info(&context.config).await?;
-                let combined_diff = git_context
-                    .staged_files
-                    .iter()
-                    .map(|f| format!("{}:\n{}", f.path, f.diff))
-                    .collect::<Vec<_>>()
-                    .join("\n\n");
-
-                log_debug!(
-                    "✅ GitTool: Diff retrieved, {} staged files, {} total chars",
-                    git_context.staged_files.len(),
-                    combined_diff.len()
-                );
-
-                Ok(serde_json::json!({
-                    "operation": "diff",
-                    "content": combined_diff,
-                }))
+                let from = args
+                    .from_ref
+                    .ok_or_else(|| anyhow::anyhow!("from_ref required for diff operation"))?;
+                let to = args
+                    .to_ref
+                    .ok_or_else(|| anyhow::anyhow!("to_ref required for diff operation"))?;
+                self.get_diff_info(context, &from, &to).await
             }
             "status" => {
-                log_debug!("📊 GitTool: Getting repository status");
-                let files = repo.get_unstaged_files()?;
-                log_debug!(
-                    "✅ GitTool: Status retrieved, {} unstaged files",
-                    files.len()
-                );
-
-                Ok(serde_json::json!({
-                    "operation": "status",
-                    "content": files,
-                }))
+                let include_unstaged = args.include_unstaged.unwrap_or(false);
+                self.get_status(context, include_unstaged).await
             }
-            "log" => {
-                log_debug!("📜 GitTool: Getting recent commit history (10 commits)");
-                let commits = repo.get_recent_commits(10)?;
-                log_debug!(
-                    "✅ GitTool: Commit history retrieved, {} commits found",
-                    commits.len()
-                );
-
-                Ok(serde_json::json!({
-                    "operation": "log",
-                    "content": commits,
-                }))
-            }
-            "files" => {
-                log_debug!("📂 GitTool: Getting list of changed files");
-                let git_context = repo.get_git_info(&context.config).await?;
-                let files: Vec<String> = git_context
-                    .staged_files
-                    .iter()
-                    .map(|f| f.path.clone())
-                    .collect();
-
-                log_debug!(
-                    "✅ GitTool: File list retrieved, {} files: {:?}",
-                    files.len(),
-                    files
-                );
-
-                Ok(serde_json::json!({
-                    "operation": "files",
-                    "content": files,
-                }))
-            }
-            _ => {
-                log_debug!("❌ GitTool: Unknown operation: {}", args.operation);
-                Err(anyhow::anyhow!("Unknown git operation: {}", args.operation))
-            }
+            "metadata" => self.get_project_metadata(context, args.file_paths).await,
+            _ => Err(anyhow::anyhow!("Unknown git operation: {}", args.operation)),
         }
     }
 
@@ -156,16 +241,32 @@ impl AgentTool for GitTool {
             "properties": {
                 "operation": {
                     "type": "string",
-                    "enum": ["diff", "status", "log", "files"],
-                    "description": "The git operation to perform"
+                    "enum": ["info", "commit_info", "diff", "status", "metadata"],
+                    "description": "Git operation to perform"
                 },
-                "path": {
+                "commit_id": {
                     "type": "string",
-                    "description": "Optional path to limit operation scope"
+                    "description": "Commit hash for commit_info operation"
                 },
-                "commit_range": {
+                "from_ref": {
                     "type": "string",
-                    "description": "Optional commit range for diff operation (e.g., 'HEAD~1..HEAD')"
+                    "description": "Source reference for diff operation (commit, branch, or tag)"
+                },
+                "to_ref": {
+                    "type": "string",
+                    "description": "Target reference for diff operation (commit, branch, or tag)"
+                },
+                "include_unstaged": {
+                    "type": "boolean",
+                    "description": "Include unstaged files in status operation",
+                    "default": false
+                },
+                "file_paths": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "Optional list of file paths for metadata operation"
                 }
             },
             "required": ["operation"]

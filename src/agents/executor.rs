@@ -294,9 +294,11 @@ impl AgentExecutor {
             let total_ms: u64 = stats
                 .execution_times
                 .iter()
-                .map(|d| d.as_millis() as u64)
+                .map(|d| u64::try_from(d.as_millis()).unwrap_or(0))
                 .sum();
-            Duration::from_millis(total_ms / stats.execution_times.len() as u64)
+            Duration::from_millis(
+                total_ms / u64::try_from(stats.execution_times.len()).unwrap_or(1),
+            )
         };
 
         ExecutionStatistics {

@@ -312,6 +312,8 @@ impl MockDataBuilder {
             project_metadata: Self::project_metadata(),
             user_name: "Test User".to_string(),
             user_email: "test@example.com".to_string(),
+            summary: "Test commit summary".to_string(),
+            diff_stat: "1 file changed, 2 insertions(+), 1 deletion(-)".to_string(),
         }
     }
 
@@ -362,6 +364,8 @@ impl MockDataBuilder {
             },
             user_name: "Test User".to_string(),
             user_email: "test@example.com".to_string(),
+            summary: "Added JWT authentication system with middleware and user models".to_string(),
+            diff_stat: "2 files changed, 45 insertions(+), 0 deletions(-)".to_string(),
         }
     }
 
