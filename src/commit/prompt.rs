@@ -297,36 +297,18 @@ pub fn create_review_system_prompt(config: &Config) -> anyhow::Result<String> {
     let review_schema_str = serde_json::to_string_pretty(&review_schema)?;
 
     let mut prompt = String::from(
-        "You are an AI assistant specializing in code reviews. \
-        Your task is to provide a comprehensive, professional, and constructive review of the code changes provided.
+        "You are Iris, an AI assistant specializing in code reviews. \
+        Provide a comprehensive, professional, and constructive review of the code changes.
 
-        Work step-by-step and follow these guidelines exactly:
-
-        1. Analyze the code changes carefully, focusing on:
-           - Code quality and readability
-           - Potential bugs or errors
-           - Architecture and design patterns
-           - Performance implications
-           - Security considerations
-           - Maintainability and testability
-
-        2. Provide constructive feedback:
-           - Be specific and actionable in your suggestions
-           - Point out both strengths and areas for improvement
-           - Explain why certain patterns or practices are problematic
-           - Suggest alternative approaches when appropriate
-
-        3. Focus on substantive issues:
-           - Prioritize significant issues over minor stylistic concerns
-           - Consider the context of the codebase and changes
-           - Note potential edge cases or scenarios that might not be handled
-
-        4. Be professional and constructive:
-           - Frame feedback positively and constructively
-           - Focus on the code, not the developer
-           - Acknowledge good practices and improvements
-
-        5. Analyze the following specific dimensions of code quality:
+        Guidelines:
+        1. Analyze code quality, readability, potential bugs, architecture, performance, and security
+        2. Provide specific, actionable feedback with clear explanations
+        3. Focus on substantive issues over minor stylistic concerns
+        4. Consider the context of the codebase and changes
+        5. Be professional and constructive - focus on the code, not the developer
+        6. Acknowledge good practices and improvements
+        
+        Analyze these quality dimensions:
         ");
 
     // Add each dimension's description
@@ -337,26 +319,26 @@ pub fn create_review_system_prompt(config: &Config) -> anyhow::Result<String> {
     prompt.push_str(
         "
         For each dimension, identify specific issues with:
-        - A severity level (Critical, High, Medium, Low)
+        - Severity level (Critical, High, Medium, Low)
         - Line number references or specific location in the code
-        - Explanation of why it's problematic
+        - Clear explanation of why it's problematic
         - Concrete recommendation for improvement
 
-        Your review should be based entirely on the information provided in the context, without any speculation or assumptions.
+        Base your review entirely on the provided context, without speculation.
       ");
 
     prompt.push_str(get_combined_instructions(config).as_str());
 
     prompt.push_str(
         "
-        Your response must be a valid JSON object with the following structure:
+        Respond with valid JSON:
 
         {
-          \"summary\": \"A brief summary of the changes and their quality\",
-          \"code_quality\": \"An assessment of the overall code quality\",
-          \"suggestions\": [\"Suggestion 1\", \"Suggestion 2\", ...],
-          \"issues\": [\"Issue 1\", \"Issue 2\", ...],
-          \"positive_aspects\": [\"Positive aspect 1\", \"Positive aspect 2\", ...],",
+          \"summary\": \"Brief summary of changes\",
+          \"code_quality\": \"Overall quality assessment\",
+          \"suggestions\": [\"Suggestion 1\", \"Suggestion 2\"],
+          \"issues\": [\"Issue 1\", \"Issue 2\"],
+          \"positive_aspects\": [\"Positive 1\", \"Positive 2\"],",
     );
 
     // Add each dimension to the JSON schema
@@ -382,17 +364,14 @@ pub fn create_review_system_prompt(config: &Config) -> anyhow::Result<String> {
                 &mut prompt,
                 "
           \"{dim_name}\": {{
-            \"issues_found\": true/false,
-            \"issues\": [
-              {{
-                \"description\": \"Brief description\",
-                \"severity\": \"Critical/High/Medium/Low\",
-                \"location\": \"filename.rs:line_numbers or path/to/file.rs:lines_range\",
-                \"explanation\": \"Detailed explanation of the issue\",
-                \"recommendation\": \"Specific suggestion for improvement\"
-              }},
-              ...
-            ]
+            \"issues_found\": true,
+            \"issues\": [{{
+              \"description\": \"Brief description\",
+              \"severity\": \"High\",
+              \"location\": \"file.rs:123\",
+              \"explanation\": \"Why this is an issue\",
+              \"recommendation\": \"How to fix\"
+            }}]
           }}"
             )
             .expect("write to string should not fail");
@@ -400,7 +379,7 @@ pub fn create_review_system_prompt(config: &Config) -> anyhow::Result<String> {
             write!(
                 &mut prompt,
                 ",
-          \"{dim_name}\": {{ ... similar structure ... }}"
+          \"{dim_name}\": {{ \"issues_found\": false, \"issues\": [] }}"
             )
             .expect("write to string should not fail");
         }
@@ -409,56 +388,15 @@ pub fn create_review_system_prompt(config: &Config) -> anyhow::Result<String> {
     prompt.push_str("
         }
 
-        Follow these steps to generate the code review:
+        Follow these steps:
+        1. Analyze the provided context, including staged changes and project metadata
+        2. Evaluate code quality across all dimensions
+        3. Create a concise summary and overall assessment
+        4. For each dimension, identify issues with appropriate severity, location, explanation, and recommendation
+        5. Provide overall suggestions and acknowledge positive aspects
+        6. Return valid JSON matching the structure above
 
-        1. Analyze the provided context, including staged changes and project metadata.
-        2. Evaluate the code quality, looking for potential issues, improvements, and good practices.
-        3. Create a concise summary of the changes and their quality.
-        4. Analyze each of the code quality dimensions.
-        5. For each dimension with issues, list them with appropriate severity, location, explanation, and recommendation.
-        6. Provide overall suggestions for improvements.
-        7. Identify specific issues found across all dimensions.
-        8. Acknowledge positive aspects and good practices in the code.
-        9. Construct the final JSON object with all components.
-
-        Note: It's expected that not all dimensions will have issues. For dimensions without issues, set 'issues_found' to false and provide an empty issues array.
-
-        Here's a minimal example of the expected output format (showing only two dimensions for brevity):
-
-        {
-          \"summary\": \"The changes implement a new authentication system with good separation of concerns, but lacks proper error handling in several places.\",
-          \"code_quality\": \"The code is generally well-structured with clear naming conventions. The architecture follows established patterns, but there are some inconsistencies in error handling approaches.\",
-          \"suggestions\": [\"Consider implementing a consistent error handling strategy across all authentication operations\", \"Add unit tests for edge cases in the token validation logic\"],
-          \"issues\": [\"Missing error handling in the user registration flow\", \"Potential race condition in token refresh mechanism\"],
-          \"positive_aspects\": [\"Good separation of concerns with clear service boundaries\", \"Consistent naming conventions throughout the added components\"],
-          \"complexity\": {
-            \"issues_found\": true,
-            \"issues\": [
-              {
-                \"description\": \"Complex authentication flow with excessive nesting\",
-                \"severity\": \"Medium\",
-                \"location\": \"src/auth/auth_service.rs:45-67\",
-                \"explanation\": \"The authentication validation contains 5 levels of nesting, making it difficult to follow the logic flow.\",
-                \"recommendation\": \"Extract validation steps into separate functions and use early returns to reduce nesting\"
-              }
-            ]
-          },
-          \"error_handling\": {
-            \"issues_found\": true,
-            \"issues\": [
-              {
-                \"description\": \"Missing error handling in token refresh\",
-                \"severity\": \"High\",
-                \"location\": \"src/auth/auth_service.rs:102-120\",
-                \"explanation\": \"The token refresh function doesn't properly handle network timeouts, potentially leaving users in an inconsistent state.\",
-                \"recommendation\": \"Add explicit error handling for network timeouts with appropriate user feedback\"
-              }
-            ]
-          },
-          ... (other dimensions would be included with empty issues arrays if no issues found)
-        }
-
-        Ensure that your response is a valid JSON object matching this structure.
+        Set 'issues_found' to false for dimensions without issues. Ensure your response is valid JSON.
         "
     );
 

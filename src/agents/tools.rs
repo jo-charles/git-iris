@@ -7,6 +7,8 @@ use std::sync::Arc;
 use crate::agents::core::AgentContext;
 use crate::log_debug;
 
+pub mod knowledge;
+
 /// Core trait for agent tools
 #[async_trait]
 pub trait AgentTool: Send + Sync {
@@ -500,6 +502,7 @@ pub fn create_default_tool_registry() -> ToolRegistry {
     registry.register_tool(Arc::new(GitTool::new()));
     registry.register_tool(Arc::new(FileAnalyzerTool::new()));
     registry.register_tool(Arc::new(CodeSearchTool::new()));
+    registry.register_tool(Arc::new(crate::agents::tools::knowledge::WorkspaceTool::new()));
 
     registry
 }

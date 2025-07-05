@@ -25,7 +25,7 @@ integration = []
 [dependencies]
 anyhow = "1.0.86"
 async-trait = "0.1.88"
-chrono = "0.4.38"
+chrono = { version = "0.4.38", features = ["serde"] }
 clap = { version = "4.5.36", features = ["derive", "cargo"] }
 colored = "3.0.0"
 console = "0.15.8"

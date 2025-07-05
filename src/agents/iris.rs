@@ -30,6 +30,7 @@ pub struct IrisAgent {
     capabilities: Vec<String>,
     backend: AgentBackend,
     tools: Vec<Arc<dyn AgentTool>>,
+    knowledge: std::sync::Mutex<IrisKnowledge>,
     initialized: bool,
 }
 
@@ -69,6 +70,91 @@ pub struct ToolResult {
     pub reason: String,
 }
 
+/// Iris's knowledge base - notes taken during task execution
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IrisKnowledge {
+    pub project_insights: Vec<String>,
+    pub code_patterns: Vec<String>,
+    pub discovered_issues: Vec<String>,
+    pub architectural_notes: Vec<String>,
+    pub performance_observations: Vec<String>,
+    pub security_findings: Vec<String>,
+    pub learned_context: Vec<String>,
+    pub tool_effectiveness: HashMap<String, String>,
+    pub execution_metadata: HashMap<String, serde_json::Value>,
+}
+
+impl Default for IrisKnowledge {
+    fn default() -> Self {
+        Self {
+            project_insights: Vec::new(),
+            code_patterns: Vec::new(),
+            discovered_issues: Vec::new(),
+            architectural_notes: Vec::new(),
+            performance_observations: Vec::new(),
+            security_findings: Vec::new(),
+            learned_context: Vec::new(),
+            tool_effectiveness: HashMap::new(),
+            execution_metadata: HashMap::new(),
+        }
+    }
+}
+
+impl IrisKnowledge {
+    /// Add a new insight to Iris's knowledge base
+    pub fn add_insight(&mut self, category: &str, insight: String) {
+        match category {
+            "project" => self.project_insights.push(insight),
+            "patterns" => self.code_patterns.push(insight),
+            "issues" => self.discovered_issues.push(insight),
+            "architecture" => self.architectural_notes.push(insight),
+            "performance" => self.performance_observations.push(insight),
+            "security" => self.security_findings.push(insight),
+            "context" => self.learned_context.push(insight),
+            _ => self.learned_context.push(format!("[{}] {}", category, insight)),
+        }
+    }
+
+    /// Get a summary of current knowledge for context
+    pub fn get_summary(&self) -> String {
+        let mut summary = String::new();
+        
+        if !self.project_insights.is_empty() {
+            summary.push_str("**Project Insights:**\n");
+            for insight in &self.project_insights {
+                summary.push_str(&format!("- {}\n", insight));
+            }
+            summary.push('\n');
+        }
+        
+        if !self.code_patterns.is_empty() {
+            summary.push_str("**Code Patterns Observed:**\n");
+            for pattern in &self.code_patterns {
+                summary.push_str(&format!("- {}\n", pattern));
+            }
+            summary.push('\n');
+        }
+        
+        if !self.discovered_issues.is_empty() {
+            summary.push_str("**Issues Discovered:**\n");
+            for issue in &self.discovered_issues {
+                summary.push_str(&format!("- {}\n", issue));
+            }
+            summary.push('\n');
+        }
+        
+        if !self.security_findings.is_empty() {
+            summary.push_str("**Security Findings:**\n");
+            for finding in &self.security_findings {
+                summary.push_str(&format!("- {}\n", finding));
+            }
+            summary.push('\n');
+        }
+        
+        summary
+    }
+}
+
 impl IrisAgent {
     pub fn new(backend: AgentBackend, tools: Vec<Arc<dyn AgentTool>>) -> Self {
         let mut agent = Self {
@@ -90,14 +176,135 @@ impl IrisAgent {
                 "security_analysis".to_string(),
                 "performance_analysis".to_string(),
                 "documentation_review".to_string(),
+                "context_summarization".to_string(),
+                "chunked_analysis".to_string(),
+                "knowledge_building".to_string(),
+                "adaptive_learning".to_string(),
             ],
             backend,
             tools,
+            knowledge: std::sync::Mutex::new(IrisKnowledge::default()),
             initialized: false,
         };
 
         agent.initialized = true;
         agent
+    }
+
+    /// Add knowledge learned during task execution
+    fn add_knowledge(&self, category: &str, insight: String) {
+        if let Ok(mut knowledge) = self.knowledge.lock() {
+            log_debug!("🧠 Iris: Added {} insight: {}", category, insight);
+            knowledge.add_insight(category, insight);
+        }
+    }
+
+    /// Get current knowledge summary for context
+    fn get_knowledge_context(&self) -> String {
+        if let Ok(knowledge) = self.knowledge.lock() {
+            knowledge.get_summary()
+        } else {
+            String::new()
+        }
+    }
+
+    /// Ask LLM to extract insights from a result and add to knowledge base
+    async fn learn_from_result(&self, task_type: &str, result: &str) -> Result<()> {
+        let learning_prompt = format!(
+            "You are Iris. Analyze this {} result and extract key insights for future tasks.
+
+            Result:
+            {}
+
+            Extract insights in these categories (return only insights that are genuinely useful):
+            1. **project**: General project architecture or patterns
+            2. **patterns**: Code patterns, conventions, or styles observed
+            3. **issues**: Common issues or anti-patterns found
+            4. **architecture**: Architectural decisions or design patterns
+            5. **performance**: Performance considerations or optimizations
+            6. **security**: Security patterns or vulnerabilities
+            7. **context**: Important context about this specific codebase
+
+            Respond with JSON:
+            {{
+              \"insights\": [
+                {{\"category\": \"project\", \"insight\": \"This project uses X pattern for Y\"}},
+                {{\"category\": \"patterns\", \"insight\": \"Code follows Z convention\"}}
+              ]
+            }}
+
+            Only include insights that would be helpful for future code analysis.",
+            task_type, result
+        );
+
+        if let Ok(learning_response) = self.analyze_with_backend(&learning_prompt).await {
+            if let Ok(insights) = self.parse_json_response::<serde_json::Value>(&learning_response).await {
+                if let Some(insights_array) = insights.get("insights").and_then(|i| i.as_array()) {
+                    for insight in insights_array {
+                        if let (Some(category), Some(text)) = (
+                            insight.get("category").and_then(|c| c.as_str()),
+                            insight.get("insight").and_then(|i| i.as_str())
+                        ) {
+                            self.add_knowledge(category, text.to_string());
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Use LLM to intelligently manage context for code reviews
+    async fn manage_review_context(&self, context: &CommitContext) -> Result<String> {
+        iris_status_analysis!();
+        
+        log_debug!("🧠 Iris: Using LLM to intelligently manage review context");
+        
+        let full_context = create_review_user_prompt(context);
+        let context_size = full_context.len();
+        
+        log_debug!("📏 Iris: Full context size: {} characters", context_size);
+        
+        // If context is reasonable size, use it directly
+        if context_size < 8000 {
+            log_debug!("✅ Iris: Context size manageable, proceeding with full review");
+            return Ok(full_context);
+        }
+        
+        // Let LLM intelligently summarize and prioritize
+        let smart_context_prompt = format!(
+            "You are Iris, an expert code reviewer. The code context below is too large for optimal review. 
+            
+            Your task: Create a focused, intelligent summary that preserves all critical information needed for a comprehensive code review.
+            
+            **What to preserve:**
+            - All security-critical changes
+            - Complex logic that needs careful review  
+            - Performance-sensitive code
+            - Error handling patterns
+            - API changes or breaking changes
+            - Critical diff sections (keep exact code)
+            
+            **What to summarize:**
+            - Repetitive patterns
+            - Simple refactoring
+            - Formatting changes
+            - Non-critical utility functions
+            
+            **Original Context ({} chars):**
+            {}
+            
+            Create an intelligent, focused review context that captures everything important while being concise enough for thorough analysis.",
+            context_size,
+            full_context
+        );
+
+        let managed_context = self.analyze_with_backend(&smart_context_prompt).await?;
+        log_debug!("✅ Iris: Created LLM-managed context - {} chars (reduced from {})", 
+                   managed_context.len(), context_size);
+        
+        Ok(managed_context)
     }
 
     /// Generate a commit message with intelligent context analysis
@@ -185,12 +392,12 @@ impl IrisAgent {
             .build_commit_context(context, &intelligent_context)
             .await?;
 
-        // Generate review using existing prompt system
+        // Generate review using existing prompt system with intelligent context management
         let system_prompt = create_review_system_prompt(&context.config)?;
-        let user_prompt = create_review_user_prompt(&commit_context);
+        let managed_user_prompt = self.manage_review_context(&commit_context).await?;
 
         let generated_review = self
-            .generate_with_backend(&system_prompt, &user_prompt)
+            .generate_with_backend(&system_prompt, &managed_user_prompt)
             .await?;
         let parsed_response = self
             .parse_json_response::<GeneratedReview>(&generated_review)
@@ -1426,10 +1633,43 @@ impl IrisAgent {
             log_debug!("❌ Iris: No JSON objects found in response");
         }
 
+        // Last resort: try to handle truncated JSON by finding the last complete field
+        if let Some(start) = response.find('{') {
+            // Find the last complete field by looking for the last closing brace before any truncation
+            let mut brace_count = 0;
+            let mut last_valid_end = start;
+            
+            for (i, c) in response[start..].char_indices() {
+                match c {
+                    '{' => brace_count += 1,
+                    '}' => {
+                        brace_count -= 1;
+                        if brace_count == 0 {
+                            last_valid_end = start + i;
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            
+            if last_valid_end > start {
+                let truncated_json = &response[start..=last_valid_end];
+                log_debug!(
+                    "🔧 Iris: Attempting to parse truncated JSON - {} chars",
+                    truncated_json.len()
+                );
+                if let Ok(parsed) = serde_json::from_str::<T>(truncated_json) {
+                    log_debug!("✅ Iris: Truncated JSON parsing successful");
+                    return Ok(parsed);
+                }
+            }
+        }
+
         log_debug!("🚨 Iris: All JSON parsing attempts failed");
         Err(anyhow::anyhow!(
             "Failed to parse JSON response. Raw response: {}",
-            response
+            response.chars().take(1000).collect::<String>() // Limit error message length
         ))
     }
 }
