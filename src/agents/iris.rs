@@ -17,6 +17,10 @@ use crate::commit::review::GeneratedReview;
 use crate::commit::types::{GeneratedMessage, GeneratedPullRequest};
 use crate::context::CommitContext;
 use crate::log_debug;
+use crate::{
+    iris_status_analysis, iris_status_completed, iris_status_expansion, iris_status_generation,
+    iris_status_planning, iris_status_synthesis, iris_status_tool,
+};
 
 /// The unified Iris agent - an AI assistant for all Git-Iris operations
 pub struct IrisAgent {
@@ -143,6 +147,7 @@ impl IrisAgent {
 
         // Step 4: Generate with LLM
         log_debug!("🤖 Iris: Generating commit message with LLM");
+        iris_status_generation!();
         let generated_message = self
             .generate_with_backend(&system_prompt, &user_prompt)
             .await?;
@@ -158,6 +163,7 @@ impl IrisAgent {
             parsed_response.message.len()
         );
 
+        iris_status_completed!();
         Ok(TaskResult::success_with_data(
             "Commit message generated successfully".to_string(),
             serde_json::to_value(parsed_response)?,
@@ -262,6 +268,7 @@ impl IrisAgent {
 
         // Step 1: Let the agent decide which tools to use
         log_debug!("🤖 Iris: Planning tool usage strategy");
+        iris_status_planning!();
         let tool_plan = self.plan_tool_usage_for_context_analysis(context).await?;
         log_debug!("📋 Iris: Agent planned {} tool operations", tool_plan.len());
 
@@ -272,6 +279,7 @@ impl IrisAgent {
 
         // Step 3: Use LLM to synthesize tool results into intelligent context
         log_debug!("🤖 Iris: Synthesizing tool results with LLM");
+        iris_status_synthesis!();
         let synthesis_prompt = self.build_tool_synthesis_prompt(&tool_results).await?;
         log_debug!(
             "🛠️ Iris: Synthesis prompt built - {} chars",
@@ -286,6 +294,7 @@ impl IrisAgent {
 
         // Step 4: Parse the synthesized analysis
         log_debug!("🔍 Iris: Parsing synthesized analysis result");
+        iris_status_analysis!();
 
         // For now, fall back to basic git context to maintain compatibility
         // TODO: Build IntelligentContext entirely from tool synthesis
@@ -368,55 +377,79 @@ impl IrisAgent {
         let mut results = Vec::new();
         let mut current_plan = initial_plan.to_vec();
         let mut executed_tools = std::collections::HashSet::new();
-        
-        log_debug!("🔧 Iris: Starting adaptive tool execution with {} initial tools", current_plan.len());
-        
+
+        log_debug!(
+            "🔧 Iris: Starting adaptive tool execution with {} initial tools",
+            current_plan.len()
+        );
+
         while !current_plan.is_empty() {
             // Execute the next tool in the plan
             let plan = current_plan.remove(0);
-            let plan_key = format!("{}:{}", plan.tool_name, plan.operation.as_deref().unwrap_or("default"));
-            
+            let plan_key = format!(
+                "{}:{}",
+                plan.tool_name,
+                plan.operation.as_deref().unwrap_or("default")
+            );
+
             // Skip if we've already executed this exact tool+operation combination
             if executed_tools.contains(&plan_key) {
                 log_debug!("⏭️ Iris: Skipping already executed tool: {}", plan_key);
                 continue;
             }
-            
-            log_debug!("🔧 Iris: Executing tool: {} ({})", plan.tool_name, plan.reason);
-            
+
+            log_debug!(
+                "🔧 Iris: Executing tool: {} ({})",
+                plan.tool_name,
+                plan.reason
+            );
+            iris_status_tool!(&plan.tool_name, &plan.reason);
+
             // Find the tool by name
             let tool = self
                 .tools
                 .iter()
                 .find(|t| t.name() == plan.tool_name)
                 .ok_or_else(|| anyhow::anyhow!("Tool not found: {}", plan.tool_name))?;
-                
+
             // Execute the tool with planned parameters
             let mut params = plan.parameters.clone();
             if let Some(operation) = &plan.operation {
-                params.insert("operation".to_string(), serde_json::Value::String(operation.clone()));
+                params.insert(
+                    "operation".to_string(),
+                    serde_json::Value::String(operation.clone()),
+                );
             }
-            
+
             match tool.execute(context, &params).await {
                 Ok(result) => {
                     log_debug!("✅ Iris: Tool call completed: {}", plan.tool_name);
                     executed_tools.insert(plan_key);
-                    
+
                     let tool_result = ToolResult {
                         tool_name: plan.tool_name.clone(),
                         operation: plan.operation.clone(),
                         result,
                         reason: plan.reason.clone(),
                     };
-                    
+
                     results.push(tool_result.clone());
-                    
+
                     // After each tool execution, check if we need to expand the plan
-                    if results.len() <= 2 { // Only expand during early execution
-                        log_debug!("🤖 Iris: Checking if plan needs expansion based on new context");
-                        let expanded_plan = self.expand_plan_based_on_context(context, &results, &current_plan).await?;
+                    if results.len() <= 2 {
+                        // Only expand during early execution
+                        log_debug!(
+                            "🤖 Iris: Checking if plan needs expansion based on new context"
+                        );
+                        iris_status_expansion!();
+                        let expanded_plan = self
+                            .expand_plan_based_on_context(context, &results, &current_plan)
+                            .await?;
                         if !expanded_plan.is_empty() {
-                            log_debug!("📋 Iris: Plan expanded with {} additional tools", expanded_plan.len());
+                            log_debug!(
+                                "📋 Iris: Plan expanded with {} additional tools",
+                                expanded_plan.len()
+                            );
                             current_plan.extend(expanded_plan);
                         }
                     }
@@ -427,8 +460,11 @@ impl IrisAgent {
                 }
             }
         }
-        
-        log_debug!("🎯 Iris: Completed {} tool executions through adaptive planning", results.len());
+
+        log_debug!(
+            "🎯 Iris: Completed {} tool executions through adaptive planning",
+            results.len()
+        );
         Ok(results)
     }
 
@@ -437,7 +473,7 @@ impl IrisAgent {
         &self,
         _context: &AgentContext,
         current_results: &[ToolResult],
-        remaining_plan: &[ToolPlan]
+        remaining_plan: &[ToolPlan],
     ) -> Result<Vec<ToolPlan>> {
         // Analyze current results to determine if we need more tools
         let mut context_summary = String::new();
@@ -447,30 +483,31 @@ impl IrisAgent {
                 result.tool_name,
                 match &result.result {
                     serde_json::Value::Object(obj) => {
-                        obj.get("content")
-                            .and_then(|v| v.as_str())
-                            .map(|s| s.chars().take(200).collect::<String>())
-                            .unwrap_or_else(|| "Complex data structure".to_string())
+                        obj.get("content").and_then(|v| v.as_str()).map_or_else(
+                            || "Complex data structure".to_string(),
+                            |s| s.chars().take(200).collect::<String>(),
+                        )
                     }
-                    _ => "Non-object result".to_string()
+                    _ => "Non-object result".to_string(),
                 }
             ));
         }
-        
+
         // Get available tools not in current plan
-        let planned_tools: std::collections::HashSet<String> = remaining_plan.iter()
-            .map(|p| p.tool_name.clone())
-            .collect();
-        let available_tools: Vec<String> = self.tools.iter()
+        let planned_tools: std::collections::HashSet<String> =
+            remaining_plan.iter().map(|p| p.tool_name.clone()).collect();
+        let available_tools: Vec<String> = self
+            .tools
+            .iter()
             .filter(|tool| !planned_tools.contains(tool.name()))
             .map(|tool| format!("{}: {}", tool.name(), tool.description()))
             .collect();
-        
+
         if available_tools.is_empty() {
             log_debug!("🤖 Iris: No additional tools available for plan expansion");
             return Ok(Vec::new());
         }
-        
+
         let expansion_prompt = format!(
             "You are Iris, analyzing the context you've discovered so far. Based on what you've learned, \
             determine if you need additional tools to get a complete understanding.\n\n\
@@ -481,20 +518,27 @@ impl IrisAgent {
             If you have enough context, respond with an empty array [].\n\n\
             Focus on tools that will provide missing context or deeper analysis for your understanding.",
             context_summary,
-            remaining_plan.iter()
+            remaining_plan
+                .iter()
                 .map(|p| format!("{} ({})", p.tool_name, p.reason))
                 .collect::<Vec<_>>()
                 .join(", "),
             available_tools.join("\n")
         );
-        
+
         log_debug!("🤖 Iris: Requesting plan expansion from LLM");
         let expansion_result = self.analyze_with_backend(&expansion_prompt).await?;
-        log_debug!("📋 Iris: Plan expansion response received - {} chars", expansion_result.len());
-        
+        log_debug!(
+            "📋 Iris: Plan expansion response received - {} chars",
+            expansion_result.len()
+        );
+
         let expanded_tools = self.parse_tool_plan(&expansion_result)?;
-        log_debug!("📋 Iris: Parsed {} additional tools for plan expansion", expanded_tools.len());
-        
+        log_debug!(
+            "📋 Iris: Parsed {} additional tools for plan expansion",
+            expanded_tools.len()
+        );
+
         Ok(expanded_tools)
     }
 
@@ -537,7 +581,7 @@ impl IrisAgent {
               \"change_summary\": \"Overall purpose of these changes\",\n\
               \"technical_analysis\": \"Implementation details and patterns\",\n\
               \"project_insights\": \"How this fits into the larger codebase\"\n\
-            }"
+            }",
         );
 
         Ok(prompt)

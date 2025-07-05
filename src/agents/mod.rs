@@ -3,6 +3,7 @@ pub mod executor;
 pub mod integration;
 pub mod iris;
 pub mod registry;
+pub mod status;
 pub mod tools;
 
 pub use core::*;

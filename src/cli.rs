@@ -421,6 +421,9 @@ async fn handle_gen(
     ui::print_newline();
 
     if use_agent {
+        // Enable agent mode for enhanced status display
+        crate::agents::status::enable_agent_mode();
+
         // Use agent framework for commit message generation
         crate::agents::integration::handle_gen_with_agent(
             common,
@@ -488,6 +491,9 @@ async fn handle_review(
     ui::print_version(crate_version!());
     ui::print_newline();
     if use_agent {
+        // Enable agent mode for enhanced status display
+        crate::agents::status::enable_agent_mode();
+
         // Use agent framework for code review
         crate::agents::integration::handle_review_with_agent(
             common,
