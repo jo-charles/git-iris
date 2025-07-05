@@ -1,3 +1,14 @@
+//! Iris workspace tool
+//!
+//! This tool provides Iris with her own personal workspace for taking notes,
+//! creating task lists, and managing her workflow during complex operations.
+//!
+//! Iris can use this tool to:
+//! - Take notes on discoveries and insights
+//! - Create and manage task lists
+//! - Track progress through complex workflows
+//! - Build knowledge across tool interactions
+
 use anyhow::Result;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -26,7 +37,7 @@ pub struct WorkspaceNote {
 pub struct WorkspaceTask {
     pub id: String,
     pub description: String,
-    pub status: String, // "pending", "in_progress", "completed", "blocked"
+    pub status: String,   // "pending", "in_progress", "completed", "blocked"
     pub priority: String, // "low", "medium", "high", "critical"
     pub created: String,
     pub updated: String,
@@ -37,23 +48,27 @@ impl IrisWorkspace {
     /// Add a note
     pub fn add_note(&mut self, content: String, tags: Vec<String>) -> String {
         let id = format!("note_{}", self.notes.len() + 1);
-        let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC").to_string();
-        
+        let timestamp = chrono::Utc::now()
+            .format("%Y-%m-%d %H:%M:%S UTC")
+            .to_string();
+
         self.notes.push(WorkspaceNote {
             id: id.clone(),
             content,
             timestamp,
             tags,
         });
-        
+
         id
     }
 
     /// Add a task
     pub fn add_task(&mut self, description: String, priority: String) -> String {
         let id = format!("task_{}", self.tasks.len() + 1);
-        let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC").to_string();
-        
+        let timestamp = chrono::Utc::now()
+            .format("%Y-%m-%d %H:%M:%S UTC")
+            .to_string();
+
         self.tasks.push(WorkspaceTask {
             id: id.clone(),
             description,
@@ -63,12 +78,17 @@ impl IrisWorkspace {
             updated: timestamp,
             notes: Vec::new(),
         });
-        
+
         id
     }
 
     /// Update task status and add a note
-    pub fn update_task(&mut self, task_id: &str, status: Option<String>, note: Option<String>) -> bool {
+    pub fn update_task(
+        &mut self,
+        task_id: &str,
+        status: Option<String>,
+        note: Option<String>,
+    ) -> bool {
         if let Some(task) = self.tasks.iter_mut().find(|t| t.id == task_id) {
             if let Some(new_status) = status {
                 task.status = new_status;
@@ -76,7 +96,9 @@ impl IrisWorkspace {
             if let Some(task_note) = note {
                 task.notes.push(task_note);
             }
-            task.updated = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC").to_string();
+            task.updated = chrono::Utc::now()
+                .format("%Y-%m-%d %H:%M:%S UTC")
+                .to_string();
             true
         } else {
             false
@@ -86,17 +108,28 @@ impl IrisWorkspace {
     /// Get workspace summary
     pub fn get_summary(&self) -> String {
         let mut summary = String::new();
-        
+
         // Task summary
         let pending_tasks = self.tasks.iter().filter(|t| t.status == "pending").count();
-        let in_progress_tasks = self.tasks.iter().filter(|t| t.status == "in_progress").count();
-        let completed_tasks = self.tasks.iter().filter(|t| t.status == "completed").count();
-        
+        let in_progress_tasks = self
+            .tasks
+            .iter()
+            .filter(|t| t.status == "in_progress")
+            .count();
+        let completed_tasks = self
+            .tasks
+            .iter()
+            .filter(|t| t.status == "completed")
+            .count();
+
         summary.push_str(&format!(
             "**Iris Workspace Summary**\n\
             Tasks: {} pending, {} in progress, {} completed\n\
             Notes: {} total\n\n",
-            pending_tasks, in_progress_tasks, completed_tasks, self.notes.len()
+            pending_tasks,
+            in_progress_tasks,
+            completed_tasks,
+            self.notes.len()
         ));
 
         // Active tasks
@@ -105,9 +138,9 @@ impl IrisWorkspace {
             for task in &self.tasks {
                 if task.status == "in_progress" || task.status == "pending" {
                     summary.push_str(&format!(
-                        "- [{}] {} ({})\n", 
-                        task.status.to_uppercase(), 
-                        task.description, 
+                        "- [{}] {} ({})\n",
+                        task.status.to_uppercase(),
+                        task.description,
                         task.priority
                     ));
                 }
@@ -124,7 +157,7 @@ impl IrisWorkspace {
                 } else {
                     note.content.clone()
                 };
-                summary.push_str(&format!("- {}\n", preview));
+                summary.push_str(&format!("- {preview}\n"));
             }
         }
 
@@ -134,9 +167,9 @@ impl IrisWorkspace {
     /// Get all content formatted
     pub fn get_all_content(&self) -> String {
         let mut content = String::new();
-        
+
         content.push_str("**IRIS WORKSPACE**\n\n");
-        
+
         // All tasks
         if !self.tasks.is_empty() {
             content.push_str("**TASKS:**\n");
@@ -145,15 +178,18 @@ impl IrisWorkspace {
                     "ID: {} | Status: {} | Priority: {}\n\
                     Description: {}\n\
                     Created: {} | Updated: {}\n",
-                    task.id, task.status, task.priority,
+                    task.id,
+                    task.status,
+                    task.priority,
                     task.description,
-                    task.created, task.updated
+                    task.created,
+                    task.updated
                 ));
-                
+
                 if !task.notes.is_empty() {
                     content.push_str("Notes:\n");
                     for note in &task.notes {
-                        content.push_str(&format!("  - {}\n", note));
+                        content.push_str(&format!("  - {note}\n"));
                     }
                 }
                 content.push('\n');
@@ -169,7 +205,7 @@ impl IrisWorkspace {
                     Content: {}\n",
                     note.id, note.timestamp, note.content
                 ));
-                
+
                 if !note.tags.is_empty() {
                     content.push_str(&format!("Tags: {}\n", note.tags.join(", ")));
                 }
@@ -226,11 +262,11 @@ impl crate::agents::tools::AgentTool for WorkspaceTool {
         &self.id
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Iris Workspace"
     }
 
-    fn description(&self) -> &str {
+    fn description(&self) -> &'static str {
         "Iris's personal workspace for taking notes, creating task lists, and managing workflow. Use this to organize your thoughts, track progress, and plan next steps."
     }
 
@@ -293,58 +329,64 @@ impl crate::agents::tools::AgentTool for WorkspaceTool {
         let input: WorkspaceInput = serde_json::from_value(serde_json::Value::Object(
             params.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
         ))?;
-        
-        let mut workspace = self.workspace
+
+        let mut workspace = self
+            .workspace
             .lock()
             .map_err(|e| anyhow::anyhow!("Failed to lock workspace: {}", e))?;
 
         match input.action.as_str() {
             "add_note" => {
-                let content = input.content.ok_or_else(|| {
-                    anyhow::anyhow!("Content is required for add_note action")
-                })?;
+                let content = input
+                    .content
+                    .ok_or_else(|| anyhow::anyhow!("Content is required for add_note action"))?;
                 let tags = input.tags.unwrap_or_default();
-                
+
                 let note_id = workspace.add_note(content.clone(), tags);
                 log_debug!("📝 Workspace: Added note {}: {}", note_id, content);
 
                 Ok(serde_json::to_value(WorkspaceOutput {
                     success: true,
-                    message: format!("Added note: {}", content),
+                    message: format!("Added note: {content}"),
                     workspace_summary: None,
                     item_id: Some(note_id),
                 })?)
             }
-            
+
             "add_task" => {
                 let description = input.content.ok_or_else(|| {
                     anyhow::anyhow!("Content (task description) is required for add_task action")
                 })?;
                 let priority = input.priority.unwrap_or_else(|| "medium".to_string());
-                
+
                 let task_id = workspace.add_task(description.clone(), priority.clone());
-                log_debug!("✅ Workspace: Added task {}: {} ({})", task_id, description, priority);
+                log_debug!(
+                    "✅ Workspace: Added task {}: {} ({})",
+                    task_id,
+                    description,
+                    priority
+                );
 
                 Ok(serde_json::to_value(WorkspaceOutput {
                     success: true,
-                    message: format!("Added task: {} ({})", description, priority),
+                    message: format!("Added task: {description} ({priority})"),
                     workspace_summary: None,
                     item_id: Some(task_id),
                 })?)
             }
-            
+
             "update_task" => {
-                let task_id = input.task_id.ok_or_else(|| {
-                    anyhow::anyhow!("task_id is required for update_task action")
-                })?;
-                
+                let task_id = input
+                    .task_id
+                    .ok_or_else(|| anyhow::anyhow!("task_id is required for update_task action"))?;
+
                 let updated = workspace.update_task(&task_id, input.status, input.note);
-                
+
                 if updated {
                     log_debug!("🔄 Workspace: Updated task {}", task_id);
                     Ok(serde_json::to_value(WorkspaceOutput {
                         success: true,
-                        message: format!("Updated task {}", task_id),
+                        message: format!("Updated task {task_id}"),
                         workspace_summary: None,
                         item_id: Some(task_id),
                     })?)
@@ -352,7 +394,7 @@ impl crate::agents::tools::AgentTool for WorkspaceTool {
                     Err(anyhow::anyhow!("Task {} not found", task_id))
                 }
             }
-            
+
             "get_summary" => {
                 let summary = workspace.get_summary();
                 Ok(serde_json::to_value(WorkspaceOutput {
@@ -362,7 +404,7 @@ impl crate::agents::tools::AgentTool for WorkspaceTool {
                     item_id: None,
                 })?)
             }
-            
+
             "get_all" => {
                 let all_content = workspace.get_all_content();
                 Ok(serde_json::to_value(WorkspaceOutput {
@@ -372,7 +414,7 @@ impl crate::agents::tools::AgentTool for WorkspaceTool {
                     item_id: None,
                 })?)
             }
-            
+
             _ => Err(anyhow::anyhow!("Unknown action: {}", input.action)),
         }
     }

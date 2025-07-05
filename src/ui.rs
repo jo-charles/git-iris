@@ -39,7 +39,7 @@ pub fn create_spinner(message: &str) -> ProgressBar {
     }
 
     let pb = ProgressBar::new_spinner();
-    
+
     // Use agent-aware spinner if agent mode is enabled
     if crate::agents::status::is_agent_mode_enabled() {
         pb.set_style(
@@ -48,10 +48,10 @@ pub fn create_spinner(message: &str) -> ProgressBar {
                 .template("{spinner:.bright_cyan.bold} {msg}")
                 .expect("Could not set spinner style"),
         );
-        
+
         // Start with Iris initialization message
         pb.set_message("◎ Iris initializing...");
-        
+
         // Set up a custom callback to update the message from Iris status
         let pb_clone = pb.clone();
         tokio::spawn(async move {
@@ -62,7 +62,7 @@ pub fn create_spinner(message: &str) -> ProgressBar {
                 pb_clone.set_message(status_message.text);
             }
         });
-        
+
         pb.enable_steady_tick(Duration::from_millis(100));
     } else {
         pb.set_style(
@@ -74,7 +74,7 @@ pub fn create_spinner(message: &str) -> ProgressBar {
         pb.set_message(message.to_string());
         pb.enable_steady_tick(Duration::from_millis(100));
     }
-    
+
     pb
 }
 

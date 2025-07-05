@@ -438,10 +438,10 @@ pub async fn handle_gen_with_agent(
     if let Some(integration) = integration {
         // Initialize Iris status
         crate::agents::status::IRIS_STATUS.planning();
-        
+
         // Create and start the Iris agent spinner
         let spinner = crate::ui::create_spinner("");
-        
+
         // Use agent framework with gitmoji and verification settings
         let preset = common.preset.as_deref();
         let instructions = common.instructions.as_deref();
@@ -469,13 +469,13 @@ pub async fn handle_gen_with_agent(
         let commit_message = integration
             .generate_commit_message_with_params(agent_params)
             .await?;
-        
+
         // Mark completion
         crate::agents::status::IRIS_STATUS.completed();
-        
+
         // Give a moment for the completion message to be seen
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-        
+
         // Stop the spinner
         spinner.finish_and_clear();
 
@@ -521,10 +521,10 @@ pub async fn handle_review_with_agent(
     if let Some(integration) = integration {
         // Initialize Iris status
         crate::agents::status::IRIS_STATUS.planning();
-        
+
         // Create and start the Iris agent spinner
         let spinner = crate::ui::create_spinner("");
-        
+
         // Build commit range from parameters
         let commit_range = if let Some(commit) = commit {
             Some(commit)
@@ -543,13 +543,13 @@ pub async fn handle_review_with_agent(
         let review_data = integration
             .review_changes(commit_range.as_deref(), Some(focus_areas))
             .await?;
-        
+
         // Mark completion
         crate::agents::status::IRIS_STATUS.completed();
-        
+
         // Give a moment for the completion message to be seen
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-        
+
         // Stop the spinner
         spinner.finish_and_clear();
 

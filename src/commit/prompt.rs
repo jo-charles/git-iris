@@ -325,7 +325,8 @@ pub fn create_review_system_prompt(config: &Config) -> anyhow::Result<String> {
         - Concrete recommendation for improvement
 
         Base your review entirely on the provided context, without speculation.
-      ");
+      ",
+    );
 
     prompt.push_str(get_combined_instructions(config).as_str());
 
