@@ -71,7 +71,7 @@ where
             builder = builder.max_tokens(mt_val);
         }
     } else {
-        builder = builder.max_tokens(4096);
+        builder = builder.max_tokens(8192);
     }
 
     // Set top_p if specified in additional params

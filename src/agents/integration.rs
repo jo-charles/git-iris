@@ -786,22 +786,88 @@ pub async fn handle_pr_with_agent(
 fn format_pr_description(review_data: &serde_json::Value) -> String {
     use std::fmt::Write;
 
-    // This is a simplified formatter - in a real implementation this would be more sophisticated
     let mut description = String::new();
 
+    // Title and summary section
     description.push_str("## Summary\n\n");
-    if let Some(summary) = review_data.get("summary") {
+    if let Some(summary) = review_data.get("summary").and_then(|v| v.as_str()) {
         writeln!(description, "{summary}\n").unwrap();
+    } else {
+        description.push_str("*No summary available*\n\n");
     }
 
+    // Changes section with better formatting
     description.push_str("## Changes\n\n");
     if let Some(changes) = review_data.get("changes") {
-        writeln!(description, "{changes}\n").unwrap();
+        match changes {
+            serde_json::Value::String(changes_str) => {
+                writeln!(description, "{changes_str}\n").unwrap();
+            }
+            serde_json::Value::Array(changes_array) => {
+                for change in changes_array {
+                    if let Some(change_str) = change.as_str() {
+                        writeln!(description, "- {change_str}").unwrap();
+                    }
+                }
+                description.push('\n');
+            }
+            _ => {
+                writeln!(description, "{changes}\n").unwrap();
+            }
+        }
+    } else {
+        description.push_str("*No changes documented*\n\n");
     }
 
+    // Impact section if available
+    if let Some(impact) = review_data.get("impact").and_then(|v| v.as_str()) {
+        description.push_str("## Impact\n\n");
+        writeln!(description, "{impact}\n").unwrap();
+    }
+
+    // Testing section with enhanced formatting
     description.push_str("## Testing\n\n");
     if let Some(testing) = review_data.get("testing") {
-        writeln!(description, "{testing}\n").unwrap();
+        match testing {
+            serde_json::Value::String(test_str) => {
+                writeln!(description, "{test_str}\n").unwrap();
+            }
+            serde_json::Value::Array(test_array) => {
+                description.push_str("### Test Coverage\n\n");
+                for test in test_array {
+                    if let Some(test_str) = test.as_str() {
+                        writeln!(description, "- [ ] {test_str}").unwrap();
+                    }
+                }
+                description.push('\n');
+            }
+            _ => {
+                writeln!(description, "{testing}\n").unwrap();
+            }
+        }
+    } else {
+        description.push_str("- [ ] Manual testing completed\n");
+        description.push_str("- [ ] Unit tests updated\n");
+        description.push_str("- [ ] Integration tests verified\n\n");
+    }
+
+    // Additional metadata if available
+    if let Some(breaking_changes) = review_data
+        .get("breaking_changes")
+        .and_then(serde_json::Value::as_bool)
+    {
+        if breaking_changes {
+            description.push_str("## ⚠️ Breaking Changes\n\n");
+            description.push_str(
+                "This PR contains breaking changes. Please review the migration guide.\n\n",
+            );
+        }
+    }
+
+    // Performance impact if available
+    if let Some(performance) = review_data.get("performance").and_then(|v| v.as_str()) {
+        description.push_str("## Performance Impact\n\n");
+        writeln!(description, "{performance}\n").unwrap();
     }
 
     description

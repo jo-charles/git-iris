@@ -1,6 +1,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use futures::StreamExt;
+use regex::Regex;
 use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::streaming::StreamingPrompt;
@@ -25,6 +26,9 @@ use crate::{
     iris_status_analysis, iris_status_completed, iris_status_expansion, iris_status_generation,
     iris_status_planning, iris_status_synthesis, iris_status_tool,
 };
+
+// Token limit for all operations - Claude can handle much more than 8192 tokens
+const DEFAULT_MAX_TOKENS: u64 = 8192;
 
 /// The unified Iris agent - an AI assistant for all Git-Iris operations
 /// Optimized for maximum Rig framework efficiency
@@ -203,6 +207,7 @@ impl IrisAgent {
                 "code_review".to_string(),
                 "pull_request_description".to_string(),
                 "changelog_generation".to_string(),
+                "release_notes_generation".to_string(),
                 "file_analysis".to_string(),
                 "relevance_scoring".to_string(),
                 "intelligent_context_gathering".to_string(),
@@ -1101,7 +1106,7 @@ impl IrisAgent {
                     .agent(model)
                     .preamble(system_prompt)
                     .temperature(0.7)
-                    .max_tokens(800)
+                    .max_tokens(DEFAULT_MAX_TOKENS)
                     .build()
                     .prompt(user_prompt)
                     .await
@@ -1118,7 +1123,7 @@ impl IrisAgent {
                     .agent(model)
                     .preamble(system_prompt)
                     .temperature(0.7)
-                    .max_tokens(800)
+                    .max_tokens(DEFAULT_MAX_TOKENS)
                     .build()
                     .prompt(user_prompt)
                     .await
@@ -1161,7 +1166,7 @@ impl IrisAgent {
                     .agent(model)
                     .preamble(system_prompt)
                     .temperature(0.7)
-                    .max_tokens(800)
+                    .max_tokens(DEFAULT_MAX_TOKENS)
                     .build();
 
                 // Use Rig's real streaming API
@@ -1213,7 +1218,7 @@ impl IrisAgent {
                     .agent(model)
                     .preamble(system_prompt)
                     .temperature(0.7)
-                    .max_tokens(800)
+                    .max_tokens(DEFAULT_MAX_TOKENS)
                     .build();
 
                 // Use Rig's real streaming API
@@ -1288,7 +1293,7 @@ impl IrisAgent {
                     .agent(model)
                     .preamble(system_prompt)
                     .temperature(0.3) // Lower temperature for consistent analysis
-                    .max_tokens(1500) // More tokens for detailed analysis
+                    .max_tokens(DEFAULT_MAX_TOKENS)
                     .build()
                     .prompt(prompt)
                     .await
@@ -1305,7 +1310,7 @@ impl IrisAgent {
                     .agent(model)
                     .preamble(system_prompt)
                     .temperature(0.3)
-                    .max_tokens(1500)
+                    .max_tokens(DEFAULT_MAX_TOKENS)
                     .build()
                     .prompt(prompt)
                     .await
@@ -1439,6 +1444,710 @@ impl IrisAgent {
             response.chars().take(1000).collect::<String>() // Limit error message length
         ))
     }
+
+    /// Generate changelog with advanced features like file updating and version management
+    async fn generate_changelog(
+        &self,
+        context: &AgentContext,
+        params: &HashMap<String, serde_json::Value>,
+    ) -> Result<TaskResult> {
+        log_debug!("📜 Iris: Starting comprehensive changelog generation");
+
+        // Extract parameters
+        let version = params
+            .get("version")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Latest");
+        let from_tag = params.get("from_tag").and_then(|v| v.as_str());
+        let to_tag = params.get("to_tag").and_then(|v| v.as_str());
+        let update_file = params
+            .get("update_file")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false);
+        let file_path = params
+            .get("file_path")
+            .and_then(|v| v.as_str())
+            .unwrap_or("CHANGELOG.md");
+
+        // Step 1: Gather git context for the changelog range
+        iris_status_analysis!();
+        let git_context = self
+            .gather_git_changelog_context(context, from_tag, to_tag)
+            .await?;
+
+        // Step 2: Generate changelog content using LLM
+        iris_status_generation!();
+        let changelog_content = self
+            .generate_changelog_content(context, &git_context, version)
+            .await?;
+
+        // Step 3: Apply bordered formatting like the original
+        let bordered_content = self.add_changelog_borders(&changelog_content);
+
+        // Step 4: Update file if requested
+        if update_file {
+            iris_status_synthesis!();
+            self.update_changelog_file(
+                &changelog_content,
+                file_path,
+                context,
+                to_tag,
+                Some(version.to_string()),
+            )
+            .await?;
+        }
+
+        log_debug!("✅ Iris: Changelog generation completed");
+
+        Ok(TaskResult::success_with_data(
+            "Changelog generated successfully".to_string(),
+            serde_json::json!({
+                "formatted": bordered_content,
+                "version": version,
+                "updated_file": update_file,
+                "file_path": file_path
+            }),
+        ))
+    }
+
+    /// Generate release notes
+    async fn generate_release_notes(
+        &self,
+        context: &AgentContext,
+        params: &HashMap<String, serde_json::Value>,
+    ) -> Result<TaskResult> {
+        log_debug!("🎉 Iris: Starting release notes generation");
+
+        // Extract parameters
+        let version = params
+            .get("version")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Latest");
+        let from_tag = params.get("from_tag").and_then(|v| v.as_str());
+        let to_tag = params.get("to_tag").and_then(|v| v.as_str());
+
+        // Step 1: Gather git context
+        iris_status_analysis!();
+        let git_context = self
+            .gather_git_changelog_context(context, from_tag, to_tag)
+            .await?;
+
+        // Step 2: Generate release notes content
+        iris_status_generation!();
+        let release_notes = self
+            .generate_release_notes_content(context, &git_context, version)
+            .await?;
+
+        // Step 3: Apply bordered formatting like the original
+        let bordered_content = self.add_changelog_borders(&release_notes);
+
+        log_debug!("✅ Iris: Release notes generation completed");
+
+        Ok(TaskResult::success_with_data(
+            "Release notes generated successfully".to_string(),
+            serde_json::json!({
+                "formatted": bordered_content,
+                "version": version
+            }),
+        ))
+    }
+
+    /// Gather git context for changelog/release notes generation
+    async fn gather_git_changelog_context(
+        &self,
+        context: &AgentContext,
+        from_tag: Option<&str>,
+        to_tag: Option<&str>,
+    ) -> Result<String> {
+        log_debug!("📊 Iris: Gathering git context for changelog");
+
+        let from_ref = from_tag.unwrap_or("HEAD~10"); // Default to last 10 commits
+        let to_ref = to_tag.unwrap_or("HEAD");
+
+        // Get commit range data
+        let commits = context
+            .git_repo
+            .get_commits_for_pr(from_ref, to_ref)
+            .unwrap_or_else(|_| vec!["No commits available".to_string()]);
+
+        let files = context
+            .git_repo
+            .get_commit_range_files(from_ref, to_ref)
+            .unwrap_or_else(|_| vec![]);
+
+        let commits_text = commits.join("\n");
+        let files_text = files
+            .iter()
+            .map(|f| format!("{}: {}", f.change_type, f.path))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let context_text = format!(
+            "Commit Range: {from_ref} to {to_ref}\n\nCommits:\n{commits_text}\n\nFiles Changed:\n{files_text}"
+        );
+
+        Ok(context_text)
+    }
+
+    /// Generate changelog content using LLM with the original structured format
+    async fn generate_changelog_content(
+        &self,
+        context: &AgentContext,
+        git_context: &str,
+        version: &str,
+    ) -> Result<String> {
+        // Use the original changelog system prompt for consistency
+        let system_prompt = self.create_original_changelog_system_prompt(context);
+
+        let user_prompt = format!(
+            "Generate a structured changelog JSON for version {version} based on the following git context:\n\n{git_context}\n\n\
+            Analyze the commits and files to extract meaningful changes. Group them appropriately by type. \
+            Include commit hashes, calculate metrics, and follow the exact JSON structure specified."
+        );
+
+        // Generate JSON response
+        let json_response = self
+            .generate_with_backend(&system_prompt, &user_prompt)
+            .await?;
+
+        // Parse and format using original formatter
+        self.format_changelog_response(&json_response)
+    }
+
+    /// Create the original changelog system prompt for consistency
+    fn create_original_changelog_system_prompt(&self, _context: &AgentContext) -> String {
+        "You are an AI assistant specialized in generating clear, concise, and informative changelogs for software projects. \
+        Your task is to create a well-structured changelog based on the provided commit information and analysis. \
+        The changelog should adhere to the Keep a Changelog 1.1.0 format (https://keepachangelog.com/en/1.1.0/).
+
+        Work step-by-step and follow these guidelines exactly:
+
+        1. Categorize changes into the following types: Added, Changed, Deprecated, Removed, Fixed, Security.
+        2. Use present tense and imperative mood in change descriptions.
+        3. Start each change entry with a capital letter and do not end with a period.
+        4. Be concise but descriptive in change entries and ensure good grammar, capitalization, and punctuation.
+        5. Include *short* commit hashes at the end of each entry.
+        6. Focus on the impact and significance of the changes and omit trivial changes below the relevance threshold.
+        7. Find commonalities and group related changes together under the appropriate category.
+        8. List the most impactful changes first within each category.
+        9. Mention associated issue numbers and pull request numbers when available.
+        10. Clearly identify and explain any breaking changes.
+        11. Avoid common cliché words (like 'enhance', 'streamline', 'leverage', etc) and phrases.
+        12. Do not speculate about the purpose of a change or add any information not directly supported by the context.
+        13. Mention any changes to dependencies or build configurations under the appropriate category.
+        14. Highlight changes that affect multiple parts of the codebase or have cross-cutting concerns.
+        15. NO YAPPING!
+
+        Your response must be a valid JSON object with the following structure:
+
+        {
+          \"version\": \"string or null\",
+          \"release_date\": \"string or null\",
+          \"sections\": {
+            \"Added\": [{ \"description\": \"string\", \"commit_hashes\": [\"string\"], \"associated_issues\": [\"string\"], \"pull_request\": \"string or null\" }],
+            \"Changed\": [...],
+            \"Deprecated\": [...],
+            \"Removed\": [...],
+            \"Fixed\": [...],
+            \"Security\": [...]
+          },
+          \"breaking_changes\": [{ \"description\": \"string\", \"commit_hash\": \"string\" }],
+          \"metrics\": {
+            \"total_commits\": number,
+            \"files_changed\": number,
+            \"insertions\": number,
+            \"deletions\": number
+          }
+        }".to_string()
+    }
+
+    /// Format changelog JSON response using the original formatter style
+    fn format_changelog_response(&self, json_response: &str) -> Result<String> {
+        // Clean the JSON response (remove markdown code blocks if present)
+        let clean_json = self.clean_json_response(json_response);
+
+        // Parse the JSON response (with fallback for malformed JSON)
+        let parsed_response: serde_json::Value = match serde_json::from_str(&clean_json) {
+            Ok(json) => json,
+            Err(_) => {
+                // Try our robust JSON parsing as fallback
+                self.parse_json_response::<serde_json::Value>(&clean_json)?
+            }
+        };
+
+        // Format using the original style
+        let mut formatted = String::new();
+
+        // Add header (no colors in agent output for consistency)
+        formatted.push_str("# Changelog\n\n");
+        formatted
+            .push_str("All notable changes to this project will be documented in this file.\n\n");
+        formatted.push_str(
+            "The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),\n",
+        );
+        formatted.push_str("and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).\n\n");
+
+        // Add version
+        let version = parsed_response
+            .get("version")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Unreleased");
+        formatted.push_str(&format!("## [{version}] - \n\n"));
+
+        // Process sections in order
+        let ordered_types = [
+            "Added",
+            "Changed",
+            "Fixed",
+            "Removed",
+            "Deprecated",
+            "Security",
+        ];
+
+        if let Some(sections) = parsed_response.get("sections").and_then(|s| s.as_object()) {
+            for change_type in &ordered_types {
+                if let Some(entries) = sections.get(*change_type).and_then(|e| e.as_array()) {
+                    if !entries.is_empty() {
+                        // Add emoji and section header
+                        let emoji = match *change_type {
+                            "Added" => "✨",
+                            "Changed" => "🔄",
+                            "Fixed" => "🐛",
+                            "Removed" => "🗑️",
+                            "Deprecated" => "⚠️",
+                            "Security" => "🔒",
+                            _ => "📝",
+                        };
+                        formatted.push_str(&format!("### {emoji} {change_type}\n\n"));
+
+                        // Add entries
+                        for entry in entries {
+                            if let Some(description) =
+                                entry.get("description").and_then(|d| d.as_str())
+                            {
+                                formatted.push_str(&format!("- {description}"));
+
+                                // Add commit hashes
+                                if let Some(hashes) =
+                                    entry.get("commit_hashes").and_then(|h| h.as_array())
+                                {
+                                    let hash_strs: Vec<String> = hashes
+                                        .iter()
+                                        .filter_map(|h| h.as_str())
+                                        .map(std::string::ToString::to_string)
+                                        .collect();
+                                    if !hash_strs.is_empty() {
+                                        formatted.push_str(&format!(" ({})", hash_strs.join(", ")));
+                                    }
+                                }
+                                formatted.push('\n');
+                            }
+                        }
+                        formatted.push('\n');
+                    }
+                }
+            }
+        }
+
+        // Add metrics
+        if let Some(metrics) = parsed_response.get("metrics").and_then(|m| m.as_object()) {
+            formatted.push_str("### 📊 Metrics\n\n");
+            if let Some(commits) = metrics
+                .get("total_commits")
+                .and_then(serde_json::Value::as_u64)
+            {
+                formatted.push_str(&format!("- Total Commits: {commits}\n"));
+            }
+            if let Some(files) = metrics
+                .get("files_changed")
+                .and_then(serde_json::Value::as_u64)
+            {
+                formatted.push_str(&format!("- Files Changed: {files}\n"));
+            }
+            if let Some(insertions) = metrics
+                .get("insertions")
+                .and_then(serde_json::Value::as_u64)
+            {
+                formatted.push_str(&format!("- Insertions: {insertions}\n"));
+            }
+            if let Some(deletions) = metrics.get("deletions").and_then(serde_json::Value::as_u64) {
+                formatted.push_str(&format!("- Deletions: {deletions}\n"));
+            }
+        }
+
+        Ok(formatted)
+    }
+
+    /// Add decorative borders like the original changelog output
+    fn add_changelog_borders(&self, content: &str) -> String {
+        let border = "━".repeat(50);
+        format!("{border}\n{content}\n{border}")
+    }
+
+    /// Clean JSON response by removing markdown code blocks
+    fn clean_json_response(&self, response: &str) -> String {
+        let response = response.trim();
+
+        // Remove markdown code blocks if present
+        if response.starts_with("```json") && response.ends_with("```") {
+            // Remove ```json from start and ``` from end
+            let without_start = response.strip_prefix("```json").unwrap_or(response);
+            let without_end = without_start.strip_suffix("```").unwrap_or(without_start);
+            without_end.trim().to_string()
+        } else if response.starts_with("```") && response.ends_with("```") {
+            // Remove generic ``` code blocks
+            let without_start = response.strip_prefix("```").unwrap_or(response);
+            let without_end = without_start.strip_suffix("```").unwrap_or(without_start);
+            without_end.trim().to_string()
+        } else {
+            response.to_string()
+        }
+    }
+
+    /// Generate release notes content using LLM with original format
+    async fn generate_release_notes_content(
+        &self,
+        _context: &AgentContext,
+        git_context: &str,
+        version: &str,
+    ) -> Result<String> {
+        // Use the original release notes system prompt for consistency
+        let system_prompt = self.create_original_release_notes_system_prompt();
+
+        let user_prompt = format!(
+            "Generate a structured release notes JSON for version {version} based on the following git context:\n\n{git_context}\n\n\
+            Analyze the commits and files to extract meaningful changes. Follow the exact JSON structure specified. \
+            Focus on technical accuracy and use the same tone as the changelog format."
+        );
+
+        // Generate JSON response
+        let json_response = self
+            .generate_with_backend(&system_prompt, &user_prompt)
+            .await?;
+
+        // Format using original release notes formatter style
+        self.format_release_notes_response(&json_response, version)
+    }
+
+    /// Create the original release notes system prompt for consistency
+    fn create_original_release_notes_system_prompt(&self) -> String {
+        "You are an AI assistant specialized in generating technical release notes for software projects. \
+        Your task is to create well-structured, professional release notes based on the provided commit information and analysis. \
+        The release notes should be technical, factual, and follow a structured format.
+
+        Work step-by-step and follow these guidelines exactly:
+
+        1. Categorize changes into sections: Highlights, Added, Changed, Fixed, Refactored, Upgrade Notes.
+        2. Use present tense and imperative mood in change descriptions.
+        3. Be concise but descriptive and ensure good grammar, capitalization, and punctuation.
+        4. Include *short* commit hashes at the end of each entry.
+        5. Focus on the technical impact and significance of the changes.
+        6. Group related changes together under appropriate sections.
+        7. List the most impactful changes first within each section.
+        8. Be factual and professional - avoid marketing language.
+        9. Include metrics and statistics when available.
+        10. Highlight any breaking changes or upgrade considerations.
+
+        Your response must be a valid JSON object with the following structure:
+
+        {
+          \"version\": \"string\",
+          \"release_date\": \"string or null\",
+          \"summary\": \"string\",
+          \"highlights\": [{ \"title\": \"string\", \"description\": \"string\", \"commit_hashes\": [\"string\"] }],
+          \"sections\": {
+            \"Added\": [{ \"description\": \"string\", \"commit_hashes\": [\"string\"] }],
+            \"Changed\": [...],
+            \"Fixed\": [...],
+            \"Refactored\": [...]
+          },
+          \"upgrade_notes\": [\"string\"],
+          \"metrics\": {
+            \"total_commits\": number,
+            \"files_changed\": number,
+            \"insertions\": number,
+            \"deletions\": number
+          }
+        }".to_string()
+    }
+
+    /// Format release notes JSON response using the original formatter style
+    fn format_release_notes_response(&self, json_response: &str, version: &str) -> Result<String> {
+        // Clean the JSON response (remove markdown code blocks if present)
+        let clean_json = self.clean_json_response(json_response);
+
+        // Parse the JSON response
+        let parsed_response: serde_json::Value = match serde_json::from_str(&clean_json) {
+            Ok(json) => json,
+            Err(_) => {
+                // Try our robust JSON parsing as fallback
+                self.parse_json_response::<serde_json::Value>(&clean_json)?
+            }
+        };
+
+        let mut formatted = String::new();
+
+        // Add header
+        formatted.push_str(&format!("# Release Notes - v{version}\n\n"));
+        formatted.push_str("Release Date: \n\n");
+
+        // Add summary
+        if let Some(summary) = parsed_response.get("summary").and_then(|s| s.as_str()) {
+            formatted.push_str(&format!("{summary}\n\n"));
+        }
+
+        // Add highlights section
+        if let Some(highlights) = parsed_response.get("highlights").and_then(|h| h.as_array()) {
+            if !highlights.is_empty() {
+                formatted.push_str("## ✨ Highlights\n\n");
+                for highlight in highlights {
+                    if let (Some(title), Some(description)) = (
+                        highlight.get("title").and_then(|t| t.as_str()),
+                        highlight.get("description").and_then(|d| d.as_str()),
+                    ) {
+                        formatted.push_str(&format!("### {title}\n\n{description}\n\n"));
+                    }
+                }
+            }
+        }
+
+        // Add sections in order
+        let ordered_types = ["Added", "Changed", "Fixed", "Refactored"];
+
+        if let Some(sections) = parsed_response.get("sections").and_then(|s| s.as_object()) {
+            for change_type in &ordered_types {
+                if let Some(entries) = sections.get(*change_type).and_then(|e| e.as_array()) {
+                    if !entries.is_empty() {
+                        // Add emoji and section header
+                        let emoji = match *change_type {
+                            "Added" => "✨",
+                            "Changed" => "🔧",
+                            "Fixed" => "🐛",
+                            "Refactored" => "♾️",
+                            _ => "📝",
+                        };
+                        formatted.push_str(&format!("## {emoji} {change_type}\n\n"));
+
+                        // Add entries
+                        for entry in entries {
+                            if let Some(description) =
+                                entry.get("description").and_then(|d| d.as_str())
+                            {
+                                formatted.push_str(&format!("- {description}"));
+
+                                // Add commit hashes
+                                if let Some(hashes) =
+                                    entry.get("commit_hashes").and_then(|h| h.as_array())
+                                {
+                                    let hash_strs: Vec<String> = hashes
+                                        .iter()
+                                        .filter_map(|h| h.as_str())
+                                        .map(std::string::ToString::to_string)
+                                        .collect();
+                                    if !hash_strs.is_empty() {
+                                        formatted.push_str(&format!(" ({})", hash_strs.join(", ")));
+                                    }
+                                }
+                                formatted.push('\n');
+                            }
+                        }
+                        formatted.push('\n');
+                    }
+                }
+            }
+        }
+
+        // Add upgrade notes
+        if let Some(upgrade_notes) = parsed_response
+            .get("upgrade_notes")
+            .and_then(|u| u.as_array())
+        {
+            if !upgrade_notes.is_empty() {
+                formatted.push_str("## 🔧 Upgrade Notes\n\n");
+                for note in upgrade_notes {
+                    if let Some(note_str) = note.as_str() {
+                        formatted.push_str(&format!("- {note_str}\n"));
+                    }
+                }
+                formatted.push('\n');
+            }
+        }
+
+        // Add metrics
+        if let Some(metrics) = parsed_response.get("metrics").and_then(|m| m.as_object()) {
+            formatted.push_str("## 📊 Metrics\n\n");
+            if let Some(commits) = metrics
+                .get("total_commits")
+                .and_then(serde_json::Value::as_u64)
+            {
+                formatted.push_str(&format!("- Total Commits: {commits}\n"));
+            }
+            if let Some(files) = metrics
+                .get("files_changed")
+                .and_then(serde_json::Value::as_u64)
+            {
+                formatted.push_str(&format!("- Files Changed: {files}\n"));
+            }
+            if let Some(insertions) = metrics
+                .get("insertions")
+                .and_then(serde_json::Value::as_u64)
+            {
+                formatted.push_str(&format!("- Insertions: {insertions}\n"));
+            }
+            if let Some(deletions) = metrics.get("deletions").and_then(serde_json::Value::as_u64) {
+                formatted.push_str(&format!("- Deletions: {deletions}\n"));
+            }
+        }
+
+        Ok(formatted)
+    }
+
+    /// Update changelog file with sophisticated file management
+    async fn update_changelog_file(
+        &self,
+        changelog_content: &str,
+        file_path: &str,
+        context: &AgentContext,
+        to_ref: Option<&str>,
+        version_name: Option<String>,
+    ) -> Result<()> {
+        log_debug!("📝 Iris: Updating changelog file: {}", file_path);
+
+        // Get commit date for version header
+        let commit_date = if let Some(to_ref) = to_ref {
+            context
+                .git_repo
+                .get_commit_date(to_ref)
+                .unwrap_or_else(|_| chrono::Local::now().format("%Y-%m-%d").to_string())
+        } else {
+            chrono::Local::now().format("%Y-%m-%d").to_string()
+        };
+
+        // Default changelog header
+        let default_header = "# Changelog\n\nAll notable changes to this project will be documented in this file.\n\nThe format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),\nand this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).\n\n";
+
+        // Strip ANSI codes and clean content
+        let clean_content = self.strip_ansi_codes(changelog_content);
+        let mut version_content = self.extract_version_content(&clean_content);
+
+        // Override version if provided
+        if let Some(version) = version_name {
+            version_content = self.replace_version_in_content(&version_content, &version);
+        }
+
+        // Add date to version header
+        version_content = self.add_date_to_version(&version_content, &commit_date);
+
+        // Read existing file or create new one
+        let existing_content = tokio::fs::read_to_string(file_path)
+            .await
+            .unwrap_or_default();
+
+        let final_content = if existing_content.is_empty() {
+            format!("{default_header}{version_content}")
+        } else {
+            self.merge_with_existing_changelog(&existing_content, &version_content, default_header)
+        };
+
+        // Write updated content
+        tokio::fs::write(file_path, final_content).await?;
+        log_debug!("✅ Iris: Changelog file updated successfully");
+
+        Ok(())
+    }
+
+    /// Strip ANSI color codes from text
+    fn strip_ansi_codes(&self, text: &str) -> String {
+        // Simple ANSI escape sequence removal
+        let re = Regex::new(r"\x1b\[[0-9;]*m").unwrap();
+        re.replace_all(text, "").to_string()
+    }
+
+    /// Extract version content from changelog
+    fn extract_version_content(&self, content: &str) -> String {
+        // Skip separator lines and extract version content
+        let clean_content = if content.starts_with("━") || content.starts_with('-') {
+            if let Some(pos) = content.find('\n') {
+                content[pos + 1..].to_string()
+            } else {
+                content.to_string()
+            }
+        } else {
+            content.to_string()
+        };
+
+        // Extract version section
+        if clean_content.contains("## [") {
+            let parts: Vec<&str> = clean_content.split("## [").collect();
+            if parts.len() > 1 {
+                format!("## [{}\n", parts[1])
+            } else {
+                clean_content
+            }
+        } else {
+            clean_content
+        }
+    }
+
+    /// Replace version in content
+    fn replace_version_in_content(&self, content: &str, version: &str) -> String {
+        let re = Regex::new(r"## \[([^\]]+)\]").unwrap();
+        re.replace(content, &format!("## [{version}]")).to_string()
+    }
+
+    /// Add date to version header
+    fn add_date_to_version(&self, content: &str, date: &str) -> String {
+        if content.contains(" - \n") {
+            content.replace(" - \n", &format!(" - {date}\n"))
+        } else if content.contains("] - ") && !content.contains("] - 20") {
+            let parts: Vec<&str> = content.splitn(2, "] - ").collect();
+            if parts.len() == 2 {
+                format!(
+                    "{}] - {}\n{}",
+                    parts[0],
+                    date,
+                    parts[1].trim_start_matches(['\n', ' '])
+                )
+            } else {
+                content.to_string()
+            }
+        } else {
+            content.to_string()
+        }
+    }
+
+    /// Merge new content with existing changelog
+    fn merge_with_existing_changelog(
+        &self,
+        existing: &str,
+        new_version: &str,
+        default_header: &str,
+    ) -> String {
+        let mut lines = existing.lines().collect::<Vec<_>>();
+        let mut header_end = 0;
+
+        // Find where header ends (first version entry)
+        for (i, line) in lines.iter().enumerate() {
+            if line.starts_with("## [") {
+                header_end = i;
+                break;
+            }
+        }
+
+        // If no existing versions found, add after header
+        if header_end == 0 {
+            if lines.is_empty() {
+                format!("{default_header}{new_version}")
+            } else {
+                format!("{existing}\n\n{new_version}")
+            }
+        } else {
+            // Insert new version at the top of versions list
+            lines.insert(header_end, "");
+            lines.insert(header_end, new_version.trim());
+            lines.join("\n")
+        }
+    }
 }
 
 #[async_trait]
@@ -1491,6 +2200,14 @@ impl super::core::IrisAgent for IrisAgent {
                 log_debug!("📋 Iris: Executing pull request description generation");
                 self.generate_pull_request(context, params).await
             }
+            "changelog_generation" | "generate_changelog" => {
+                log_debug!("📜 Iris: Executing changelog generation");
+                self.generate_changelog(context, params).await
+            }
+            "generate_release_notes" | "release_notes" => {
+                log_debug!("🎉 Iris: Executing release notes generation");
+                self.generate_release_notes(context, params).await
+            }
             _ => {
                 log_debug!("❌ Iris: Unknown task requested: {}", task);
                 Err(anyhow::anyhow!("Unknown task for Iris: {}", task))
@@ -1532,6 +2249,9 @@ impl super::core::IrisAgent for IrisAgent {
                 | "generate_pull_request"
                 | "pull_request_description"
                 | "changelog_generation"
+                | "generate_changelog"
+                | "release_notes_generation"
+                | "generate_release_notes"
                 | "file_analysis"
                 | "relevance_scoring"
         )
@@ -1546,7 +2266,10 @@ impl super::core::IrisAgent for IrisAgent {
             | "review_code"
             | "generate_pull_request"
             | "pull_request_description" => 10,
-            "changelog_generation" => 9,
+            "changelog_generation"
+            | "generate_changelog"
+            | "release_notes_generation"
+            | "generate_release_notes" => 9,
             "file_analysis" | "relevance_scoring" => 8,
             _ => 0,
         }
