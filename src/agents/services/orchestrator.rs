@@ -4,6 +4,7 @@
 //! tool coordination, and intelligent context gathering.
 
 use anyhow::Result;
+use futures::future;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::Write;
@@ -139,6 +140,16 @@ impl WorkflowOrchestrator {
             - You need to understand what changed and why\n\
             - You should gather enough context to assess file relevance and change impact\n\
             - You can expand or adjust this plan as you discover more context\n\n\
+            TOOL PARAMETER REQUIREMENTS:\n\
+            Git Operations:\n\
+            - diff: requires \"from_ref\" and \"to_ref\" (e.g., \"HEAD~1\", \"HEAD\")\n\
+            - status: optional \"include_unstaged\" (boolean)\n\
+            File Analyzer:\n\
+            - analyze: requires \"file_paths\" (array of strings)\n\
+            Code Search:\n\
+            - search: requires \"query\" (string) and \"search_type\" (\"function\", \"class\", \"text\")\n\
+            Workspace Management:\n\
+            - list: optional \"path\" (string)\n\n\
             IMPORTANT: Respond with ONLY a valid JSON array, nothing else. No explanations, no markdown formatting, just the raw JSON.\n\n\
             Expected format:\n\
             [\n\
@@ -181,7 +192,7 @@ impl WorkflowOrchestrator {
         Ok(tool_plan)
     }
 
-    /// Execute the planned tool calls with dynamic plan adjustment
+    /// Execute the planned tool calls with dynamic plan adjustment and parallel execution where possible
     async fn execute_planned_tool_calls(
         &self,
         context: &AgentContext,
@@ -194,121 +205,247 @@ impl WorkflowOrchestrator {
         crate::log_debug!("🔧 Executing {} planned tools...", current_plan.len());
 
         while !current_plan.is_empty() {
-            // Execute the next tool in the plan
-            let plan = current_plan.remove(0);
-            let plan_key = format!(
-                "{}:{}",
-                plan.tool_name,
-                plan.operation.as_deref().unwrap_or("default")
-            );
+            // Group tools that can be executed in parallel (no interdependencies)
+            let (parallel_batch, remaining_plan) = self.extract_parallel_batch(&current_plan);
+            current_plan = remaining_plan;
 
-            // Skip if we've already executed this exact tool+operation combination
-            if executed_tools.contains(&plan_key) {
-                crate::log_debug!("⏭️ Skipping duplicate: {}", plan_key);
-                continue;
+            if parallel_batch.len() > 1 {
+                crate::log_debug!("⚡ Running {} tools in parallel...", parallel_batch.len());
             }
 
-            let operation_display = if let Some(op) = &plan.operation {
-                format!(" ({op})")
-            } else {
-                String::new()
-            };
-            crate::log_debug!("🔧 Running: {}{}", plan.tool_name, operation_display);
-            iris_status_tool!(&plan.tool_name, &plan.reason);
-
-            // Find the tool by name
-            let tool = self
-                .find_tool_by_name(&plan.tool_name)
-                .ok_or_else(|| anyhow::anyhow!("Tool not found: {}", plan.tool_name))?;
-
-            // Execute the tool with planned parameters
-            let mut params = plan.parameters.clone();
-            if let Some(operation) = &plan.operation {
-                params.insert(
-                    "operation".to_string(),
-                    serde_json::Value::String(operation.clone()),
+            // Execute the parallel batch
+            let mut batch_futures = Vec::new();
+            for plan in parallel_batch {
+                let plan_key = format!(
+                    "{}:{}",
+                    plan.tool_name,
+                    plan.operation.as_deref().unwrap_or("default")
                 );
+
+                // Skip if we've already executed this exact tool+operation combination
+                if executed_tools.contains(&plan_key) {
+                    crate::log_debug!("⏭️ Skipping duplicate: {}", plan_key);
+                    continue;
+                }
+
+                let operation_display = if let Some(op) = &plan.operation {
+                    format!(" ({op})")
+                } else {
+                    String::new()
+                };
+                crate::log_debug!("🔧 Running: {}{}", plan.tool_name, operation_display);
+                iris_status_tool!(&plan.tool_name, &plan.reason);
+
+                // Find the tool by name
+                let tool = self
+                    .find_tool_by_name(&plan.tool_name)
+                    .ok_or_else(|| anyhow::anyhow!("Tool not found: {}", plan.tool_name))?;
+
+                // Prepare parameters
+                let mut params = plan.parameters.clone();
+                if let Some(operation) = &plan.operation {
+                    params.insert(
+                        "operation".to_string(),
+                        serde_json::Value::String(operation.clone()),
+                    );
+                }
+
+                // Create future for this tool execution
+                let context_clone = context.clone();
+                let tool_clone = tool.clone();
+                let plan_clone = plan.clone();
+                let plan_key_clone = plan_key.clone();
+
+                let future = async move {
+                    let result = tool_clone.execute(&context_clone, &params).await;
+                    (plan_clone, plan_key_clone, result)
+                };
+
+                batch_futures.push(future);
             }
 
-            match tool.execute(context, &params).await {
-                Ok(result) => {
-                    // Log a brief summary of what we got back
-                    let result_summary = match &result {
-                        serde_json::Value::Object(obj) => {
-                            if let Some(content) = obj.get("content").and_then(|v| v.as_str()) {
-                                let lines = content.lines().count();
-                                let chars = content.len();
-                                if chars > 500 {
-                                    format!("{lines}+ lines, {chars}+ chars")
+            // Execute all tools in this batch concurrently
+            let batch_results = future::join_all(batch_futures).await;
+
+            // Process results from the parallel batch
+            for (plan, plan_key, execution_result) in batch_results {
+                match execution_result {
+                    Ok(result) => {
+                        // Log a brief summary of what we got back
+                        let result_summary = match &result {
+                            serde_json::Value::Object(obj) => {
+                                if let Some(content) = obj.get("content").and_then(|v| v.as_str()) {
+                                    let lines = content.lines().count();
+                                    let chars = content.len();
+                                    if chars > 500 {
+                                        format!("{lines}+ lines, {chars}+ chars")
+                                    } else {
+                                        format!("{lines} lines, {chars} chars")
+                                    }
+                                } else if let Some(files) = obj.get("files").and_then(|v| v.as_array())
+                                {
+                                    format!("{} files analyzed", files.len())
                                 } else {
-                                    format!("{lines} lines, {chars} chars")
+                                    "structured data".to_string()
                                 }
-                            } else if let Some(files) = obj.get("files").and_then(|v| v.as_array())
-                            {
-                                format!("{} files analyzed", files.len())
-                            } else {
-                                "structured data".to_string()
                             }
-                        }
-                        serde_json::Value::Array(arr) => format!("{} items", arr.len()),
-                        serde_json::Value::String(s) => {
-                            let lines = s.lines().count();
-                            format!("{lines} lines")
-                        }
-                        _ => "data".to_string(),
-                    };
-
-                    crate::log_debug!("✅ {}: {}", plan.tool_name, result_summary);
-                    executed_tools.insert(plan_key);
-
-                    let tool_result = ToolResult {
-                        tool_name: plan.tool_name.clone(),
-                        operation: plan.operation.clone(),
-                        result,
-                        reason: plan.reason.clone(),
-                    };
-
-                    results.push(tool_result.clone());
-
-                    // After each tool execution, check if we need to expand the plan
-                    if results.len() <= 2 {
-                        // Only expand during early execution
-                        let expanded_plan = self
-                            .expand_plan_based_on_context(context, &results, &current_plan)
-                            .await?;
-                        if !expanded_plan.is_empty() {
-                            crate::log_debug!(
-                                "📋 Plan expanded with {} additional tools:",
-                                expanded_plan.len()
-                            );
-                            for (i, plan) in expanded_plan.iter().enumerate() {
-                                let operation_info = if let Some(op) = &plan.operation {
-                                    format!(" ({op})")
-                                } else {
-                                    String::new()
-                                };
-                                crate::log_debug!(
-                                    "  {}. {}{} - {}",
-                                    i + 1,
-                                    plan.tool_name,
-                                    operation_info,
-                                    plan.reason
-                                );
+                            serde_json::Value::Array(arr) => format!("{} items", arr.len()),
+                            serde_json::Value::String(s) => {
+                                let lines = s.lines().count();
+                                format!("{lines} lines")
                             }
-                            iris_status_expansion!();
-                            current_plan.extend(expanded_plan);
-                        }
+                            _ => "data".to_string(),
+                        };
+
+                        crate::log_debug!("✅ {}: {}", plan.tool_name, result_summary);
+                        executed_tools.insert(plan_key);
+
+                        let tool_result = ToolResult {
+                            tool_name: plan.tool_name.clone(),
+                            operation: plan.operation.clone(),
+                            result,
+                            reason: plan.reason.clone(),
+                        };
+
+                        results.push(tool_result);
+                    }
+                    Err(e) => {
+                        crate::log_debug!("❌ {} failed: {}", plan.tool_name, e);
+                        // Continue with other tools even if one fails
                     }
                 }
-                Err(e) => {
-                    crate::log_debug!("❌ {} failed: {}", plan.tool_name, e);
-                    // Continue with other tools even if one fails
+            }
+
+            // After executing a batch, check if we need to expand the plan
+            if results.len() <= 2 && !current_plan.is_empty() {
+                // Only expand during early execution and if we have more tools planned
+                let expanded_plan = self
+                    .expand_plan_based_on_context(context, &results, &current_plan)
+                    .await?;
+                if !expanded_plan.is_empty() {
+                    crate::log_debug!(
+                        "📋 Plan expanded with {} additional tools:",
+                        expanded_plan.len()
+                    );
+                    for (i, plan) in expanded_plan.iter().enumerate() {
+                        let operation_info = if let Some(op) = &plan.operation {
+                            format!(" ({op})")
+                        } else {
+                            String::new()
+                        };
+                        crate::log_debug!(
+                            "  {}. {}{} - {}",
+                            i + 1,
+                            plan.tool_name,
+                            operation_info,
+                            plan.reason
+                        );
+                    }
+                    iris_status_expansion!();
+                    current_plan.extend(expanded_plan);
                 }
             }
         }
 
         crate::log_debug!("🎯 Completed {} tool executions", results.len());
         Ok(results)
+    }
+
+    /// Extract a batch of tools that can be executed in parallel
+    fn extract_parallel_batch(&self, plan: &[ToolPlan]) -> (Vec<ToolPlan>, Vec<ToolPlan>) {
+        if plan.is_empty() {
+            return (Vec::new(), Vec::new());
+        }
+
+        // For now, we'll be conservative and only parallelize truly independent tools
+        // Tools that are safe to run in parallel:
+        // - Different tool types (Git Operations, File Analyzer, Workspace Management)
+        // - Same tool type with clearly different purposes/parameters
+        // Tools that should be sequential:
+        // - Same tool type with same operation (to avoid redundancy)
+        // - Code Search that might depend on previous results
+
+        let mut parallel_batch = Vec::new();
+        let mut remaining = Vec::new();
+        let mut seen_tool_operations = std::collections::HashSet::new();
+
+        for tool_plan in plan {
+            // Create a key that identifies this specific tool+operation combination
+            let tool_key = match tool_plan.operation.as_ref() {
+                Some(op) => format!("{}:{}", tool_plan.tool_name, op),
+                None => tool_plan.tool_name.clone(),
+            };
+
+            // Check if we've already included this tool+operation type
+            if seen_tool_operations.contains(&tool_key) {
+                crate::log_debug!("⏭️ Deferring duplicate tool combination: {}", tool_key);
+                remaining.push(tool_plan.clone());
+                continue;
+            }
+
+            let can_parallelize = match tool_plan.tool_name.as_str() {
+                "Git Operations" => {
+                    // Only allow one Git operation per batch to avoid conflicts
+                    !seen_tool_operations.iter().any(|key: &String| key.starts_with("Git Operations:"))
+                },
+                "File Analyzer" => {
+                    // File analysis is always safe to parallelize
+                    true
+                }, 
+                "Workspace Management" => {
+                    // Workspace operations are generally safe to parallelize
+                    true
+                }, 
+                "Code Search" => {
+                    // Code search might depend on context, be more conservative
+                    // Don't parallelize if we already have other tools running
+                    parallel_batch.is_empty()
+                },
+                _ => {
+                    // Unknown tools should be sequential for safety
+                    false
+                },
+            };
+
+            if can_parallelize && parallel_batch.len() < 2 {
+                // Limit parallel batch size to 2 to avoid overwhelming the system
+                parallel_batch.push(tool_plan.clone());
+                seen_tool_operations.insert(tool_key);
+            } else {
+                remaining.push(tool_plan.clone());
+            }
+        }
+
+        // If we only got one tool in the batch and there are more remaining,
+        // grab one more if it's safe to parallelize
+        if parallel_batch.len() == 1 && !remaining.is_empty() {
+            let first_tool = &parallel_batch[0].tool_name;
+            
+            // Look for a complementary tool that's safe to run with the first one
+            let mut complementary_idx = None;
+            for (i, tool_plan) in remaining.iter().enumerate() {
+                let is_complementary = match (first_tool.as_str(), tool_plan.tool_name.as_str()) {
+                    ("Git Operations", "Workspace Management") => true,
+                    ("Git Operations", "File Analyzer") => false, // File analyzer might depend on git results
+                    ("Workspace Management", "Git Operations") => true,
+                    ("Workspace Management", "File Analyzer") => true,
+                    ("File Analyzer", "Workspace Management") => true,
+                    _ => false,
+                };
+
+                if is_complementary {
+                    complementary_idx = Some(i);
+                    break;
+                }
+            }
+
+            if let Some(idx) = complementary_idx {
+                let complementary_tool = remaining.remove(idx);
+                parallel_batch.push(complementary_tool);
+            }
+        }
+
+        (parallel_batch, remaining)
     }
 
     /// Find a tool by its display name
@@ -392,14 +529,32 @@ impl WorkflowOrchestrator {
         }
 
         let expansion_prompt = format!(
-            "You are Iris, analyzing the context you've discovered so far. Based on what you've learned, \
-            determine if you need additional tools to get a complete understanding.\n\n\
-            Context you've discovered so far:\n{}\n\n\
-            Your remaining planned tools:\n{}\n\n\
-            Additional tools available to you:\n{}\n\n\
-            As Iris, should you add more tools to your plan? If yes, respond with a JSON array of additional tool calls. \
-            If you have enough context, respond with an empty array [].\n\n\
-            Focus on tools that will provide missing context or deeper analysis for your understanding.",
+            "TASK: Determine if additional tools are needed for complete context analysis.\n\n\
+            DISCOVERED CONTEXT:\n{}\n\n\
+            REMAINING PLANNED TOOLS:\n{}\n\n\
+            AVAILABLE ADDITIONAL TOOLS:\n{}\n\n\
+            INSTRUCTIONS:\n\
+            - If you have sufficient context for analysis, return: []\n\
+            - If you need more tools, return JSON array with tool specifications\n\
+            - Focus only on essential missing information gaps\n\
+            - Avoid redundant tool calls\n\n\
+            PARAMETER EXAMPLES:\n\
+            Git Operations diff: {{\"from_ref\": \"HEAD~1\", \"to_ref\": \"HEAD\"}}\n\
+            Git Operations status: {{\"include_unstaged\": true}}\n\
+            File Analyzer: {{\"file_paths\": [\"path1\", \"path2\"]}}\n\
+            Code Search: {{\"query\": \"function_name\", \"search_type\": \"function\"}}\n\
+            Workspace Management: {{\"operation\": \"list\", \"path\": \"src/\"}}\n\n\
+            RESPONSE FORMAT (JSON only, no explanations):\n\
+            [] OR [\n\
+              {{\n\
+                \"tool_name\": \"Exact Tool Name\",\n\
+                \"operation\": \"operation_name\",\n\
+                \"parameters\": {{\"correct_param\": \"value\"}},\n\
+                \"reason\": \"Brief reason for this tool\"\n\
+              }}\n\
+            ]\n\n\
+            Valid tool names: \"Git Operations\", \"File Analyzer\", \"Code Search\", \"Workspace Management\"\n\
+            Valid operations: \"diff\", \"status\", \"analyze\", \"search\", \"list\"",
             context_summary,
             remaining_plan
                 .iter()
