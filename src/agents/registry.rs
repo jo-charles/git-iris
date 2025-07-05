@@ -1,7 +1,9 @@
 use anyhow::Result;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
+use tokio::time::timeout;
 
 use crate::agents::{
     core::{AgentContext, IrisAgent, TaskResult},
@@ -14,6 +16,19 @@ pub struct AgentRegistry {
     capability_index: RwLock<HashMap<String, Vec<String>>>,
     tool_registry: Arc<ToolRegistry>,
     initialized: bool,
+    // Health monitoring
+    agent_health: RwLock<HashMap<String, AgentHealthInfo>>,
+}
+
+/// Health information for an individual agent
+#[derive(Debug, Clone)]
+struct AgentHealthInfo {
+    last_health_check: Instant,
+    last_successful_task: Option<Instant>,
+    consecutive_failures: u32,
+    total_health_checks: u64,
+    successful_health_checks: u64,
+    is_healthy: bool,
 }
 
 impl AgentRegistry {
@@ -23,6 +38,7 @@ impl AgentRegistry {
             capability_index: RwLock::new(HashMap::new()),
             tool_registry,
             initialized: false,
+            agent_health: RwLock::new(HashMap::new()),
         }
     }
 
@@ -203,17 +219,85 @@ impl AgentRegistry {
     pub async fn health_check(&self) -> HealthStatus {
         let agents = self.agents.read().await;
         let total = agents.len();
+        let mut healthy = 0;
+        let mut unhealthy = 0;
 
-        // In a real implementation, we'd ping each agent to check its status
-        // For now, assume all are healthy if registered
-        let healthy = total;
-        let unhealthy = 0;
+        // Perform actual health checks by testing agent responsiveness
+        for (agent_id, agent) in agents.iter() {
+            let is_agent_healthy = self.check_agent_health(agent_id, agent).await;
+            if is_agent_healthy {
+                healthy += 1;
+            } else {
+                unhealthy += 1;
+            }
+        }
 
         HealthStatus {
             total_agents: total,
             healthy_agents: healthy,
             unhealthy_agents: unhealthy,
             last_check: chrono::Utc::now(),
+        }
+    }
+
+    /// Check if a specific agent is healthy by testing its responsiveness
+    async fn check_agent_health(&self, agent_id: &str, agent: &Arc<dyn IrisAgent>) -> bool {
+        // Simple health check: test if agent can handle a basic ping task
+        let test_context = AgentContext::new(
+            crate::config::Config::default(),
+            crate::git::GitRepo::new(&std::env::current_dir().unwrap_or_default()).unwrap_or_else(
+                |_| {
+                    // Fallback for tests or environments without git repo
+                    crate::git::GitRepo::new(&std::path::PathBuf::from("/tmp")).unwrap()
+                },
+            ),
+        );
+
+        let health_check_timeout = Duration::from_secs(5);
+        let health_params = HashMap::new();
+
+        // Try to execute a simple health check task
+        if let Ok(Ok(result)) = timeout(
+            health_check_timeout,
+            agent.execute_task("health_check", &test_context, &health_params),
+        )
+        .await
+        {
+            self.update_agent_health(agent_id, true).await;
+            result.success
+        } else {
+            self.update_agent_health(agent_id, false).await;
+            false
+        }
+    }
+
+    /// Update agent health tracking
+    async fn update_agent_health(&self, agent_id: &str, success: bool) {
+        let mut health_map = self.agent_health.write().await;
+        let health_info =
+            health_map
+                .entry(agent_id.to_string())
+                .or_insert_with(|| AgentHealthInfo {
+                    last_health_check: Instant::now(),
+                    last_successful_task: None,
+                    consecutive_failures: 0,
+                    total_health_checks: 0,
+                    successful_health_checks: 0,
+                    is_healthy: true,
+                });
+
+        health_info.last_health_check = Instant::now();
+        health_info.total_health_checks += 1;
+
+        if success {
+            health_info.last_successful_task = Some(Instant::now());
+            health_info.consecutive_failures = 0;
+            health_info.successful_health_checks += 1;
+            health_info.is_healthy = true;
+        } else {
+            health_info.consecutive_failures += 1;
+            // Mark as unhealthy after 3 consecutive failures
+            health_info.is_healthy = health_info.consecutive_failures < 3;
         }
     }
 

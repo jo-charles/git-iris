@@ -18,6 +18,19 @@ pub struct AgentExecutor {
     max_concurrent_tasks: usize,
     task_timeout: Duration,
     running_tasks: Arc<RwLock<HashMap<String, RunningTask>>>,
+    // Statistics tracking
+    stats: Arc<RwLock<ExecutionStats>>,
+}
+
+/// Internal statistics tracking
+#[derive(Debug, Clone, Default)]
+struct ExecutionStats {
+    total_tasks_executed: u64,
+    successful_tasks: u64,
+    failed_tasks: u64,
+    execution_times: Vec<Duration>,
+    tasks_by_type: HashMap<String, u64>,
+    tasks_by_agent: HashMap<String, u64>,
 }
 
 /// A task waiting to be executed
@@ -97,6 +110,7 @@ impl AgentExecutor {
             max_concurrent_tasks: 10,
             task_timeout: Duration::from_secs(300), // 5 minutes default
             running_tasks: Arc::new(RwLock::new(HashMap::new())),
+            stats: Arc::new(RwLock::new(ExecutionStats::default())),
         }
     }
 
@@ -178,32 +192,57 @@ impl AgentExecutor {
 
         let execution_time = start_time.elapsed();
 
-        match result {
-            Ok(Ok(task_result)) => Ok(ExecutionResult {
-                task_id,
-                result: task_result,
-                agent_id,
-                execution_time,
-                retry_count: 0,
-                completed_at: chrono::Utc::now(),
-            }),
-            Ok(Err(e)) => Ok(ExecutionResult {
-                task_id,
-                result: TaskResult::failure(format!("Task execution failed: {e}")),
-                agent_id,
-                execution_time,
-                retry_count: 0,
-                completed_at: chrono::Utc::now(),
-            }),
-            Err(_) => Ok(ExecutionResult {
-                task_id,
-                result: TaskResult::failure("Task execution timed out".to_string()),
-                agent_id,
-                execution_time,
-                retry_count: 0,
-                completed_at: chrono::Utc::now(),
-            }),
-        }
+        let execution_result = match result {
+            Ok(Ok(task_result)) => {
+                // Record successful execution
+                self.record_task_execution(
+                    &request.task_type,
+                    &agent_id,
+                    execution_time,
+                    task_result.success,
+                )
+                .await;
+
+                ExecutionResult {
+                    task_id,
+                    result: task_result,
+                    agent_id,
+                    execution_time,
+                    retry_count: 0,
+                    completed_at: chrono::Utc::now(),
+                }
+            }
+            Ok(Err(e)) => {
+                // Record failed execution
+                self.record_task_execution(&request.task_type, &agent_id, execution_time, false)
+                    .await;
+
+                ExecutionResult {
+                    task_id,
+                    result: TaskResult::failure(format!("Task execution failed: {e}")),
+                    agent_id,
+                    execution_time,
+                    retry_count: 0,
+                    completed_at: chrono::Utc::now(),
+                }
+            }
+            Err(_) => {
+                // Record timeout as failure
+                self.record_task_execution(&request.task_type, &agent_id, execution_time, false)
+                    .await;
+
+                ExecutionResult {
+                    task_id,
+                    result: TaskResult::failure("Task execution timed out".to_string()),
+                    agent_id,
+                    execution_time,
+                    retry_count: 0,
+                    completed_at: chrono::Utc::now(),
+                }
+            }
+        };
+
+        Ok(execution_result)
     }
 
     /// Process the task queue
@@ -246,18 +285,63 @@ impl AgentExecutor {
     pub async fn get_statistics(&self) -> ExecutionStatistics {
         let queue = self.task_queue.read().await;
         let running = self.running_tasks.read().await;
+        let stats = self.stats.read().await;
 
-        // In a real implementation, these would be tracked over time
+        // Calculate average execution time
+        let average_execution_time = if stats.execution_times.is_empty() {
+            Duration::from_secs(0)
+        } else {
+            let total_ms: u64 = stats
+                .execution_times
+                .iter()
+                .map(|d| d.as_millis() as u64)
+                .sum();
+            Duration::from_millis(total_ms / stats.execution_times.len() as u64)
+        };
+
         ExecutionStatistics {
-            total_tasks_executed: 0,
-            successful_tasks: 0,
-            failed_tasks: 0,
-            average_execution_time: Duration::from_secs(0),
-            tasks_by_type: HashMap::new(),
-            tasks_by_agent: HashMap::new(),
+            total_tasks_executed: stats.total_tasks_executed,
+            successful_tasks: stats.successful_tasks,
+            failed_tasks: stats.failed_tasks,
+            average_execution_time,
+            tasks_by_type: stats.tasks_by_type.clone(),
+            tasks_by_agent: stats.tasks_by_agent.clone(),
             current_queue_size: queue.len(),
             current_running_tasks: running.len(),
         }
+    }
+
+    /// Record task execution statistics
+    async fn record_task_execution(
+        &self,
+        task_type: &str,
+        agent_id: &str,
+        execution_time: Duration,
+        success: bool,
+    ) {
+        let mut stats = self.stats.write().await;
+
+        stats.total_tasks_executed += 1;
+        if success {
+            stats.successful_tasks += 1;
+        } else {
+            stats.failed_tasks += 1;
+        }
+
+        stats.execution_times.push(execution_time);
+        // Keep only the last 1000 execution times to avoid memory growth
+        if stats.execution_times.len() > 1000 {
+            stats.execution_times.drain(0..500);
+        }
+
+        *stats
+            .tasks_by_type
+            .entry(task_type.to_string())
+            .or_insert(0) += 1;
+        *stats
+            .tasks_by_agent
+            .entry(agent_id.to_string())
+            .or_insert(0) += 1;
     }
 
     /// Get information about running tasks
