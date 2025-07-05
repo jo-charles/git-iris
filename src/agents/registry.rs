@@ -268,31 +268,26 @@ impl AgentRegistryBuilder {
     ) -> Result<AgentRegistry> {
         let tool_registry = self.registry.tool_registry.clone();
 
-        // Create and register commit agent
-        let commit_tools = tool_registry.get_tools_for_capability("commit").await?;
-        let commit_agent = Arc::new(crate::agents::commit::CommitAgent::new(
-            backend.clone(),
-            commit_tools,
-        ));
-        self.registry.register_agent(commit_agent).await?;
-
-        // Create and register review agent
-        let review_tools = tool_registry.get_tools_for_capability("review").await?;
-        let review_agent = Arc::new(crate::agents::review::ReviewAgent::new(
-            backend.clone(),
-            review_tools,
-        ));
-        self.registry.register_agent(review_agent).await?;
-
-        // Create and register changelog agent
-        let mut changelog_tools = tool_registry.get_tools_for_capability("changelog").await?;
+        // Create and register the unified Iris agent with all tools
+        let mut all_tools = Vec::new();
+        
+        // Gather all available tools for comprehensive capability
         let git_tools = tool_registry.get_tools_for_capability("git").await?;
-        changelog_tools.extend(git_tools);
-        let changelog_agent = Arc::new(crate::agents::changelog::ChangelogAgent::new(
-            backend,
-            changelog_tools,
-        ));
-        self.registry.register_agent(changelog_agent).await?;
+        let commit_tools = tool_registry.get_tools_for_capability("commit").await?;
+        let review_tools = tool_registry.get_tools_for_capability("review").await?;
+        let file_analysis_tools = tool_registry.get_tools_for_capability("file_analysis").await?;
+        
+        all_tools.extend(git_tools);
+        all_tools.extend(commit_tools);
+        all_tools.extend(review_tools);
+        all_tools.extend(file_analysis_tools);
+        
+        // Remove duplicates by tool ID
+        all_tools.sort_by(|a, b| a.id().cmp(b.id()));
+        all_tools.dedup_by(|a, b| a.id() == b.id());
+
+        let iris_agent = Arc::new(crate::agents::iris::IrisAgent::new(backend, all_tools));
+        self.registry.register_agent(iris_agent).await?;
 
         Ok(self.registry)
     }

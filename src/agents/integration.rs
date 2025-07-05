@@ -97,6 +97,13 @@ impl AgentIntegration {
 
         if result.result.success {
             if let Some(data) = result.result.data {
+                // Try to parse as GeneratedMessage first (Iris agent format)
+                if let Ok(generated_message) = serde_json::from_value::<crate::commit::types::GeneratedMessage>(data.clone()) {
+                    // Format the message using the existing formatter
+                    let formatted = crate::commit::types::format_commit_message(&generated_message);
+                    return Ok(formatted);
+                }
+                // Fallback to old format for backward compatibility
                 if let Some(message) = data.get("commit_message").and_then(|v| v.as_str()) {
                     return Ok(message.to_string());
                 }
