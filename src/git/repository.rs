@@ -14,6 +14,7 @@ use tempfile::TempDir;
 use url::Url;
 
 /// Represents a Git repository and provides methods for interacting with it.
+#[derive(Debug)]
 pub struct GitRepo {
     repo_path: PathBuf,
     /// Optional temporary directory for cloned repositories

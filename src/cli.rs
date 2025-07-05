@@ -70,6 +70,14 @@ pub struct Cli {
         help = "Repository URL to use instead of local repository"
     )]
     pub repository_url: Option<String>,
+
+    /// Use agent framework for enhanced AI-powered operations
+    #[arg(
+        long = "agent",
+        global = true,
+        help = "Use agent framework for enhanced AI-powered operations"
+    )]
+    pub agent: bool,
 }
 
 /// Enumeration of available subcommands
@@ -375,7 +383,7 @@ pub async fn main() -> anyhow::Result<()> {
     }
 
     if let Some(command) = cli.command {
-        handle_command(command, cli.repository_url).await
+        handle_command(command, cli.repository_url, cli.agent).await
     } else {
         // If no subcommand is provided, print the help
         let _ = Cli::parse_from(["git-iris", "--help"]);
@@ -397,28 +405,44 @@ async fn handle_gen(
     common: CommonParams,
     config: GenConfig,
     repository_url: Option<String>,
+    use_agent: bool,
 ) -> anyhow::Result<()> {
     log_debug!(
-        "Handling 'gen' command with common: {:?}, auto_commit: {}, use_gitmoji: {}, print: {}, verify: {}",
-        common,
-        config.auto_commit,
-        config.use_gitmoji,
-        config.print_only,
-        config.verify
-    );
-
-    ui::print_version(crate_version!());
-    ui::print_newline();
-
-    commit::handle_gen_command(
+        "Handling 'gen' command with common: {:?}, auto_commit: {}, use_gitmoji: {}, print: {}, verify: {}, use_agent: {}",
         common,
         config.auto_commit,
         config.use_gitmoji,
         config.print_only,
         config.verify,
-        repository_url,
-    )
-    .await
+        use_agent
+    );
+
+    ui::print_version(crate_version!());
+    ui::print_newline();
+
+    if use_agent {
+        // Use agent framework for commit message generation
+        crate::agents::integration::handle_gen_with_agent(
+            common,
+            config.auto_commit,
+            config.use_gitmoji,
+            config.print_only,
+            config.verify,
+            repository_url,
+        )
+        .await
+    } else {
+        // Use existing implementation
+        commit::handle_gen_command(
+            common,
+            config.auto_commit,
+            config.use_gitmoji,
+            config.print_only,
+            config.verify,
+            repository_url,
+        )
+        .await
+    }
 }
 
 /// Handle the `Config` command
@@ -449,28 +473,45 @@ async fn handle_review(
     commit: Option<String>,
     from: Option<String>,
     to: Option<String>,
+    use_agent: bool,
 ) -> anyhow::Result<()> {
     log_debug!(
-        "Handling 'review' command with common: {:?}, print: {}, include_unstaged: {}, commit: {:?}, from: {:?}, to: {:?}",
+        "Handling 'review' command with common: {:?}, print: {}, include_unstaged: {}, commit: {:?}, from: {:?}, to: {:?}, use_agent: {}",
         common,
         print,
-        include_unstaged,
-        commit,
-        from,
-        to
-    );
-    ui::print_version(crate_version!());
-    ui::print_newline();
-    commit::review::handle_review_command(
-        common,
-        print,
-        repository_url,
         include_unstaged,
         commit,
         from,
         to,
-    )
-    .await
+        use_agent
+    );
+    ui::print_version(crate_version!());
+    ui::print_newline();
+    if use_agent {
+        // Use agent framework for code review
+        crate::agents::integration::handle_review_with_agent(
+            common,
+            print,
+            repository_url,
+            include_unstaged,
+            commit,
+            from,
+            to,
+        )
+        .await
+    } else {
+        // Use existing implementation
+        commit::review::handle_review_command(
+            common,
+            print,
+            repository_url,
+            include_unstaged,
+            commit,
+            from,
+            to,
+        )
+        .await
+    }
 }
 
 /// Handle the `Changelog` command
@@ -482,18 +523,29 @@ async fn handle_changelog(
     update: bool,
     file: Option<String>,
     version_name: Option<String>,
+    use_agent: bool,
 ) -> anyhow::Result<()> {
     log_debug!(
-        "Handling 'changelog' command with common: {:?}, from: {}, to: {:?}, update: {}, file: {:?}, version_name: {:?}",
+        "Handling 'changelog' command with common: {:?}, from: {}, to: {:?}, update: {}, file: {:?}, version_name: {:?}, use_agent: {}",
         common,
         from,
         to,
         update,
         file,
-        version_name
+        version_name,
+        use_agent
     );
-    changes::handle_changelog_command(common, from, to, repository_url, update, file, version_name)
+    if use_agent {
+        // Use agent framework for changelog generation
+        crate::agents::integration::handle_changelog_with_agent(
+            common, from, to, repository_url, update, file, version_name
+        )
         .await
+    } else {
+        // Use existing implementation
+        changes::handle_changelog_command(common, from, to, repository_url, update, file, version_name)
+            .await
+    }
 }
 
 /// Handle the `ReleaseNotes` command
@@ -503,15 +555,26 @@ async fn handle_release_notes(
     to: Option<String>,
     repository_url: Option<String>,
     version_name: Option<String>,
+    use_agent: bool,
 ) -> anyhow::Result<()> {
     log_debug!(
-        "Handling 'release-notes' command with common: {:?}, from: {}, to: {:?}, version_name: {:?}",
+        "Handling 'release-notes' command with common: {:?}, from: {}, to: {:?}, version_name: {:?}, use_agent: {}",
         common,
         from,
         to,
-        version_name
+        version_name,
+        use_agent
     );
-    changes::handle_release_notes_command(common, from, to, repository_url, version_name).await
+    if use_agent {
+        // Use agent framework for release notes generation
+        crate::agents::integration::handle_release_notes_with_agent(
+            common, from, to, repository_url, version_name
+        )
+        .await
+    } else {
+        // Use existing implementation
+        changes::handle_release_notes_command(common, from, to, repository_url, version_name).await
+    }
 }
 
 /// Handle the `Serve` command
@@ -535,6 +598,7 @@ async fn handle_serve(
 pub async fn handle_command(
     command: Commands,
     repository_url: Option<String>,
+    use_agent: bool,
 ) -> anyhow::Result<()> {
     match command {
         Commands::Gen {
@@ -553,6 +617,7 @@ pub async fn handle_command(
                     verify: !no_verify,
                 },
                 repository_url,
+                use_agent,
             )
             .await
         }
@@ -579,6 +644,7 @@ pub async fn handle_command(
                 commit,
                 from,
                 to,
+                use_agent,
             )
             .await
         }
@@ -589,13 +655,13 @@ pub async fn handle_command(
             update,
             file,
             version_name,
-        } => handle_changelog(common, from, to, repository_url, update, file, version_name).await,
+        } => handle_changelog(common, from, to, repository_url, update, file, version_name, use_agent).await,
         Commands::ReleaseNotes {
             common,
             from,
             to,
             version_name,
-        } => handle_release_notes(common, from, to, repository_url, version_name).await,
+        } => handle_release_notes(common, from, to, repository_url, version_name, use_agent).await,
         Commands::Serve {
             dev,
             transport,
@@ -615,7 +681,7 @@ pub async fn handle_command(
             print,
             from,
             to,
-        } => handle_pr(common, print, from, to, repository_url).await,
+        } => handle_pr(common, print, from, to, repository_url, use_agent).await,
     }
 }
 
@@ -626,15 +692,26 @@ async fn handle_pr(
     from: Option<String>,
     to: Option<String>,
     repository_url: Option<String>,
+    use_agent: bool,
 ) -> anyhow::Result<()> {
     log_debug!(
-        "Handling 'pr' command with common: {:?}, print: {}, from: {:?}, to: {:?}",
+        "Handling 'pr' command with common: {:?}, print: {}, from: {:?}, to: {:?}, use_agent: {}",
         common,
         print,
         from,
-        to
+        to,
+        use_agent
     );
     ui::print_version(crate_version!());
     ui::print_newline();
-    commit::handle_pr_command(common, print, repository_url, from, to).await
+    if use_agent {
+        // Use agent framework for PR description generation
+        crate::agents::integration::handle_pr_with_agent(
+            common, print, repository_url, from, to
+        )
+        .await
+    } else {
+        // Use existing implementation
+        commit::handle_pr_command(common, print, repository_url, from, to).await
+    }
 }

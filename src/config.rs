@@ -27,6 +27,9 @@ pub struct Config {
     pub instructions: String,
     #[serde(default = "default_instruction_preset")]
     pub instruction_preset: String,
+    /// Performance and execution settings
+    #[serde(default)]
+    pub performance: PerformanceConfig,
     #[serde(skip)]
     pub temp_instructions: Option<String>,
     #[serde(skip)]
@@ -48,6 +51,27 @@ pub struct ProviderConfig {
     pub additional_params: HashMap<String, String>,
     /// Token limit, if set by the user
     pub token_limit: Option<usize>,
+}
+
+/// Performance and execution configuration
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct PerformanceConfig {
+    /// Maximum number of concurrent tasks for agent execution
+    pub max_concurrent_tasks: Option<usize>,
+    /// Default timeout for tasks in seconds
+    pub default_timeout_seconds: Option<u64>,
+    /// Whether to use agent framework when available
+    pub use_agent_framework: bool,
+}
+
+impl Default for PerformanceConfig {
+    fn default() -> Self {
+        Self {
+            max_concurrent_tasks: Some(5),
+            default_timeout_seconds: Some(300),
+            use_agent_framework: true,
+        }
+    }
 }
 
 /// Default function for `use_gitmoji`
@@ -372,6 +396,13 @@ impl Config {
     pub fn is_project_config(&self) -> bool {
         self.is_project_config
     }
+
+    /// Get the current provider as LLMProvider enum (placeholder - needs actual LLMProvider variants)
+    pub fn provider(&self) -> Option<String> {
+        // For now, just return the provider name as a string
+        // This will need to be updated when we know the actual LLMProvider enum structure
+        Some(self.default_provider.clone())
+    }
 }
 
 impl Default for Config {
@@ -397,6 +428,7 @@ impl Default for Config {
             use_gitmoji: default_gitmoji(),
             instructions: String::new(),
             instruction_preset: default_instruction_preset(),
+            performance: PerformanceConfig::default(),
             temp_instructions: None,
             temp_preset: None,
             is_project_config: false,

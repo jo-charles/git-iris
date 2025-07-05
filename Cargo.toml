@@ -43,6 +43,7 @@ rand = "0.9.0"
 ratatui = "0.29.0"
 regex = "1.10.6"
 reqwest = { version = "0.12.15", features = ["json"] }
+rig-core = "0.13.0"
 rmcp = { version = "0.1.5", features = ["server", "transport-sse-server"] }
 schemars = "0.8.21"
 serde = { version = "1.0.209", features = ["derive"] }
@@ -55,9 +56,11 @@ tiktoken-rs = "0.6.0"
 tokio = { version = "1.44.2", features = ["full"] }
 tokio-retry = "0.3.0"
 toml = "0.8.19"
+tracing = "0.1.40"
 tui-textarea = "0.7.0"
 unicode-width = "0.2.0"
 url = "2.5.0"
+uuid = { version = "1.11.0", features = ["v4", "serde"] }
 
 [dev-dependencies]
 dotenv = "0.15.0"

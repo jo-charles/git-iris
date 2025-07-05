@@ -1,3 +1,4 @@
+pub mod agents;
 pub mod changes;
 pub mod cli;
 pub mod commands;
