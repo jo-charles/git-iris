@@ -47,7 +47,7 @@ impl ReleaseNotesWorkflow {
             .await?;
 
         // Phase 4: Format and finalize
-        let formatted_notes = self.format_release_notes(&release_notes).await?;
+        let formatted_notes = Self::format_release_notes(&release_notes);
 
         Ok(TaskResult::success(formatted_notes))
     }
@@ -59,7 +59,7 @@ impl ReleaseNotesWorkflow {
         from_ref: &str,
         to_ref: &str,
     ) -> Result<serde_json::Value> {
-        let system_prompt = self.create_comprehensive_analysis_prompt();
+        let system_prompt = Self::create_comprehensive_analysis_prompt();
         let user_prompt = format!(
             "Analyze the git changes between {from_ref} and {to_ref} for release notes generation. \
              Focus on impact, user-facing changes, and technical improvements."
@@ -76,7 +76,7 @@ impl ReleaseNotesWorkflow {
 
     /// Extract key highlights from comprehensive analysis
     async fn extract_highlights(&self, analysis: &serde_json::Value) -> Result<serde_json::Value> {
-        let system_prompt = self.create_highlights_extraction_prompt();
+        let system_prompt = Self::create_highlights_extraction_prompt();
         let user_prompt = format!(
             "Extract key highlights and impactful changes from this analysis:\n\n{}",
             serde_json::to_string_pretty(analysis)?
@@ -98,7 +98,7 @@ impl ReleaseNotesWorkflow {
         highlights: &serde_json::Value,
         version: Option<&str>,
     ) -> Result<String> {
-        let system_prompt = self.create_structured_notes_prompt();
+        let system_prompt = Self::create_structured_notes_prompt();
         let user_prompt = format!(
             "Generate comprehensive release notes for version {}:\n\n\
              Analysis:\n{}\n\nHighlights:\n{}",
@@ -115,38 +115,33 @@ impl ReleaseNotesWorkflow {
     }
 
     /// Format release notes for final output
-    async fn format_release_notes(&self, content: &str) -> Result<String> {
+    fn format_release_notes(content: &str) -> String {
+        use std::fmt::Write;
         // Structure and format the release notes
         let lines: Vec<&str> = content.lines().collect();
         let mut formatted = String::new();
-        let mut in_code_block = false;
+
+        writeln!(formatted, "# Release Notes").unwrap();
+        writeln!(formatted).unwrap();
 
         for line in lines {
-            if line.starts_with("```") {
-                in_code_block = !in_code_block;
-                formatted.push_str(&format!("{line}\n"));
-            } else if in_code_block {
-                formatted.push_str(&format!("{line}\n"));
-            } else if line.trim().is_empty() {
-                formatted.push('\n');
-            } else if line.starts_with("# ") {
-                formatted.push_str(&format!("{line}\n\n"));
-            } else if line.starts_with("## ") {
-                formatted.push_str(&format!("{line}\n"));
-            } else if line.starts_with("### ") {
-                formatted.push_str(&format!("{line}\n"));
-            } else if line.starts_with("- ") || line.starts_with("* ") {
-                formatted.push_str(&format!("{line}\n"));
+            if line.trim().is_empty() {
+                writeln!(formatted).unwrap();
             } else {
-                formatted.push_str(&format!("{line}\n"));
+                writeln!(formatted, "{line}").unwrap();
             }
         }
 
-        Ok(formatted)
+        // Add footer
+        writeln!(formatted).unwrap();
+        writeln!(formatted, "---").unwrap();
+        writeln!(formatted, "*Generated automatically by git-iris*").unwrap();
+
+        formatted
     }
 
     /// Create comprehensive analysis system prompt
-    fn create_comprehensive_analysis_prompt(&self) -> String {
+    fn create_comprehensive_analysis_prompt() -> String {
         r"You are an expert technical writer and software release analyst.
 Your task is to analyze git changes and understand their impact for release notes generation.
 
@@ -163,7 +158,7 @@ Provide detailed JSON analysis with clear categorization and impact assessment."
     }
 
     /// Create highlights extraction system prompt
-    fn create_highlights_extraction_prompt(&self) -> String {
+    fn create_highlights_extraction_prompt() -> String {
         r"You are an expert at identifying the most important and impactful changes in software releases.
 Your task is to extract key highlights that users and stakeholders care about most.
 
@@ -179,7 +174,7 @@ Provide JSON output with clear, concise highlights that tell the story of this r
     }
 
     /// Create structured notes generation system prompt
-    fn create_structured_notes_prompt(&self) -> String {
+    fn create_structured_notes_prompt() -> String {
         r"You are an expert technical writer specializing in release notes.
 Your task is to create comprehensive, well-structured release notes that:
 

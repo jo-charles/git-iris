@@ -30,7 +30,7 @@ impl GitTool {
     }
 
     /// Get detailed repository information
-    async fn get_repo_info(&self, context: &AgentContext) -> Result<serde_json::Value> {
+    fn get_repo_info(context: &AgentContext) -> Result<serde_json::Value> {
         let repo = &context.git_repo;
         let current_branch = repo.get_current_branch()?;
         let recent_commits = repo.get_recent_commits(5)?;
@@ -50,11 +50,7 @@ impl GitTool {
     }
 
     /// Get commit information for a specific commit
-    async fn get_commit_info(
-        &self,
-        context: &AgentContext,
-        commit_id: &str,
-    ) -> Result<serde_json::Value> {
+    fn get_commit_info(context: &AgentContext, commit_id: &str) -> Result<serde_json::Value> {
         let repo = &context.git_repo;
         let files = repo.get_commit_files(commit_id)?;
         let date = repo.get_commit_date(commit_id)?;
@@ -71,12 +67,7 @@ impl GitTool {
     }
 
     /// Get file changes between commits or branches
-    async fn get_diff_info(
-        &self,
-        context: &AgentContext,
-        from: &str,
-        to: &str,
-    ) -> Result<serde_json::Value> {
+    fn get_diff_info(context: &AgentContext, from: &str, to: &str) -> Result<serde_json::Value> {
         let repo = &context.git_repo;
         let files = repo.get_commit_range_files(from, to)?;
         let commits = repo.get_commits_for_pr(from, to)?;
@@ -96,11 +87,7 @@ impl GitTool {
     }
 
     /// Get current repository status
-    async fn get_status(
-        &self,
-        context: &AgentContext,
-        include_unstaged: bool,
-    ) -> Result<serde_json::Value> {
+    fn get_status(context: &AgentContext, include_unstaged: bool) -> Result<serde_json::Value> {
         let repo = &context.git_repo;
 
         let files_info = repo.extract_files_info(include_unstaged)?;
@@ -133,7 +120,6 @@ impl GitTool {
 
     /// Get project metadata based on changed files
     async fn get_project_metadata(
-        &self,
         context: &AgentContext,
         file_paths: Option<Vec<String>>,
     ) -> Result<serde_json::Value> {
@@ -210,12 +196,12 @@ impl AgentTool for GitTool {
         ))?;
 
         match args.operation.as_str() {
-            "info" => self.get_repo_info(context).await,
+            "info" => Self::get_repo_info(context),
             "commit_info" => {
                 let commit_id = args.commit_id.ok_or_else(|| {
                     anyhow::anyhow!("commit_id required for commit_info operation")
                 })?;
-                self.get_commit_info(context, &commit_id).await
+                Self::get_commit_info(context, &commit_id)
             }
             "diff" => {
                 let from = args
@@ -224,13 +210,13 @@ impl AgentTool for GitTool {
                 let to = args
                     .to_ref
                     .ok_or_else(|| anyhow::anyhow!("to_ref required for diff operation"))?;
-                self.get_diff_info(context, &from, &to).await
+                Self::get_diff_info(context, &from, &to)
             }
             "status" => {
                 let include_unstaged = args.include_unstaged.unwrap_or(false);
-                self.get_status(context, include_unstaged).await
+                Self::get_status(context, include_unstaged)
             }
-            "metadata" => self.get_project_metadata(context, args.file_paths).await,
+            "metadata" => Self::get_project_metadata(context, args.file_paths).await,
             _ => Err(anyhow::anyhow!("Unknown git operation: {}", args.operation)),
         }
     }

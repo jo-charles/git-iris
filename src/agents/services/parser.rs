@@ -51,7 +51,7 @@ impl ResponseParser {
         }
 
         // Try to find any JSON object in the response
-        if let Some(potential_json) = self.extract_json_object(response) {
+        if let Some(potential_json) = Self::extract_json_object(response) {
             crate::log_debug!(
                 "🔍 Parser: Found potential JSON object - {} chars",
                 potential_json.len()
@@ -68,7 +68,7 @@ impl ResponseParser {
         }
 
         // Last resort: try to handle truncated JSON
-        if let Some(truncated_json) = self.fix_truncated_json(response) {
+        if let Some(truncated_json) = Self::fix_truncated_json(response) {
             crate::log_debug!(
                 "🔧 Parser: Attempting to parse truncated JSON - {} chars",
                 truncated_json.len()
@@ -127,7 +127,7 @@ impl ResponseParser {
     }
 
     /// Extract JSON object from arbitrary text
-    fn extract_json_object(&self, response: &str) -> Option<String> {
+    fn extract_json_object(response: &str) -> Option<String> {
         if let Some(start) = response.find('{') {
             if let Some(end) = response.rfind('}') {
                 if end > start {
@@ -150,7 +150,7 @@ impl ResponseParser {
     }
 
     /// Try to fix truncated JSON by finding the last complete field
-    fn fix_truncated_json(&self, response: &str) -> Option<String> {
+    fn fix_truncated_json(response: &str) -> Option<String> {
         if let Some(start) = response.find('{') {
             // Find the last complete field by looking for the last closing brace before any truncation
             let mut brace_count = 0;
@@ -193,11 +193,12 @@ impl ResponseParser {
         };
 
         // Format using the original style
-        self.format_changelog_from_json(parsed_response)
+        Ok(Self::format_changelog_from_json(&parsed_response))
     }
 
     /// Format changelog JSON into markdown
-    fn format_changelog_from_json(&self, parsed_response: serde_json::Value) -> Result<String> {
+    fn format_changelog_from_json(parsed_response: &serde_json::Value) -> String {
+        use std::fmt::Write;
         let mut formatted = String::new();
 
         // Add header (no colors in agent output for consistency)
@@ -214,7 +215,6 @@ impl ResponseParser {
             .get("version")
             .and_then(|v| v.as_str())
             .unwrap_or("Unreleased");
-        use std::fmt::Write;
         write!(formatted, "## [{version}] - \n\n").unwrap();
 
         // Process sections in order
@@ -241,14 +241,14 @@ impl ResponseParser {
                             "Security" => "🔒",
                             _ => "📝",
                         };
-                        formatted.push_str(&format!("### {emoji} {change_type}\n\n"));
+                        write!(formatted, "### {emoji} {change_type}\n\n").unwrap();
 
                         // Add entries
                         for entry in entries {
                             if let Some(description) =
                                 entry.get("description").and_then(|d| d.as_str())
                             {
-                                formatted.push_str(&format!("- {description}"));
+                                write!(formatted, "- {description}").unwrap();
 
                                 // Add commit hashes
                                 if let Some(hashes) =
@@ -260,7 +260,7 @@ impl ResponseParser {
                                         .map(std::string::ToString::to_string)
                                         .collect();
                                     if !hash_strs.is_empty() {
-                                        formatted.push_str(&format!(" ({})", hash_strs.join(", ")));
+                                        write!(formatted, " ({})", hash_strs.join(", ")).unwrap();
                                     }
                                 }
                                 formatted.push('\n');
@@ -279,26 +279,26 @@ impl ResponseParser {
                 .get("total_commits")
                 .and_then(serde_json::Value::as_u64)
             {
-                formatted.push_str(&format!("- Total Commits: {commits}\n"));
+                writeln!(formatted, "- Total Commits: {commits}").unwrap();
             }
             if let Some(files) = metrics
                 .get("files_changed")
                 .and_then(serde_json::Value::as_u64)
             {
-                formatted.push_str(&format!("- Files Changed: {files}\n"));
+                writeln!(formatted, "- Files Changed: {files}").unwrap();
             }
             if let Some(insertions) = metrics
                 .get("insertions")
                 .and_then(serde_json::Value::as_u64)
             {
-                formatted.push_str(&format!("- Insertions: {insertions}\n"));
+                writeln!(formatted, "- Insertions: {insertions}").unwrap();
             }
             if let Some(deletions) = metrics.get("deletions").and_then(serde_json::Value::as_u64) {
-                formatted.push_str(&format!("- Deletions: {deletions}\n"));
+                writeln!(formatted, "- Deletions: {deletions}").unwrap();
             }
         }
 
-        Ok(formatted)
+        formatted
     }
 }
 

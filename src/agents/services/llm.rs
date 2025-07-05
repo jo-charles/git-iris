@@ -25,10 +25,11 @@ const DEFAULT_MAX_TOKENS: u64 = 8192;
 // Compiled regex patterns for status extraction (performance optimization)
 static STATUS_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
     vec![
-        Regex::new(r"STATUS:\s*(.+)").unwrap(),
-        Regex::new(r"NEXT_STATUS:\s*(.+)").unwrap(),
-        Regex::new(r"Current status:\s*(.+)").unwrap(),
-        Regex::new(r"Status:\s*(.+)").unwrap(),
+        Regex::new(r"STATUS:\s*(.+)").expect("Failed to compile STATUS regex pattern"),
+        Regex::new(r"NEXT_STATUS:\s*(.+)").expect("Failed to compile NEXT_STATUS regex pattern"),
+        Regex::new(r"Current status:\s*(.+)")
+            .expect("Failed to compile Current status regex pattern"),
+        Regex::new(r"Status:\s*(.+)").expect("Failed to compile Status regex pattern"),
     ]
 });
 
@@ -145,47 +146,56 @@ impl GenerationRequestBuilder {
         }
     }
 
+    #[must_use]
     pub fn system_prompt(mut self, prompt: String) -> Self {
         self.system_prompt = Some(prompt);
         self
     }
 
+    #[must_use]
     pub fn user_prompt(mut self, prompt: String) -> Self {
         self.user_prompt = Some(prompt);
         self
     }
 
+    #[must_use]
     pub fn temperature(mut self, temperature: f32) -> Self {
         self.temperature = temperature;
         self
     }
 
+    #[must_use]
     pub fn phase(mut self, phase: IrisPhase) -> Self {
         self.phase = phase;
         self
     }
 
+    #[must_use]
     pub fn with_context(mut self, context: &str) -> Self {
         self.context_hint = context.to_string();
         self
     }
 
+    #[must_use]
     pub fn context_hint(mut self, hint: &str) -> Self {
         self.context_hint = hint.to_string();
         self
     }
 
+    #[must_use]
     pub fn operation_type(mut self, operation: &str) -> Self {
         self.operation_type = operation.to_string();
         self
     }
 
+    #[must_use]
     pub fn current_step(mut self, step: usize) -> Self {
         // For now, we'll just store it in the context hint
         self.context_hint = format!("step {step}");
         self
     }
 
+    #[must_use]
     pub fn total_steps(mut self, total: Option<usize>) -> Self {
         // For now, we'll just store it in the context hint
         if let Some(total) = total {

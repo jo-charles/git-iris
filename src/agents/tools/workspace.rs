@@ -246,11 +246,7 @@ impl WorkspaceTool {
     }
 
     /// List files and directories in a given path
-    async fn list_directory(
-        &self,
-        context: &AgentContext,
-        path: Option<String>,
-    ) -> Result<serde_json::Value> {
+    fn list_directory(context: &AgentContext, path: Option<String>) -> Result<serde_json::Value> {
         let repo_path = context.git_repo.repo_path();
         let target_path = if let Some(p) = path {
             repo_path.join(p)
@@ -312,11 +308,7 @@ impl WorkspaceTool {
     }
 
     /// Read file contents
-    async fn read_file(
-        &self,
-        context: &AgentContext,
-        file_path: &str,
-    ) -> Result<serde_json::Value> {
+    fn read_file(context: &AgentContext, file_path: &str) -> Result<serde_json::Value> {
         let repo_path = context.git_repo.repo_path();
         let target_path = repo_path.join(file_path);
 
@@ -344,23 +336,12 @@ impl WorkspaceTool {
         }))
     }
 
-    /// Find files matching patterns
-    async fn find_files(
-        &self,
+    /// Find files by pattern
+    fn find_files(
         context: &AgentContext,
         pattern: &str,
         directory: Option<String>,
     ) -> Result<serde_json::Value> {
-        let repo_path = context.git_repo.repo_path();
-        let search_path = if let Some(dir) = directory {
-            repo_path.join(dir)
-        } else {
-            repo_path.clone()
-        };
-
-        let mut matches = Vec::new();
-        let pattern_lower = pattern.to_lowercase();
-
         fn search_recursive(
             path: &Path,
             pattern: &str,
@@ -402,6 +383,16 @@ impl WorkspaceTool {
             Ok(())
         }
 
+        let repo_path = context.git_repo.repo_path();
+        let search_path = if let Some(dir) = directory {
+            repo_path.join(dir)
+        } else {
+            repo_path.clone()
+        };
+
+        let mut matches = Vec::new();
+        let pattern_lower = pattern.to_lowercase();
+
         search_recursive(&search_path, &pattern_lower, repo_path, &mut matches)?;
 
         // Sort by relevance (exact matches first, then by name)
@@ -428,14 +419,7 @@ impl WorkspaceTool {
     }
 
     /// Get workspace summary
-    async fn get_workspace_info(&self, context: &AgentContext) -> Result<serde_json::Value> {
-        let repo_path = context.git_repo.repo_path();
-        let current_branch = context.git_repo.get_current_branch()?;
-
-        // Count files and directories
-        let mut file_count = 0;
-        let mut dir_count = 0;
-
+    fn get_workspace_info(context: &AgentContext) -> Result<serde_json::Value> {
         fn count_recursive(
             path: &Path,
             file_count: &mut usize,
@@ -461,17 +445,29 @@ impl WorkspaceTool {
             Ok(())
         }
 
+        let repo_path = context.git_repo.repo_path();
+        let current_branch = context.git_repo.get_current_branch()?;
+
+        // Count files and directories
+        let mut file_count = 0;
+        let mut dir_count = 0;
         count_recursive(repo_path, &mut file_count, &mut dir_count)?;
+
+        // Get Git status info
+        let recent_commits = context.git_repo.get_recent_commits(5)?;
 
         Ok(serde_json::json!({
             "workspace_path": repo_path.to_string_lossy(),
             "current_branch": current_branch,
-            "is_remote": context.git_repo.is_remote(),
-            "remote_url": context.git_repo.get_remote_url(),
             "file_count": file_count,
             "directory_count": dir_count,
-            "workspace_exists": repo_path.exists(),
-            "is_git_repo": repo_path.join(".git").exists()
+            "recent_commits": recent_commits.len(),
+            "latest_commit": recent_commits.first().map(|c| serde_json::json!({
+                "hash": c.hash,
+                "message": c.message,
+                "author": c.author,
+                "timestamp": c.timestamp
+            }))
         }))
     }
 
@@ -565,20 +561,20 @@ impl crate::agents::tools::AgentTool for WorkspaceTool {
         ))?;
 
         match args.operation.as_str() {
-            "list" => self.list_directory(context, args.path).await,
+            "list" => Self::list_directory(context, args.path),
             "read" => {
                 let path = args
                     .path
                     .ok_or_else(|| anyhow::anyhow!("path required for read operation"))?;
-                self.read_file(context, &path).await
+                Self::read_file(context, &path)
             }
             "find" => {
                 let pattern = args
                     .pattern
                     .ok_or_else(|| anyhow::anyhow!("pattern required for find operation"))?;
-                self.find_files(context, &pattern, args.directory).await
+                Self::find_files(context, &pattern, args.directory)
             }
-            "info" => self.get_workspace_info(context).await,
+            "info" => Self::get_workspace_info(context),
             "exists" => {
                 let path = args
                     .path

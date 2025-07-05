@@ -111,7 +111,7 @@ impl WorkflowOrchestrator {
         // Step 3: Use LLM to synthesize tool results into intelligent context
         crate::log_debug!("🤖 Orchestrator: Synthesizing tool results with LLM");
         iris_status_synthesis!();
-        let synthesis_prompt = self.build_tool_synthesis_prompt(&tool_results)?;
+        let synthesis_prompt = Self::build_tool_synthesis_prompt(&tool_results);
         crate::log_debug!(
             "🛠️ Orchestrator: Synthesis prompt built - {} chars",
             synthesis_prompt.len()
@@ -199,7 +199,7 @@ impl WorkflowOrchestrator {
         );
 
         // Parse the tool plan
-        let tool_plan = self.parse_tool_plan(&planning_result)?;
+        let tool_plan = Self::parse_tool_plan(&planning_result);
         crate::log_debug!(
             "📋 Orchestrator: Parsed {} planned tool operations",
             tool_plan.len()
@@ -418,7 +418,7 @@ impl WorkflowOrchestrator {
             expansion_result.len()
         );
 
-        let expanded_tools = self.parse_tool_plan(&expansion_result)?;
+        let expanded_tools = Self::parse_tool_plan(&expansion_result);
         crate::log_debug!(
             "📋 Orchestrator: Parsed {} additional tools for plan expansion",
             expanded_tools.len()
@@ -428,7 +428,7 @@ impl WorkflowOrchestrator {
     }
 
     /// Build prompt to synthesize tool results into intelligent context
-    fn build_tool_synthesis_prompt(&self, tool_results: &[ToolResult]) -> Result<String> {
+    fn build_tool_synthesis_prompt(tool_results: &[ToolResult]) -> String {
         let mut prompt = String::from(
             "You are Iris, an expert AI assistant synthesizing information from multiple tools to understand Git changes.\n\n\
             Your task is to analyze the tool results and provide intelligent insights about file relevance, change purpose, and overall impact.\n\n\
@@ -471,11 +471,11 @@ impl WorkflowOrchestrator {
             }",
         );
 
-        Ok(prompt)
+        prompt
     }
 
     /// Parse tool planning response into structured tool plan
-    fn parse_tool_plan(&self, planning_result: &str) -> Result<Vec<ToolPlan>> {
+    fn parse_tool_plan(planning_result: &str) -> Vec<ToolPlan> {
         crate::log_debug!("📋 Orchestrator: Parsing tool plan from LLM response");
 
         // Try to parse JSON response
@@ -511,7 +511,7 @@ impl WorkflowOrchestrator {
                     "✅ Orchestrator: Successfully parsed {} tool operations",
                     tool_plan.len()
                 );
-                return Ok(tool_plan);
+                return tool_plan;
             }
         }
 
@@ -527,12 +527,12 @@ impl WorkflowOrchestrator {
             serde_json::Value::String("HEAD".to_string()),
         );
 
-        Ok(vec![ToolPlan {
+        vec![ToolPlan {
             tool_name: "Git Operations".to_string(),
             operation: Some("diff".to_string()),
             parameters: git_params,
             reason: "Get code changes for analysis".to_string(),
-        }])
+        }]
     }
 
     /// Parse LLM intelligence result into structured context
@@ -552,69 +552,71 @@ impl WorkflowOrchestrator {
         let files_with_relevance: Vec<FileRelevance> = parsed_response
             .get("files")
             .and_then(|f| f.as_array())
-            .map(|files| {
-                crate::log_debug!("📊 Orchestrator: Processing {} file analyses from LLM", files.len());
-                files
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(i, file)| {
-                        let file_result = Some(FileRelevance {
-                            path: file.get("path")?.as_str()?.to_string(),
-                            #[allow(clippy::cast_possible_truncation, clippy::as_conversions)]
-                            relevance_score: file.get("relevance_score")?.as_f64()? as f32,
-                            analysis: file.get("analysis")?.as_str()?.to_string(),
-                            key_changes: file
-                                .get("key_changes")?
-                                .as_array()?
-                                .iter()
-                                .filter_map(|v| {
-                                    v.as_str().map(std::string::ToString::to_string)
-                                })
-                                .collect(),
-                            impact_assessment: file
-                                .get("impact_assessment")?
-                                .as_str()?
-                                .to_string(),
-                        });
-
-                        if let Some(ref fr) = file_result {
+            .map_or_else(
+                || {
+                    // Fallback: create basic context with equal relevance
+                    crate::log_debug!("⚠️ Orchestrator: Using fallback file analysis");
+                    git_context
+                        .staged_files
+                        .iter()
+                        .enumerate()
+                        .map(|(i, file)| {
                             crate::log_debug!(
-                                "📄 Orchestrator: File {} analysis - relevance: {:.2}, {} key changes",
-                                fr.path,
-                                fr.relevance_score,
-                                fr.key_changes.len()
+                                "📄 Orchestrator: Creating fallback analysis for file {}: {}",
+                                i + 1,
+                                file.path
                             );
-                        } else {
-                            crate::log_debug!("⚠️ Orchestrator: Failed to parse file analysis #{}", i + 1);
-                        }
+                            FileRelevance {
+                                path: file.path.clone(),
+                                relevance_score: 0.7, // Default relevance
+                                analysis: format!("File {} was modified", file.path),
+                                key_changes: vec!["Content changes detected".to_string()],
+                                impact_assessment: "Part of the overall changeset".to_string(),
+                            }
+                        })
+                        .collect()
+                },
+                |files| {
+                    crate::log_debug!("📊 Orchestrator: Processing {} file analyses from LLM", files.len());
+                    files
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(i, file)| {
+                            let file_result = Some(FileRelevance {
+                                path: file.get("path")?.as_str()?.to_string(),
+                                #[allow(clippy::cast_possible_truncation, clippy::as_conversions)]
+                                relevance_score: file.get("relevance_score")?.as_f64()? as f32,
+                                analysis: file.get("analysis")?.as_str()?.to_string(),
+                                key_changes: file
+                                    .get("key_changes")?
+                                    .as_array()?
+                                    .iter()
+                                    .filter_map(|v| {
+                                        v.as_str().map(std::string::ToString::to_string)
+                                    })
+                                    .collect(),
+                                impact_assessment: file
+                                    .get("impact_assessment")?
+                                    .as_str()?
+                                    .to_string(),
+                            });
 
-                        file_result
-                    })
-                    .collect()
-            })
-            .unwrap_or_else(|| {
-                // Fallback: create basic context with equal relevance
-                crate::log_debug!("⚠️ Orchestrator: Using fallback file analysis");
-                git_context
-                    .staged_files
-                    .iter()
-                    .enumerate()
-                    .map(|(i, file)| {
-                        crate::log_debug!(
-                            "📄 Orchestrator: Creating fallback analysis for file {}: {}",
-                            i + 1,
-                            file.path
-                        );
-                        FileRelevance {
-                            path: file.path.clone(),
-                            relevance_score: 0.7, // Default relevance
-                            analysis: format!("File {} was modified", file.path),
-                            key_changes: vec!["Content changes detected".to_string()],
-                            impact_assessment: "Part of the overall changeset".to_string(),
-                        }
-                    })
-                    .collect()
-            });
+                            if let Some(ref fr) = file_result {
+                                crate::log_debug!(
+                                    "📄 Orchestrator: File {} analysis - relevance: {:.2}, {} key changes",
+                                    fr.path,
+                                    fr.relevance_score,
+                                    fr.key_changes.len()
+                                );
+                            } else {
+                                crate::log_debug!("⚠️ Orchestrator: Failed to parse file analysis #{}", i + 1);
+                            }
+
+                            file_result
+                        })
+                        .collect()
+                },
+            );
 
         let change_summary = parsed_response
             .get("change_summary")

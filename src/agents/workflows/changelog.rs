@@ -44,7 +44,7 @@ impl ChangelogWorkflow {
             .await?;
 
         // Phase 4: Format and structure output
-        let formatted_changelog = self.format_changelog(&changelog_content).await?;
+        let formatted_changelog = Self::format_changelog(&changelog_content);
 
         Ok(TaskResult::success(formatted_changelog))
     }
@@ -56,8 +56,8 @@ impl ChangelogWorkflow {
         from_ref: &str,
         to_ref: &str,
     ) -> Result<serde_json::Value> {
-        let system_prompt = self.create_analysis_system_prompt();
-        let user_prompt = self.create_analysis_user_prompt(from_ref, to_ref);
+        let system_prompt = Self::create_analysis_system_prompt();
+        let user_prompt = Self::create_analysis_user_prompt(from_ref, to_ref);
 
         let request = GenerationRequest::new(system_prompt, user_prompt).with_temperature(0.3);
 
@@ -68,7 +68,7 @@ impl ChangelogWorkflow {
 
     /// Categorize changes into logical groups
     async fn categorize_changes(&self, analysis: &serde_json::Value) -> Result<serde_json::Value> {
-        let system_prompt = self.create_categorization_system_prompt();
+        let system_prompt = Self::create_categorization_system_prompt();
         let user_prompt = format!(
             "Categorize the following changes into logical groups:\n\n{}",
             serde_json::to_string_pretty(analysis)?
@@ -87,7 +87,7 @@ impl ChangelogWorkflow {
         categorized_changes: &serde_json::Value,
         version: Option<&str>,
     ) -> Result<String> {
-        let system_prompt = self.create_content_generation_system_prompt();
+        let system_prompt = Self::create_content_generation_system_prompt();
         let user_prompt = format!(
             "Generate changelog content for version {}:\n\n{}",
             version.unwrap_or("Next"),
@@ -100,7 +100,7 @@ impl ChangelogWorkflow {
     }
 
     /// Format changelog into final structure
-    async fn format_changelog(&self, content: &str) -> Result<String> {
+    fn format_changelog(content: &str) -> String {
         // Additional formatting and structure improvements
         let lines: Vec<&str> = content.lines().collect();
         let mut formatted = String::new();
@@ -109,16 +109,16 @@ impl ChangelogWorkflow {
             if line.trim().is_empty() {
                 formatted.push('\n');
             } else {
-                use std::fmt::Write;
-                writeln!(formatted, "{line}").unwrap();
+                formatted.push_str(line);
+                formatted.push('\n');
             }
         }
 
-        Ok(formatted)
+        formatted
     }
 
     /// Create system prompt for commit analysis
-    fn create_analysis_system_prompt(&self) -> String {
+    fn create_analysis_system_prompt() -> String {
         r"You are an expert at analyzing git commits and understanding code changes.
 Your task is to analyze a series of git commits and extract meaningful information about:
 1. The type of changes (features, bug fixes, refactoring, etc.)
@@ -131,14 +131,14 @@ Provide structured JSON output with detailed analysis."
     }
 
     /// Create user prompt for commit analysis
-    fn create_analysis_user_prompt(&self, from_ref: &str, to_ref: &str) -> String {
+    fn create_analysis_user_prompt(from_ref: &str, to_ref: &str) -> String {
         format!(
             "Analyze the git commits between {from_ref} and {to_ref} and provide a structured analysis of the changes."
         )
     }
 
     /// Create system prompt for change categorization
-    fn create_categorization_system_prompt(&self) -> String {
+    fn create_categorization_system_prompt() -> String {
         r"You are an expert at organizing and categorizing software changes for changelog generation.
 Your task is to group related changes into logical categories such as:
 - Added (new features)
@@ -152,7 +152,7 @@ Provide well-organized JSON output with clear categorization.".to_string()
     }
 
     /// Create system prompt for content generation
-    fn create_content_generation_system_prompt(&self) -> String {
+    fn create_content_generation_system_prompt() -> String {
         r"You are an expert technical writer specializing in changelog generation.
 Your task is to create clear, concise, and informative changelog entries that:
 1. Follow semantic versioning principles

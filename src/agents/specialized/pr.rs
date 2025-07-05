@@ -96,8 +96,7 @@ impl PullRequestAgent {
                 .await?
         } else {
             // Use commit messages to build a simpler context
-            self.build_context_from_commit_messages(&commit_messages, context)
-                .await?
+            Self::build_context_from_commit_messages(&commit_messages, context)
         };
 
         // Step 3: Generate PR description using existing prompt system
@@ -147,11 +146,10 @@ impl PullRequestAgent {
     }
 
     /// Build context from provided commit messages
-    async fn build_context_from_commit_messages(
-        &self,
+    fn build_context_from_commit_messages(
         commit_messages: &[String],
         context: &AgentContext,
-    ) -> Result<crate::context::CommitContext> {
+    ) -> crate::context::CommitContext {
         log_debug!(
             "🔧 PullRequestAgent: Building context from {} commit messages",
             commit_messages.len()
@@ -190,7 +188,7 @@ impl PullRequestAgent {
             }
         }
 
-        Ok(commit_context)
+        commit_context
     }
 
     /// Analyze the impact and scope of changes for PR description

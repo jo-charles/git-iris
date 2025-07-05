@@ -56,7 +56,7 @@ impl ReviewWorkflow {
 
         // Step 3: Create review-specific prompts
         let system_prompt = create_review_system_prompt(&context.config)?;
-        let managed_user_prompt = self.manage_review_context(&commit_context).await?;
+        let managed_user_prompt = Self::manage_review_context(&commit_context);
         log_debug!("💭 ReviewWorkflow: Review prompts created");
 
         // Step 4: Generate review with LLM
@@ -129,14 +129,16 @@ impl ReviewWorkflow {
     }
 
     /// Manage review context for optimal token usage
-    async fn manage_review_context(&self, context: &CommitContext) -> Result<String> {
+    fn manage_review_context(context: &CommitContext) -> String {
+        use std::fmt::Write;
         log_debug!("📊 ReviewWorkflow: Managing review context for optimal analysis");
 
         let mut managed_prompt = String::new();
 
         // Add project context
-        managed_prompt.push_str(&format!(
-            "Project: {} ({})\n",
+        writeln!(
+            managed_prompt,
+            "Project: {} ({})",
             context
                 .project_metadata
                 .language
@@ -147,49 +149,78 @@ impl ReviewWorkflow {
                 .framework
                 .as_deref()
                 .unwrap_or("No framework")
-        ));
+        )
+        .unwrap();
 
-        // Add branch context
-        managed_prompt.push_str(&format!("Branch: {}\n", context.branch));
+        // Add summary with priority on critical information
+        write!(
+            managed_prompt,
+            "\n## Changes Summary\n{}\n",
+            context.summary
+        )
+        .unwrap();
 
-        // Add recent commits for context
+        // Include diff statistics if available and meaningful
+        if !context.diff_stat.is_empty() {
+            write!(
+                managed_prompt,
+                "\n## Diff Statistics\n{}\n",
+                context.diff_stat
+            )
+            .unwrap();
+        }
+
+        // Add recent commits with focus on patterns
         if !context.recent_commits.is_empty() {
-            managed_prompt.push_str("\nRecent commits:\n");
-            for commit in context.recent_commits.iter().take(3) {
-                managed_prompt.push_str(&format!("- {}: {}\n", &commit.hash[..8], commit.message));
+            write!(managed_prompt, "\n## Recent Commits\n").unwrap();
+            for commit in context.recent_commits.iter().take(5) {
+                // Limit to last 5 commits
+                writeln!(
+                    managed_prompt,
+                    "- {}: {}",
+                    &commit.hash[..8],
+                    commit.message
+                )
+                .unwrap();
             }
         }
 
-        // Add files with analysis (prioritize by complexity)
-        managed_prompt.push_str("\nFiles to review:\n");
-        for (idx, file) in context.staged_files.iter().enumerate() {
-            managed_prompt.push_str(&format!("\n{}. File: {}\n", idx + 1, file.path));
-            managed_prompt.push_str(&format!("   Change: {:?}\n", file.change_type));
-
-            // Add analysis if available
-            if !file.analysis.is_empty() {
-                managed_prompt.push_str("   Analysis:\n");
-                for analysis in &file.analysis {
-                    managed_prompt.push_str(&format!("   - {analysis}\n"));
-                }
-            }
-
-            // Add diff (truncated for large files)
-            if !file.diff.is_empty() {
-                let diff_preview = if file.diff.len() > 2000 {
-                    format!("{}...[truncated]", &file.diff[..2000])
-                } else {
-                    file.diff.clone()
-                };
-                managed_prompt.push_str(&format!("   Diff:\n{diff_preview}\n"));
+        // Add staged files if available
+        if !context.staged_files.is_empty() {
+            write!(managed_prompt, "\n## Files in Scope\n").unwrap();
+            for file in context.staged_files.iter().take(10) {
+                // Limit to 10 files for readability
+                writeln!(managed_prompt, "- {} ({:?})", file.path, file.change_type).unwrap();
             }
         }
+
+        // Add metadata context
+        if !context.project_metadata.dependencies.is_empty() {
+            write!(managed_prompt, "\n## Key Dependencies\n").unwrap();
+            for dep in context.project_metadata.dependencies.iter().take(8) {
+                writeln!(managed_prompt, "- {dep}").unwrap();
+            }
+        }
+
+        // Add focused instructions
+        write!(
+            managed_prompt,
+            "\n## Review Focus\n\
+            Please analyze the changes with attention to:\n\
+            - Code quality and maintainability\n\
+            - Potential bugs or security issues\n\
+            - Performance implications\n\
+            - Test coverage and reliability\n\
+            - Documentation and clarity\n\
+            - Adherence to project patterns\n"
+        )
+        .unwrap();
 
         log_debug!(
-            "✅ ReviewWorkflow: Managed context created - {} chars",
+            "📝 ReviewWorkflow: Context managed - {} characters total",
             managed_prompt.len()
         );
 
-        Ok(managed_prompt)
+        managed_prompt
     }
 }

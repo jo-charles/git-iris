@@ -67,9 +67,7 @@ impl ChangelogAgent {
         );
 
         // Step 1: Gather Git changelog context
-        let git_context = self
-            .gather_git_changelog_context(context, from_tag, to_tag)
-            .await?;
+        let git_context = Self::gather_git_changelog_context(context, from_tag, to_tag)?;
 
         // Step 2: Generate changelog content
         let changelog_content = self
@@ -78,14 +76,13 @@ impl ChangelogAgent {
 
         // Step 3: Update changelog file if specified
         if let Some(file_path) = params.get("file").and_then(|v| v.as_str()) {
-            self.update_changelog_file(
+            Self::update_changelog_file(
                 &changelog_content,
                 file_path,
                 context,
                 to_tag,
                 Some(version.to_string()),
-            )
-            .await?;
+            )?;
         }
 
         log_debug!("✅ ChangelogAgent: Changelog generated successfully");
@@ -125,9 +122,7 @@ impl ChangelogAgent {
         );
 
         // Step 1: Gather Git context
-        let git_context = self
-            .gather_git_changelog_context(context, from_tag, to_tag)
-            .await?;
+        let git_context = Self::gather_git_changelog_context(context, from_tag, to_tag)?;
 
         // Step 2: Generate release notes content
         let release_notes_content = self
@@ -149,8 +144,7 @@ impl ChangelogAgent {
     }
 
     /// Gather Git context for changelog generation
-    async fn gather_git_changelog_context(
-        &self,
+    fn gather_git_changelog_context(
         context: &AgentContext,
         from_tag: Option<&str>,
         to_tag: Option<&str>,
@@ -198,7 +192,7 @@ impl ChangelogAgent {
     ) -> Result<String> {
         log_debug!("🤖 ChangelogAgent: Generating changelog content using LLM");
 
-        let system_prompt = self.create_changelog_system_prompt(context);
+        let system_prompt = Self::create_changelog_system_prompt(context);
         let user_prompt = format!(
             "Generate a comprehensive changelog for version {version} based on the following Git history:\n\n{git_context}\n\nInclude appropriate categorization (Added, Changed, Fixed, Deprecated, Removed, Security) and ensure the format is clean and professional."
         );
@@ -214,7 +208,7 @@ impl ChangelogAgent {
             .build()?;
 
         let response = self.llm_service.generate(request).await?;
-        let formatted_response = self.format_changelog_response(&response)?;
+        let formatted_response = Self::format_changelog_response(&response);
 
         Ok(formatted_response)
     }
@@ -228,7 +222,7 @@ impl ChangelogAgent {
     ) -> Result<String> {
         log_debug!("🤖 ChangelogAgent: Generating release notes content using LLM");
 
-        let system_prompt = self.create_release_notes_system_prompt();
+        let system_prompt = Self::create_release_notes_system_prompt();
         let user_prompt = format!(
             "Generate professional release notes for version {version} based on the following Git history:\n\n{git_context}\n\nFocus on user-facing changes, improvements, and important technical updates. Make it engaging and informative for users."
         );
@@ -244,13 +238,13 @@ impl ChangelogAgent {
             .build()?;
 
         let response = self.llm_service.generate(request).await?;
-        let formatted_response = self.format_release_notes_response(&response, version)?;
+        let formatted_response = Self::format_release_notes_response(&response, version);
 
         Ok(formatted_response)
     }
 
     /// Create system prompt for changelog generation
-    fn create_changelog_system_prompt(&self, _context: &AgentContext) -> String {
+    fn create_changelog_system_prompt(_context: &AgentContext) -> String {
         "You are an expert at creating comprehensive, well-structured changelogs from Git commit history.
 
 GUIDELINES:
@@ -267,7 +261,7 @@ Return ONLY the changelog content in proper markdown format, ready to be inserte
     }
 
     /// Create system prompt for release notes generation
-    fn create_release_notes_system_prompt(&self) -> String {
+    fn create_release_notes_system_prompt() -> String {
         "You are an expert at creating engaging, informative release notes that communicate changes effectively to users.
 
 GUIDELINES:
@@ -284,45 +278,45 @@ Return well-formatted release notes in markdown that can be used for GitHub rele
     }
 
     /// Format changelog response from LLM
-    fn format_changelog_response(&self, json_response: &str) -> Result<String> {
+    fn format_changelog_response(json_response: &str) -> String {
         log_debug!("🔧 ChangelogAgent: Formatting changelog response");
 
         // Try to parse as JSON first, fallback to plain text
         if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(json_response) {
             if let Some(content) = parsed.get("content").and_then(|v| v.as_str()) {
-                return Ok(self.add_changelog_borders(content));
+                return Self::add_changelog_borders(content);
             }
             if let Some(changelog) = parsed.get("changelog").and_then(|v| v.as_str()) {
-                return Ok(self.add_changelog_borders(changelog));
+                return Self::add_changelog_borders(changelog);
             }
         }
 
         // Fallback to using the raw response
-        let cleaned = self.clean_json_response(json_response);
-        Ok(self.add_changelog_borders(&cleaned))
+        let cleaned = Self::clean_json_response(json_response);
+        Self::add_changelog_borders(&cleaned)
     }
 
     /// Format release notes response from LLM
-    fn format_release_notes_response(&self, json_response: &str, version: &str) -> Result<String> {
+    fn format_release_notes_response(json_response: &str, version: &str) -> String {
         log_debug!("🔧 ChangelogAgent: Formatting release notes response");
 
         // Try to parse as JSON first, fallback to plain text
         if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(json_response) {
             if let Some(content) = parsed.get("content").and_then(|v| v.as_str()) {
-                return Ok(format!("# Release Notes - {version}\n\n{content}"));
+                return format!("# Release Notes - {version}\n\n{content}");
             }
             if let Some(notes) = parsed.get("release_notes").and_then(|v| v.as_str()) {
-                return Ok(format!("# Release Notes - {version}\n\n{notes}"));
+                return format!("# Release Notes - {version}\n\n{notes}");
             }
         }
 
         // Fallback to using the raw response
-        let cleaned = self.clean_json_response(json_response);
-        Ok(format!("# Release Notes - {version}\n\n{cleaned}"))
+        let cleaned = Self::clean_json_response(json_response);
+        format!("# Release Notes - {version}\n\n{cleaned}")
     }
 
     /// Add borders around changelog content
-    fn add_changelog_borders(&self, content: &str) -> String {
+    fn add_changelog_borders(content: &str) -> String {
         format!(
             "<!-- CHANGELOG_START -->\n{}\n<!-- CHANGELOG_END -->",
             content.trim()
@@ -330,7 +324,7 @@ Return well-formatted release notes in markdown that can be used for GitHub rele
     }
 
     /// Clean JSON response for plain text usage
-    fn clean_json_response(&self, response: &str) -> String {
+    fn clean_json_response(response: &str) -> String {
         response
             .trim()
             .trim_start_matches("```json")
@@ -341,8 +335,7 @@ Return well-formatted release notes in markdown that can be used for GitHub rele
     }
 
     /// Update changelog file with new content
-    async fn update_changelog_file(
-        &self,
+    fn update_changelog_file(
         changelog_content: &str,
         file_path: &str,
         _context: &AgentContext,
@@ -357,8 +350,11 @@ Return well-formatted release notes in markdown that can be used for GitHub rele
         });
 
         // Merge new content with existing
-        let updated_content =
-            self.merge_with_existing_changelog(&existing_content, changelog_content, "# Changelog");
+        let updated_content = Self::merge_with_existing_changelog(
+            &existing_content,
+            changelog_content,
+            "# Changelog",
+        );
 
         // Write updated content back to file
         std::fs::write(file_path, updated_content)
@@ -370,7 +366,6 @@ Return well-formatted release notes in markdown that can be used for GitHub rele
 
     /// Merge new changelog content with existing file
     fn merge_with_existing_changelog(
-        &self,
         existing: &str,
         new_version: &str,
         default_header: &str,

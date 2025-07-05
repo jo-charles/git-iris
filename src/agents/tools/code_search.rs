@@ -32,8 +32,7 @@ impl CodeSearchTool {
     }
 
     /// Execute a ripgrep search for patterns
-    async fn execute_ripgrep_search(
-        &self,
+    fn execute_ripgrep_search(
         query: &str,
         repo_path: &Path,
         file_pattern: Option<&str>,
@@ -187,15 +186,13 @@ impl AgentTool for CodeSearchTool {
         let max_results = args.max_results.unwrap_or(20);
         let repo_path = context.git_repo.repo_path();
 
-        let results = self
-            .execute_ripgrep_search(
-                &args.query,
-                repo_path,
-                args.file_pattern.as_deref(),
-                &args.search_type,
-                max_results,
-            )
-            .await?;
+        let results = Self::execute_ripgrep_search(
+            &args.query,
+            repo_path,
+            args.file_pattern.as_deref(),
+            &args.search_type,
+            max_results,
+        )?;
 
         Ok(serde_json::json!({
             "query": args.query,

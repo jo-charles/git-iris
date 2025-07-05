@@ -122,12 +122,11 @@ impl IrisStatus {
         let color = match phase {
             IrisPhase::Initializing => CELESTIAL_BLUE,
             IrisPhase::Planning => NEBULA_PURPLE,
-            IrisPhase::ToolExecution { .. } => AURORA_GREEN,
+            IrisPhase::ToolExecution { .. } | IrisPhase::Completed => AURORA_GREEN,
             IrisPhase::PlanExpansion => PLASMA_CYAN,
             IrisPhase::Synthesis => GALAXY_PINK,
             IrisPhase::Analysis => SOLAR_YELLOW,
             IrisPhase::Generation => STARLIGHT,
-            IrisPhase::Completed => AURORA_GREEN,
             IrisPhase::Error(_) => METEOR_RED,
         };
 

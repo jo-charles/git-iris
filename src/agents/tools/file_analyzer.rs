@@ -68,7 +68,7 @@ impl FileAnalyzerTool {
 
         // Calculate basic metrics
         let lines_of_code = content.lines().count();
-        let complexity_score = self.calculate_complexity(&content, file_type);
+        let complexity_score = Self::calculate_complexity(&content, file_type);
 
         Ok(FileAnalysis {
             file_path: file_path.to_string(),
@@ -78,19 +78,19 @@ impl FileAnalyzerTool {
             } else {
                 analysis_results.join("; ")
             },
-            key_components: self.extract_key_components(&content, file_type),
+            key_components: Self::extract_key_components(&content, file_type),
             dependencies: metadata.dependencies.clone(),
             complexity_score,
             lines_of_code,
-            security_issues: self.check_security_issues(&content, file_type),
-            performance_notes: self.check_performance_issues(&content, file_type),
-            architectural_insights: self.extract_architectural_insights(&metadata),
-            extracted_metadata: self.metadata_to_json(&metadata),
+            security_issues: Self::check_security_issues(&content, file_type),
+            performance_notes: Self::check_performance_issues(&content, file_type),
+            architectural_insights: Self::extract_architectural_insights(&metadata),
+            extracted_metadata: Self::metadata_to_json(&metadata),
         })
     }
 
     /// Calculate basic complexity score
-    fn calculate_complexity(&self, content: &str, file_type: &str) -> usize {
+    fn calculate_complexity(content: &str, file_type: &str) -> usize {
         let mut complexity = 0;
 
         // Count various complexity indicators based on file type
@@ -126,7 +126,7 @@ impl FileAnalyzerTool {
     }
 
     /// Extract key components from content
-    fn extract_key_components(&self, content: &str, file_type: &str) -> Vec<String> {
+    fn extract_key_components(content: &str, file_type: &str) -> Vec<String> {
         let mut components = Vec::new();
 
         match file_type {
@@ -168,7 +168,7 @@ impl FileAnalyzerTool {
     }
 
     /// Check for basic security issues
-    fn check_security_issues(&self, content: &str, _file_type: &str) -> Vec<String> {
+    fn check_security_issues(content: &str, _file_type: &str) -> Vec<String> {
         let mut issues = Vec::new();
 
         // Basic security pattern detection
@@ -186,7 +186,7 @@ impl FileAnalyzerTool {
     }
 
     /// Check for basic performance issues
-    fn check_performance_issues(&self, content: &str, file_type: &str) -> Vec<String> {
+    fn check_performance_issues(content: &str, file_type: &str) -> Vec<String> {
         let mut issues = Vec::new();
 
         match file_type {
@@ -212,7 +212,7 @@ impl FileAnalyzerTool {
     }
 
     /// Extract architectural insights from metadata
-    fn extract_architectural_insights(&self, metadata: &ProjectMetadata) -> Vec<String> {
+    fn extract_architectural_insights(metadata: &ProjectMetadata) -> Vec<String> {
         let mut insights = Vec::new();
 
         if let Some(framework) = &metadata.framework {
@@ -229,7 +229,7 @@ impl FileAnalyzerTool {
     }
 
     /// Convert metadata to JSON
-    fn metadata_to_json(&self, metadata: &ProjectMetadata) -> HashMap<String, serde_json::Value> {
+    fn metadata_to_json(metadata: &ProjectMetadata) -> HashMap<String, serde_json::Value> {
         let mut json_map = HashMap::new();
 
         if let Some(ref language) = metadata.language {
@@ -374,11 +374,9 @@ impl AgentTool for FileAnalyzerTool {
         let avg_complexity: f64 = if analyses.is_empty() {
             0.0
         } else {
-            analyses
-                .iter()
-                .map(|a| a.complexity_score as f64)
-                .sum::<f64>()
-                / analyses.len() as f64
+            let sum: usize = analyses.iter().map(|a| a.complexity_score).sum();
+            f64::from(u32::try_from(sum).unwrap_or(u32::MAX))
+                / f64::from(u32::try_from(analyses.len()).unwrap_or(u32::MAX))
         };
         let total_security_issues: usize = analyses.iter().map(|a| a.security_issues.len()).sum();
 
