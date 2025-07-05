@@ -1,7 +1,9 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use rig::client::CompletionClient;
+use futures::StreamExt;
 use rig::completion::Prompt;
+use rig::prelude::*;
+use rig::streaming::StreamingPrompt;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::Write;
@@ -70,6 +72,54 @@ pub struct ToolResult {
     pub operation: Option<String>,
     pub result: serde_json::Value,
     pub reason: String,
+}
+
+/// Streaming callback trait for real-time feedback
+#[async_trait]
+pub trait StreamingCallback: Send + Sync {
+    /// Called when a new chunk of text is received
+    async fn on_chunk(&self, chunk: &str) -> Result<()>;
+
+    /// Called when streaming is complete
+    async fn on_complete(&self, full_response: &str) -> Result<()>;
+
+    /// Called when an error occurs during streaming
+    async fn on_error(&self, error: &anyhow::Error) -> Result<()>;
+}
+
+/// Default streaming callback that updates the UI spinner
+pub struct IrisStreamingCallback {
+    show_chunks: bool,
+}
+
+impl IrisStreamingCallback {
+    pub fn new(show_chunks: bool) -> Self {
+        Self { show_chunks }
+    }
+}
+
+#[async_trait]
+impl StreamingCallback for IrisStreamingCallback {
+    async fn on_chunk(&self, chunk: &str) -> Result<()> {
+        if self.show_chunks && !chunk.trim().is_empty() {
+            // Update status with streaming indicator
+            crate::agents::status::IRIS_STATUS
+                .update(crate::agents::status::IrisStatus::generation());
+        }
+        Ok(())
+    }
+
+    async fn on_complete(&self, _full_response: &str) -> Result<()> {
+        crate::agents::status::IRIS_STATUS.update(crate::agents::status::IrisStatus::completed());
+        Ok(())
+    }
+
+    async fn on_error(&self, error: &anyhow::Error) -> Result<()> {
+        crate::agents::status::IRIS_STATUS.update(crate::agents::status::IrisStatus::error(
+            &format!("Stream error: {error}"),
+        ));
+        Ok(())
+    }
 }
 
 /// Iris's knowledge base - notes taken during task execution
@@ -293,6 +343,74 @@ impl IrisAgent {
         iris_status_completed!();
         Ok(TaskResult::success_with_data(
             "Commit message generated successfully".to_string(),
+            serde_json::to_value(parsed_response)?,
+        )
+        .with_confidence(0.92))
+    }
+
+    /// Generate a commit message with streaming support for real-time feedback
+    pub async fn generate_commit_message_streaming(
+        &self,
+        context: &AgentContext,
+        params: &HashMap<String, serde_json::Value>,
+        callback: &dyn StreamingCallback,
+    ) -> Result<TaskResult> {
+        let preset = params
+            .get("preset")
+            .and_then(|v| v.as_str())
+            .unwrap_or("default");
+        let _custom_instructions = params
+            .get("instructions")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let use_gitmoji = params
+            .get("gitmoji")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(context.config.use_gitmoji);
+
+        log_debug!(
+            "🌊 Iris: Generating commit message with streaming - preset: '{}', gitmoji: {}",
+            preset,
+            use_gitmoji
+        );
+
+        // Step 1: Gather intelligent context using LLM analysis
+        crate::agents::status::IRIS_STATUS.update(crate::agents::status::IrisStatus::analysis());
+        let intelligent_context = self.gather_intelligent_context(context).await?;
+
+        // Step 2: Build Git context from intelligent analysis
+        crate::agents::status::IRIS_STATUS.update(crate::agents::status::IrisStatus::synthesis());
+        let commit_context = self
+            .build_commit_context(context, &intelligent_context)
+            .await?;
+
+        // Step 3: Create prompts
+        crate::agents::status::IRIS_STATUS.update(crate::agents::status::IrisStatus::planning());
+        let mut config_clone = (*context.config).clone();
+        config_clone.use_gitmoji = use_gitmoji;
+
+        let system_prompt = create_system_prompt(&config_clone)?;
+        let user_prompt = create_user_prompt(&commit_context);
+
+        // Step 4: Generate with LLM using streaming
+        crate::agents::status::IRIS_STATUS.update(crate::agents::status::IrisStatus::generation());
+        let generated_message = self
+            .generate_with_backend_streaming(&system_prompt, &user_prompt, callback)
+            .await?;
+
+        // Step 5: Parse and validate response
+        crate::agents::status::IRIS_STATUS.update(crate::agents::status::IrisStatus::synthesis());
+        let parsed_response = self.parse_json_response::<GeneratedMessage>(&generated_message)?;
+
+        log_debug!(
+            "✅ Iris: Streaming commit message generated - Title: '{}', {} chars total",
+            parsed_response.title,
+            parsed_response.message.len()
+        );
+
+        iris_status_completed!();
+        Ok(TaskResult::success_with_data(
+            "Commit message generated successfully with streaming".to_string(),
             serde_json::to_value(parsed_response)?,
         )
         .with_confidence(0.92))
@@ -1020,6 +1138,137 @@ impl IrisAgent {
         Ok(response_text.trim().to_string())
     }
 
+    /// Generate text using Rig's streaming interface for real-time feedback
+    async fn generate_with_backend_streaming(
+        &self,
+        system_prompt: &str,
+        user_prompt: &str,
+        callback: &dyn StreamingCallback,
+    ) -> Result<String> {
+        log_debug!("🌊 Iris: Preparing streaming LLM request with Rig");
+        log_debug!("📊 System prompt: {} chars", system_prompt.len());
+        log_debug!("👤 User prompt: {} chars", user_prompt.len());
+
+        let mut full_response = String::new();
+
+        // Use Rig's streaming capabilities
+        let result = match &self.backend {
+            AgentBackend::OpenAI { client, model } => {
+                log_debug!("🤖 Using Rig streaming for OpenAI");
+
+                // Create streaming agent
+                let agent = client
+                    .agent(model)
+                    .preamble(system_prompt)
+                    .temperature(0.7)
+                    .max_tokens(800)
+                    .build();
+
+                // Use Rig's real streaming API
+                match agent.stream_prompt(user_prompt).await {
+                    Ok(mut stream) => {
+                        // Process stream chunks as they arrive
+                        while let Some(chunk_result) = stream.next().await {
+                            match chunk_result {
+                                Ok(assistant_content) => {
+                                    // Extract text from AssistantContent
+                                    match assistant_content {
+                                        rig::completion::AssistantContent::Text(text) => {
+                                            if !text.text.is_empty() {
+                                                callback.on_chunk(&text.text).await?;
+                                                full_response.push_str(&text.text);
+                                            }
+                                        }
+                                        rig::completion::AssistantContent::ToolCall(_) => {
+                                            // Handle tool calls if needed
+                                            log_debug!(
+                                                "🔧 Received tool call in streaming response"
+                                            );
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    let error = anyhow::anyhow!("OpenAI streaming error: {}", e);
+                                    callback.on_error(&error).await?;
+                                    return Err(error);
+                                }
+                            }
+                        }
+
+                        // The full response is accumulated in full_response
+                        Ok(full_response.clone())
+                    }
+                    Err(e) => {
+                        let error = anyhow::anyhow!("OpenAI streaming error: {}", e);
+                        callback.on_error(&error).await?;
+                        Err(error)
+                    }
+                }
+            }
+            AgentBackend::Anthropic { client, model } => {
+                log_debug!("🧠 Using Rig streaming for Anthropic");
+
+                // Create streaming agent
+                let agent = client
+                    .agent(model)
+                    .preamble(system_prompt)
+                    .temperature(0.7)
+                    .max_tokens(800)
+                    .build();
+
+                // Use Rig's real streaming API
+                match agent.stream_prompt(user_prompt).await {
+                    Ok(mut stream) => {
+                        // Process stream chunks as they arrive
+                        while let Some(chunk_result) = stream.next().await {
+                            match chunk_result {
+                                Ok(assistant_content) => {
+                                    // Extract text from AssistantContent
+                                    match assistant_content {
+                                        rig::completion::AssistantContent::Text(text) => {
+                                            if !text.text.is_empty() {
+                                                callback.on_chunk(&text.text).await?;
+                                                full_response.push_str(&text.text);
+                                            }
+                                        }
+                                        rig::completion::AssistantContent::ToolCall(_) => {
+                                            // Handle tool calls if needed
+                                            log_debug!(
+                                                "🔧 Received tool call in streaming response"
+                                            );
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    let error = anyhow::anyhow!("Anthropic streaming error: {}", e);
+                                    callback.on_error(&error).await?;
+                                    return Err(error);
+                                }
+                            }
+                        }
+
+                        // The full response is accumulated in full_response
+                        Ok(full_response.clone())
+                    }
+                    Err(e) => {
+                        let error = anyhow::anyhow!("Anthropic streaming error: {}", e);
+                        callback.on_error(&error).await?;
+                        Err(error)
+                    }
+                }
+            }
+        };
+
+        match result {
+            Ok(response) => {
+                callback.on_complete(&response).await?;
+                log_debug!("✅ Streaming response completed: {} chars", response.len());
+                Ok(response.trim().to_string())
+            }
+            Err(e) => Err(e),
+        }
+    }
+
     /// Analyze context using Rig's optimized analysis configuration
     async fn analyze_with_backend(&self, prompt: &str) -> Result<String> {
         let system_prompt = "You are Iris, an expert AI assistant specializing in Git workflow automation and code analysis. \
@@ -1312,5 +1561,9 @@ impl super::core::IrisAgent for IrisAgent {
     async fn cleanup(&self) -> Result<()> {
         log_debug!("🤖 Iris: Agent cleanup completed");
         Ok(())
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }

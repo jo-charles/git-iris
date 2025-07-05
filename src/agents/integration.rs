@@ -6,6 +6,7 @@ use crate::{
     agents::{
         core::{AgentBackend, AgentContext},
         executor::{AgentExecutor, TaskPriority, TaskRequest},
+        iris::{IrisStreamingCallback, StreamingCallback},
         registry::AgentRegistry,
         tools::create_default_tool_registry,
     },
@@ -78,6 +79,88 @@ impl AgentIntegration {
         }
 
         self.generate_commit_message_with_params(params).await
+    }
+
+    /// Generate commit message with streaming support
+    pub async fn generate_commit_message_streaming(
+        &self,
+        preset: Option<&str>,
+        instructions: Option<&str>,
+        callback: Option<&dyn StreamingCallback>,
+    ) -> Result<String> {
+        let mut params = HashMap::new();
+
+        if let Some(preset) = preset {
+            params.insert(
+                "preset".to_string(),
+                serde_json::Value::String(preset.to_string()),
+            );
+        }
+
+        if let Some(instructions) = instructions {
+            params.insert(
+                "instructions".to_string(),
+                serde_json::Value::String(instructions.to_string()),
+            );
+        }
+
+        self.generate_commit_message_with_params_streaming(params, callback)
+            .await
+    }
+
+    /// Generate commit message with custom parameters and streaming
+    pub async fn generate_commit_message_with_params_streaming(
+        &self,
+        params: HashMap<String, serde_json::Value>,
+        callback: Option<&dyn StreamingCallback>,
+    ) -> Result<String> {
+        // Use default callback if none provided
+        let default_callback = IrisStreamingCallback::new(true);
+        let callback = callback.unwrap_or(&default_callback);
+
+        // Find the Iris agent
+        let iris_agent = self
+            .registry
+            .find_agent_for_task("generate_commit_message")
+            .await
+            .ok_or_else(|| anyhow::anyhow!("No Iris agent found for commit message generation"))?;
+
+        // Downcast to IrisAgent to access streaming method
+        if let Some(iris) = iris_agent
+            .as_any()
+            .downcast_ref::<crate::agents::iris::IrisAgent>()
+        {
+            let result = iris
+                .generate_commit_message_streaming(&self.context, &params, callback)
+                .await?;
+
+            if result.success {
+                if let Some(data) = result.data {
+                    // Try to parse as GeneratedMessage first (Iris agent format)
+                    if let Ok(generated_message) = serde_json::from_value::<
+                        crate::commit::types::GeneratedMessage,
+                    >(data.clone())
+                    {
+                        // Format the message using the existing formatter
+                        let formatted =
+                            crate::commit::types::format_commit_message(&generated_message);
+                        return Ok(formatted);
+                    }
+                    // Fallback to old format for backward compatibility
+                    if let Some(message) = data.get("commit_message").and_then(|v| v.as_str()) {
+                        return Ok(message.to_string());
+                    }
+                }
+                Ok(result.message)
+            } else {
+                Err(anyhow::anyhow!(
+                    "Commit message generation failed: {}",
+                    result.message
+                ))
+            }
+        } else {
+            Err(anyhow::anyhow!("Failed to access Iris agent for streaming"))
+        }
     }
 
     /// Generate commit message with custom parameters
@@ -468,8 +551,9 @@ pub async fn handle_gen_with_agent(
         );
         agent_params.insert("verify".to_string(), serde_json::Value::Bool(verify));
 
+        // Use streaming for better user experience
         let commit_message = integration
-            .generate_commit_message_with_params(agent_params)
+            .generate_commit_message_with_params_streaming(agent_params, None)
             .await?;
 
         // Mark completion

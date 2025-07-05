@@ -121,6 +121,9 @@ pub trait IrisAgent: Send + Sync {
 
     /// Clean up resources when agent is shutting down
     async fn cleanup(&self) -> Result<()>;
+
+    /// Cast to Any for dynamic downcast
+    fn as_any(&self) -> &dyn std::any::Any;
 }
 
 /// Agent configuration for different LLM providers

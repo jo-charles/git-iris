@@ -224,6 +224,62 @@ iris_status_completed!();       // "✅ Analysis complete"
 6. ✨ Generates contextual commit message
 ```
 
+## 🌊 Real-Time Streaming Support
+
+Iris now supports real-time streaming for an enhanced user experience during LLM operations. This provides immediate feedback and makes long-running tasks feel more responsive.
+
+### Streaming Features
+
+#### 🔄 **Live Status Updates**
+- Real-time progress indicators during analysis phases
+- Dynamic status messages showing current operations
+- Beautiful Braille spinner integration with streaming feedback
+
+#### 🌊 **Word-by-Word Generation**
+- Commit messages stream as they're being generated
+- Users see text appearing in real-time
+- Enhanced perceived performance even for slower models
+
+#### 🎯 **Smart Callback System**
+- Modular `StreamingCallback` trait for different feedback types
+- `IrisStreamingCallback` provides default UI integration
+- Custom callbacks can be implemented for specific use cases
+
+### Streaming Architecture
+
+```rust
+// Streaming callback trait
+#[async_trait]
+pub trait StreamingCallback: Send + Sync {
+    async fn on_chunk(&self, chunk: &str) -> Result<()>;
+    async fn on_complete(&self, full_response: &str) -> Result<()>;
+    async fn on_error(&self, error: &anyhow::Error) -> Result<()>;
+}
+
+// Usage in agent integration
+let integration = AgentIntegration::new(config, git_repo).await?;
+let commit_message = integration
+    .generate_commit_message_streaming(preset, instructions, None)
+    .await?;
+```
+
+### Streaming Benefits
+
+#### 🚀 **Enhanced UX**
+- **Immediate feedback**: Users see progress instantly
+- **Reduced perceived latency**: Streaming makes operations feel faster
+- **Better engagement**: Real-time updates keep users informed
+
+#### 🎨 **Beautiful Integration**
+- **Status synchronization**: Streaming updates integrate with Iris status display
+- **UI consistency**: Maintains Git-Iris's beautiful terminal experience
+- **Progressive disclosure**: Information appears as it becomes available
+
+#### 🔧 **Technical Advantages**
+- **Rig framework integration**: Leverages Rig's streaming capabilities
+- **Provider agnostic**: Works with both OpenAI and Anthropic backends
+- **Graceful fallbacks**: Falls back to standard mode if streaming fails
+
 ## 🎯 Key Design Decisions
 
 ### 1. LLM-First Architecture
