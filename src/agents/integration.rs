@@ -228,7 +228,7 @@ impl AgentIntegration {
             );
         }
 
-        let request = TaskRequest::new("review_code".to_string())
+        let request = TaskRequest::new("generate_review".to_string())
             .with_params(params)
             .with_priority(TaskPriority::Normal)
             .with_timeout(std::time::Duration::from_secs(300));
@@ -522,7 +522,12 @@ pub async fn handle_gen_with_agent(
 
     if let Some(integration) = integration {
         // Initialize Iris status
-        crate::agents::status::IRIS_STATUS.planning();
+        crate::agents::status::IRIS_STATUS.update_dynamic(
+            crate::agents::status::IrisPhase::Planning,
+            "Preparing commit generation".to_string(),
+            0,
+            None,
+        );
 
         // Create and start the Iris agent spinner
         let spinner = crate::ui::create_spinner("");
@@ -606,7 +611,12 @@ pub async fn handle_review_with_agent(
 
     if let Some(integration) = integration {
         // Initialize Iris status
-        crate::agents::status::IRIS_STATUS.planning();
+        crate::agents::status::IRIS_STATUS.update_dynamic(
+            crate::agents::status::IrisPhase::Planning,
+            "Preparing code review".to_string(),
+            0,
+            None,
+        );
 
         // Create and start the Iris agent spinner
         let spinner = crate::ui::create_spinner("");

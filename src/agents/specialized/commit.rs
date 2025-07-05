@@ -4,17 +4,15 @@ use serde_json;
 use std::collections::HashMap;
 
 use crate::agents::{
-    StreamingCallback,
     core::{AgentBackend, AgentContext, IrisAgent, TaskResult},
+    iris::StreamingCallback,
     services::{GenerationRequest, LLMService, ResponseParser, WorkflowOrchestrator},
     status::IrisPhase,
 };
 use crate::commit::prompt::{create_system_prompt, create_user_prompt};
 use crate::commit::types::GeneratedMessage;
+use crate::iris_status_completed;
 use crate::log_debug;
-use crate::{
-    iris_status_analysis, iris_status_completed, iris_status_planning, iris_status_synthesis,
-};
 
 /// Specialized agent for commit message generation
 /// Focused, efficient, and leverages the extracted services layer
@@ -75,21 +73,18 @@ impl CommitAgent {
         );
 
         // Step 1: Use orchestrator to gather intelligent context
-        iris_status_analysis!();
         let intelligent_context = self
             .orchestrator
             .gather_intelligent_context(context)
             .await?;
 
         // Step 2: Build commit context from intelligent analysis
-        iris_status_synthesis!();
         let commit_context = self
             .orchestrator
             .build_commit_context(context, &intelligent_context)
             .await?;
 
         // Step 3: Create optimized configuration and prompts
-        iris_status_planning!();
         let mut config_clone = (*context.config).clone();
         config_clone.use_gitmoji = use_gitmoji;
 

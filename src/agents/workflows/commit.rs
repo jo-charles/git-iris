@@ -1,19 +1,18 @@
 use anyhow::Result;
+use serde_json;
 use std::collections::HashMap;
 
 use crate::agents::{
-    StreamingCallback,
     core::{AgentContext, TaskResult},
+    iris::StreamingCallback,
     services::{GenerationRequest, LLMService, ResponseParser, WorkflowOrchestrator},
     status::IrisPhase,
 };
 use crate::commit::prompt::{create_system_prompt, create_user_prompt};
 use crate::commit::types::GeneratedMessage;
 use crate::context::CommitContext;
+use crate::iris_status_completed;
 use crate::log_debug;
-use crate::{
-    iris_status_analysis, iris_status_completed, iris_status_planning, iris_status_synthesis,
-};
 
 /// Workflow for commit message generation
 /// Orchestrates the complex multi-step process of generating intelligent commit messages
@@ -51,7 +50,6 @@ impl CommitWorkflow {
             .unwrap_or(false);
 
         // Step 1: Gather intelligent context using orchestrator
-        iris_status_analysis!();
         let intelligent_context = self
             .orchestrator
             .gather_intelligent_context(context)
@@ -59,14 +57,12 @@ impl CommitWorkflow {
         log_debug!("🧠 CommitWorkflow: Intelligent context gathered");
 
         // Step 2: Build commit context from intelligent analysis
-        iris_status_synthesis!();
         let commit_context = self
             .build_commit_context(context, &intelligent_context)
             .await?;
         log_debug!("📝 CommitWorkflow: Commit context built");
 
         // Step 3: Create prompts with gitmoji configuration
-        iris_status_planning!();
         let mut config_clone = (*context.config).clone();
         config_clone.use_gitmoji = use_gitmoji;
 
@@ -84,7 +80,6 @@ impl CommitWorkflow {
         log_debug!("✨ CommitWorkflow: Message generated");
 
         // Step 5: Parse and validate response
-        iris_status_synthesis!();
         let parsed_response = self
             .parser
             .parse_json_response::<GeneratedMessage>(&generated_message)?;
@@ -118,20 +113,17 @@ impl CommitWorkflow {
             .unwrap_or(false);
 
         // Step 1: Gather intelligent context
-        iris_status_analysis!();
         let intelligent_context = self
             .orchestrator
             .gather_intelligent_context(context)
             .await?;
 
         // Step 2: Build commit context
-        iris_status_synthesis!();
         let commit_context = self
             .build_commit_context(context, &intelligent_context)
             .await?;
 
         // Step 3: Create prompts
-        iris_status_planning!();
         let mut config_clone = (*context.config).clone();
         config_clone.use_gitmoji = use_gitmoji;
 
@@ -151,7 +143,6 @@ impl CommitWorkflow {
             .await?;
 
         // Step 5: Parse response
-        iris_status_synthesis!();
         let parsed_response = self
             .parser
             .parse_json_response::<GeneratedMessage>(&generated_message)?;

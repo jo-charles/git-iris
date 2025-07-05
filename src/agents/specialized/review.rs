@@ -28,6 +28,17 @@ pub struct ReviewAgent {
 impl ReviewAgent {
     #[must_use]
     pub fn new(backend: &AgentBackend) -> Self {
+        Self::new_with_tool_registry(
+            backend,
+            std::sync::Arc::new(crate::agents::tools::ToolRegistry::new()),
+        )
+    }
+
+    #[must_use]
+    pub fn new_with_tool_registry(
+        backend: &AgentBackend,
+        tool_registry: std::sync::Arc<crate::agents::tools::ToolRegistry>,
+    ) -> Self {
         Self {
             id: "review_agent".to_string(),
             name: "Iris Review".to_string(),
@@ -46,7 +57,7 @@ impl ReviewAgent {
             parser: ResponseParser::new(),
             orchestrator: WorkflowOrchestrator::new(
                 std::sync::Arc::new(LLMService::new(backend.clone())),
-                std::sync::Arc::new(crate::agents::tools::ToolRegistry::new()),
+                tool_registry,
             ),
         }
     }

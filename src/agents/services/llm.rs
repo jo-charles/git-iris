@@ -16,7 +16,7 @@ use std::sync::LazyLock;
 use crate::agents::{
     core::AgentBackend,
     iris::StreamingCallback,
-    status::{IRIS_STATUS, IrisPhase, IrisStatus},
+    status::{IRIS_STATUS, IrisPhase, IrisStatus, TokenMetrics},
 };
 
 // Token limit for all operations - Claude can handle much more than 8192 tokens
@@ -252,8 +252,8 @@ impl LLMService {
 
         let request = GenerationRequest::new(system_prompt.to_string(), prompt.to_string())
             .with_temperature(0.3) // Lower temperature for consistent analysis
-            .with_phase(IrisPhase::Analysis)
-            .with_operation("analysis".to_string(), "analyzing context".to_string());
+            .with_phase(IrisPhase::Planning)
+            .with_operation("analysis".to_string(), "gathering context".to_string());
 
         self.generate(request).await
     }
@@ -268,13 +268,17 @@ impl LLMService {
         let safe_operation_type = Self::sanitize_status_input(&request.operation_type);
         let safe_context_hint = Self::sanitize_status_input(&request.context_hint);
 
-        // Step 2: Add dynamic status instruction to the system prompt
-        let status_instruction = self.create_status_instruction(
-            &request.phase,
-            &safe_operation_type,
-            &safe_context_hint,
+        // Step 2: Add status instruction for LLM-generated progress messages
+        let status_instruction = format!(
+            "Include: STATUS: [progress message under 70 characters]...\n\
+            Context: {} for {}\n\
+            Style: Professional with subtle personality - clever but not mystical.\n\
+            Examples: 🔍 Dissecting your code... 🧠 Connecting the dots... 🎯 Zeroing in on the perfect solution...",
+            &safe_operation_type, &safe_context_hint
         );
         let enhanced_system_prompt = format!("{}\n\n{}", request.system_prompt, status_instruction);
+
+        crate::log_debug!("🌟 LLM Service: Added status instruction for dynamic messages");
 
         // Step 3: Generate with the right pipeline based on streaming preference
         let mut full_response = String::new();
@@ -289,7 +293,7 @@ impl LLMService {
                     .build();
 
                 if let Some(callback) = callback {
-                    // Streaming pipeline with real-time status updates
+                    // Streaming pipeline - stable status updates only
                     let mut stream = agent.stream_prompt(&request.user_prompt).await?;
                     while let Some(chunk_result) = stream.next().await {
                         match chunk_result {
@@ -298,13 +302,20 @@ impl LLMService {
                                     assistant_content
                                 {
                                     if !text.text.is_empty() {
-                                        callback.on_chunk(&text.text).await?;
+                                        // Create token metrics for streaming
+                                        let token_metrics = TokenMetrics {
+                                            input_tokens: 0, // Would need actual API token count
+                                            output_tokens: full_response.len() as u32
+                                                + text.text.len() as u32,
+                                            total_tokens: full_response.len() as u32
+                                                + text.text.len() as u32,
+                                            tokens_per_second: 0.0, // Would be calculated by callback
+                                            estimated_remaining: None,
+                                        };
+                                        callback.on_chunk(&text.text, Some(token_metrics)).await?;
                                         full_response.push_str(&text.text);
 
-                                        // Real-time status extraction and update
-                                        Self::check_and_update_streaming_status(
-                                            &text.text, &request,
-                                        );
+                                        // Skip real-time status extraction to avoid chaos
                                     }
                                 }
                             }
@@ -315,7 +326,15 @@ impl LLMService {
                             }
                         }
                     }
-                    callback.on_complete(&full_response).await?;
+                    // Create final token metrics
+                    let final_tokens = TokenMetrics {
+                        input_tokens: 0, // Would need actual API token count
+                        output_tokens: full_response.len() as u32,
+                        total_tokens: full_response.len() as u32,
+                        tokens_per_second: 0.0,
+                        estimated_remaining: None,
+                    };
+                    callback.on_complete(&full_response, final_tokens).await?;
                 } else {
                     // Non-streaming pipeline
                     full_response = agent.prompt(&request.user_prompt).await?;
@@ -330,7 +349,7 @@ impl LLMService {
                     .build();
 
                 if let Some(callback) = callback {
-                    // Streaming pipeline with real-time status updates
+                    // Streaming pipeline - stable status updates only
                     let mut stream = agent.stream_prompt(&request.user_prompt).await?;
                     while let Some(chunk_result) = stream.next().await {
                         match chunk_result {
@@ -339,13 +358,20 @@ impl LLMService {
                                     assistant_content
                                 {
                                     if !text.text.is_empty() {
-                                        callback.on_chunk(&text.text).await?;
+                                        // Create token metrics for streaming
+                                        let token_metrics = TokenMetrics {
+                                            input_tokens: 0, // Would need actual API token count
+                                            output_tokens: full_response.len() as u32
+                                                + text.text.len() as u32,
+                                            total_tokens: full_response.len() as u32
+                                                + text.text.len() as u32,
+                                            tokens_per_second: 0.0, // Would be calculated by callback
+                                            estimated_remaining: None,
+                                        };
+                                        callback.on_chunk(&text.text, Some(token_metrics)).await?;
                                         full_response.push_str(&text.text);
 
-                                        // Real-time status extraction and update
-                                        Self::check_and_update_streaming_status(
-                                            &text.text, &request,
-                                        );
+                                        // Skip real-time status extraction to avoid chaos
                                     }
                                 }
                             }
@@ -356,7 +382,15 @@ impl LLMService {
                             }
                         }
                     }
-                    callback.on_complete(&full_response).await?;
+                    // Create final token metrics
+                    let final_tokens = TokenMetrics {
+                        input_tokens: 0, // Would need actual API token count
+                        output_tokens: full_response.len() as u32,
+                        total_tokens: full_response.len() as u32,
+                        tokens_per_second: 0.0,
+                        estimated_remaining: None,
+                    };
+                    callback.on_complete(&full_response, final_tokens).await?;
                 } else {
                     // Non-streaming pipeline
                     full_response = agent.prompt(&request.user_prompt).await?;
@@ -364,8 +398,13 @@ impl LLMService {
             }
         }
 
-        // Step 4: Final status extraction and update
-        self.update_status_from_response(&full_response, &request);
+        // Step 4: Extract status for non-streaming requests
+        if callback.is_none() {
+            crate::log_debug!("🌟 LLM Service: Extracting status from non-streaming response");
+            self.update_status_from_response(&full_response, &request);
+        } else {
+            crate::log_debug!("🌟 LLM Service: Skipping status extraction for streaming request");
+        }
 
         Ok(full_response.trim().to_string())
     }
@@ -384,83 +423,86 @@ impl LLMService {
     /// Create status instruction to add to prompts
     fn create_status_instruction(
         &self,
-        phase: &IrisPhase,
+        _phase: &IrisPhase,
         operation_type: &str,
         context_hint: &str,
     ) -> String {
-        let phase_description = match phase {
-            IrisPhase::Planning => "orchestrating cosmic alignment of code patterns",
-            IrisPhase::ToolExecution { tool_name, .. } => {
-                &format!("channeling the essence of {tool_name}")
-            }
-            IrisPhase::Analysis => "diving into the quantum depths of code reality",
-            IrisPhase::Synthesis => "weaving interdimensional insights into coherent understanding",
-            IrisPhase::Generation => "manifesting the perfect algorithmic expression",
-            IrisPhase::PlanExpansion => {
-                "recalibrating cosmic understanding through discovered wisdom"
-            }
-            _ => "traversing the digital astral plane",
-        };
-
         format!(
-            "Include: STATUS: [cosmic emoji] [mystical action 8-12 words]...\n\
-            Context: {phase_description} for {operation_type}. {context_hint}\n\
-            Style: Abstract, cosmic, avoid literal descriptions.\n\
-            Examples: 🔮 Consulting the cosmic oracle... 🌌 Aligning celestial spheres..."
+            "Include: STATUS: [progress message under 70 characters]...\n\
+            Context: {operation_type} for {context_hint}\n\
+            Style: Professional with subtle personality - clever but not mystical.\n\
+            Examples: 🔍 Dissecting your code... 🧠 Connecting the dots... 🎯 Zeroing in on the perfect solution..."
         )
     }
 
     /// Extract status message from LLM response that includes status in structured format
     fn extract_status_from_response(response: &str, phase: &IrisPhase) -> String {
+        crate::log_debug!(
+            "🔍 LLM Service: Searching for status patterns in response snippet: '{}'",
+            &response.chars().take(200).collect::<String>()
+        );
+
         // Use precompiled regex patterns for better performance
-        for re in STATUS_PATTERNS.iter() {
+        for (i, re) in STATUS_PATTERNS.iter().enumerate() {
             if let Some(captures) = re.captures(response) {
                 if let Some(status_match) = captures.get(1) {
                     let status = status_match.as_str().trim().to_string();
                     if !status.is_empty() && status.len() > 5 {
+                        crate::log_debug!(
+                            "🎯 LLM Service: Found status with pattern {}: '{}'",
+                            i,
+                            status
+                        );
                         return status;
                     }
                 }
             }
         }
 
-        // Fallback to mystical cosmic message if no status found in response
+        crate::log_debug!(
+            "⚠️ LLM Service: No status patterns found, using fallback for phase: {:?}",
+            phase
+        );
+
+        // Fallback to engaging progress message if no status found in response
         match phase {
-            IrisPhase::Planning => "🔮 Consulting the cosmic commit oracle...".to_string(),
+            IrisPhase::Planning => "🧠 Planning approach...".to_string(),
             IrisPhase::ToolExecution { tool_name, .. } => {
-                format!("💎 Charging the {tool_name} crystals with cosmic energy...")
+                format!("🔧 Running {tool_name}...")
             }
-            IrisPhase::Analysis => {
-                "🔬 Analyzing code particles at the quantum level...".to_string()
-            }
-            IrisPhase::Synthesis => "🧙 Casting a spell for the perfect synthesis...".to_string(),
-            IrisPhase::Generation => {
-                "⭐ Gathering stardust for your stellar creation...".to_string()
-            }
-            IrisPhase::PlanExpansion => {
-                "🧭 Calibrating the cosmic compass for true direction...".to_string()
-            }
-            _ => "🌊 Diving into the depths of the code ocean...".to_string(),
+            IrisPhase::Analysis => "🔍 Analyzing...".to_string(),
+            IrisPhase::Synthesis => "🧩 Connecting insights...".to_string(),
+            IrisPhase::Generation => "🎯 Generating...".to_string(),
+            IrisPhase::PlanExpansion => "📈 Expanding analysis...".to_string(),
+            _ => "⚙️ Processing...".to_string(),
         }
     }
 
     /// Update status with a dynamic message extracted from the LLM response
     fn update_status_from_response(&self, response: &str, request: &GenerationRequest) {
+        crate::log_debug!(
+            "🌟 LLM Service: Extracting status from response of {} chars",
+            response.len()
+        );
         let message = Self::extract_status_from_response(response, &request.phase);
         crate::log_debug!(
-            "🌟 LLM Service: Updating UI with dynamic status: '{}'",
-            message
+            "🌟 LLM Service: Extracted status message: '{}' for phase: {:?}",
+            message,
+            request.phase
         );
+
         IRIS_STATUS.update(IrisStatus::dynamic(
             request.phase.clone(),
-            message,
+            message.clone(),
             request.current_step,
             request.total_steps,
         ));
 
-        // Give time for the dynamic status to be visible
-        std::thread::sleep(std::time::Duration::from_millis(1000));
-        crate::log_debug!("🌟 LLM Service: Dynamic status display time completed");
+        crate::log_debug!("🌟 LLM Service: Updated status display with: '{}'", message);
+
+        // Brief pause for display, then move on
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        crate::log_debug!("🌟 LLM Service: Status display pause completed");
     }
 
     /// Check streaming text for status updates and update UI in real-time

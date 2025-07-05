@@ -12,53 +12,70 @@ use crate::agents::{
     core::{AgentBackend, AgentContext, IrisAgent as IrisAgentTrait, TaskResult},
     services::{LLMService, ResponseParser, WorkflowOrchestrator},
     specialized::{ChangelogAgent, CommitAgent, PullRequestAgent, ReviewAgent},
+    status::TokenMetrics,
     tools::AgentTool,
     workflows::{ChangelogWorkflow, CommitWorkflow, ReleaseNotesWorkflow, ReviewWorkflow},
 };
 
-/// Streaming callback trait for real-time feedback
+/// Streaming callback trait for real-time feedback with token counting
 #[async_trait]
 pub trait StreamingCallback: Send + Sync {
-    /// Called when a new chunk of text is received
-    async fn on_chunk(&self, chunk: &str) -> Result<()>;
+    /// Called when a new chunk of text is received with token information
+    async fn on_chunk(&self, chunk: &str, tokens: Option<TokenMetrics>) -> Result<()>;
 
     /// Called when streaming is complete
-    async fn on_complete(&self, full_response: &str) -> Result<()>;
+    async fn on_complete(&self, full_response: &str, final_tokens: TokenMetrics) -> Result<()>;
 
     /// Called when an error occurs during streaming
     async fn on_error(&self, error: &anyhow::Error) -> Result<()>;
+
+    /// Called when status message should be updated (LLM-generated, max 80 chars)
+    async fn on_status_update(&self, message: &str) -> Result<()>;
 }
 
-/// Default streaming callback that updates the UI spinner
+/// Dynamic streaming callback that updates the UI with live token counting
 pub struct IrisStreamingCallback {
     show_chunks: bool,
+    current_tokens: Arc<std::sync::Mutex<TokenMetrics>>,
 }
 
 impl IrisStreamingCallback {
     pub fn new(show_chunks: bool) -> Self {
-        Self { show_chunks }
+        Self {
+            show_chunks,
+            current_tokens: Arc::new(std::sync::Mutex::new(TokenMetrics::default())),
+        }
     }
 }
 
 #[async_trait]
 impl StreamingCallback for IrisStreamingCallback {
-    async fn on_chunk(&self, chunk: &str) -> Result<()> {
-        if self.show_chunks && !chunk.trim().is_empty() {
-            crate::agents::status::IRIS_STATUS
-                .update(crate::agents::status::IrisStatus::generation());
+    async fn on_chunk(&self, _chunk: &str, tokens: Option<TokenMetrics>) -> Result<()> {
+        if let Some(token_metrics) = tokens {
+            // Update token metrics only - no status updates
+            if let Ok(mut current) = self.current_tokens.lock() {
+                *current = token_metrics;
+            }
         }
         Ok(())
     }
 
-    async fn on_complete(&self, _full_response: &str) -> Result<()> {
-        crate::agents::status::IRIS_STATUS.update(crate::agents::status::IrisStatus::completed());
+    async fn on_complete(&self, _full_response: &str, final_tokens: TokenMetrics) -> Result<()> {
+        // Just mark as completed
+        if let Ok(mut current) = self.current_tokens.lock() {
+            *current = final_tokens;
+        }
+        crate::iris_status_completed!();
         Ok(())
     }
 
     async fn on_error(&self, error: &anyhow::Error) -> Result<()> {
-        crate::agents::status::IRIS_STATUS.update(crate::agents::status::IrisStatus::error(
-            &format!("Stream error: {error}"),
-        ));
+        crate::iris_status_error!(&format!("Stream error: {error}"));
+        Ok(())
+    }
+
+    async fn on_status_update(&self, _message: &str) -> Result<()> {
+        // Skip status updates during streaming to prevent flipping
         Ok(())
     }
 }
@@ -113,14 +130,15 @@ impl IrisAgent {
             tool_registry.register_tool(tool.clone());
         }
 
+        let tool_registry_arc = std::sync::Arc::new(tool_registry);
         let orchestrator = WorkflowOrchestrator::new(
             std::sync::Arc::new(llm_service.clone()),
-            std::sync::Arc::new(tool_registry),
+            tool_registry_arc.clone(),
         );
 
         // Initialize specialized agents
         let commit_agent = CommitAgent::new(&backend);
-        let review_agent = ReviewAgent::new(&backend);
+        let review_agent = ReviewAgent::new_with_tool_registry(&backend, tool_registry_arc.clone());
         let changelog_agent = ChangelogAgent::new(&backend);
         let pr_agent = PullRequestAgent::new(&backend);
 
@@ -192,7 +210,7 @@ impl IrisAgent {
         params: &HashMap<String, serde_json::Value>,
     ) -> Result<TaskResult> {
         self.review_agent
-            .execute_task("generate_review", context, params)
+            .execute_task("generate_code_review", context, params)
             .await
     }
 

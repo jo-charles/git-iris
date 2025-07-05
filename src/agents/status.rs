@@ -21,179 +21,145 @@ pub enum IrisPhase {
     Error(String),
 }
 
-/// Status tracker for Iris agent operations
+/// Token counting information for live updates
+#[derive(Debug, Clone, Default)]
+pub struct TokenMetrics {
+    pub input_tokens: u32,
+    pub output_tokens: u32,
+    pub total_tokens: u32,
+    pub tokens_per_second: f32,
+    pub estimated_remaining: Option<u32>,
+}
+
+/// Status tracker for Iris agent operations with dynamic messages and live token counting
 #[derive(Debug, Clone)]
 pub struct IrisStatus {
     pub phase: IrisPhase,
     pub message: String,
     pub color: Color,
     pub started_at: Instant,
-    pub tools_executed: Vec<String>,
     pub current_step: usize,
     pub total_steps: Option<usize>,
+    pub tokens: TokenMetrics,
+    pub is_streaming: bool,
 }
 
 impl IrisStatus {
     pub fn new() -> Self {
         Self {
             phase: IrisPhase::Initializing,
-            message: "🤖 Iris is awakening...".to_string(),
+            message: "🤖 Initializing...".to_string(),
             color: CELESTIAL_BLUE,
             started_at: Instant::now(),
-            tools_executed: Vec::new(),
             current_step: 0,
             total_steps: None,
+            tokens: TokenMetrics::default(),
+            is_streaming: false,
         }
     }
 
-    pub fn planning() -> Self {
-        Self {
-            phase: IrisPhase::Planning,
-            message: "🧠 Iris is planning her approach...".to_string(),
-            color: NEBULA_PURPLE,
-            started_at: Instant::now(),
-            tools_executed: Vec::new(),
-            current_step: 1,
-            total_steps: Some(5),
-        }
-    }
-
-    pub fn tool_execution(tool_name: &str, reason: &str) -> Self {
-        let message = match tool_name {
-            "Git Operations" => format!(
-                "🔧 Iris is analyzing Git changes... ({})",
-                reason.chars().take(40).collect::<String>()
-            ),
-            "File Analyzer" => format!(
-                "📄 Iris is examining file contents... ({})",
-                reason.chars().take(35).collect::<String>()
-            ),
-            "Code Search" => format!(
-                "🔍 Iris is searching the codebase... ({})",
-                reason.chars().take(35).collect::<String>()
-            ),
-            _ => format!(
-                "🛠️ Iris is using {}... ({})",
-                tool_name,
-                reason.chars().take(40).collect::<String>()
-            ),
-        };
-
-        Self {
-            phase: IrisPhase::ToolExecution {
-                tool_name: tool_name.to_string(),
-                reason: reason.to_string(),
-            },
-            message,
-            color: AURORA_GREEN,
-            started_at: Instant::now(),
-            tools_executed: Vec::new(),
-            current_step: 2,
-            total_steps: Some(5),
-        }
-    }
-
-    pub fn plan_expansion() -> Self {
-        Self {
-            phase: IrisPhase::PlanExpansion,
-            message: "🔄 Iris is adapting her plan based on discoveries...".to_string(),
-            color: PLASMA_CYAN,
-            started_at: Instant::now(),
-            tools_executed: Vec::new(),
-            current_step: 3,
-            total_steps: Some(5),
-        }
-    }
-
-    pub fn synthesis() -> Self {
-        Self {
-            phase: IrisPhase::Synthesis,
-            message: "🧩 Iris is synthesizing insights from tools...".to_string(),
-            color: GALAXY_PINK,
-            started_at: Instant::now(),
-            tools_executed: Vec::new(),
-            current_step: 4,
-            total_steps: Some(5),
-        }
-    }
-
-    /// Create a dynamic status with custom message
+    /// Create a dynamic status with LLM-generated message (constrained to 80 chars)
     pub fn dynamic(phase: IrisPhase, message: String, step: usize, total: Option<usize>) -> Self {
         let color = match phase {
             IrisPhase::Initializing => CELESTIAL_BLUE,
             IrisPhase::Planning => NEBULA_PURPLE,
-            IrisPhase::ToolExecution { .. } | IrisPhase::Completed => AURORA_GREEN,
+            IrisPhase::ToolExecution { .. } => AURORA_GREEN,
             IrisPhase::PlanExpansion => PLASMA_CYAN,
             IrisPhase::Synthesis => GALAXY_PINK,
             IrisPhase::Analysis => SOLAR_YELLOW,
             IrisPhase::Generation => STARLIGHT,
+            IrisPhase::Completed => AURORA_GREEN,
             IrisPhase::Error(_) => METEOR_RED,
+        };
+
+        // Constrain message to 80 characters as requested
+        let constrained_message = if message.len() > 80 {
+            format!("{}...", &message[..77])
+        } else {
+            message
         };
 
         Self {
             phase,
-            message,
+            message: constrained_message,
             color,
             started_at: Instant::now(),
-            tools_executed: Vec::new(),
             current_step: step,
             total_steps: total,
+            tokens: TokenMetrics::default(),
+            is_streaming: false,
         }
     }
 
-    pub fn analysis() -> Self {
-        Self {
-            phase: IrisPhase::Analysis,
-            message: "🔬 Iris is performing deep analysis...".to_string(),
-            color: SOLAR_YELLOW,
-            started_at: Instant::now(),
-            tools_executed: Vec::new(),
-            current_step: 4,
-            total_steps: Some(5),
-        }
-    }
+    /// Create dynamic streaming status with live token counting
+    pub fn streaming(
+        message: String,
+        tokens: TokenMetrics,
+        step: usize,
+        total: Option<usize>,
+    ) -> Self {
+        // Constrain message to 80 characters
+        let constrained_message = if message.len() > 80 {
+            format!("{}...", &message[..77])
+        } else {
+            message
+        };
 
-    pub fn generation() -> Self {
         Self {
             phase: IrisPhase::Generation,
-            message: "✨ Iris is crafting the perfect response...".to_string(),
+            message: constrained_message,
             color: STARLIGHT,
             started_at: Instant::now(),
-            tools_executed: Vec::new(),
-            current_step: 5,
-            total_steps: Some(5),
+            current_step: step,
+            total_steps: total,
+            tokens,
+            is_streaming: true,
         }
     }
 
+    /// Update token metrics during streaming
+    pub fn update_tokens(&mut self, tokens: TokenMetrics) {
+        self.tokens = tokens;
+
+        // Update tokens per second based on elapsed time
+        let elapsed = self.started_at.elapsed().as_secs_f32();
+        if elapsed > 0.0 {
+            self.tokens.tokens_per_second = self.tokens.output_tokens as f32 / elapsed;
+        }
+    }
+
+    /// Create error status
+    pub fn error(error: &str) -> Self {
+        let constrained_message = if error.len() > 35 {
+            format!("❌ {}...", &error[..32])
+        } else {
+            format!("❌ {error}")
+        };
+
+        Self {
+            phase: IrisPhase::Error(error.to_string()),
+            message: constrained_message,
+            color: METEOR_RED,
+            started_at: Instant::now(),
+            current_step: 0,
+            total_steps: None,
+            tokens: TokenMetrics::default(),
+            is_streaming: false,
+        }
+    }
+
+    /// Create completed status
     pub fn completed() -> Self {
         Self {
             phase: IrisPhase::Completed,
-            message: "🎉 Iris has completed her work!".to_string(),
-            color: METEOR_RED,
+            message: "🎉 Done!".to_string(),
+            color: AURORA_GREEN,
             started_at: Instant::now(),
-            tools_executed: Vec::new(),
-            current_step: 5,
-            total_steps: Some(5),
-        }
-    }
-
-    pub fn error(error: &str) -> Self {
-        Self {
-            phase: IrisPhase::Error(error.to_string()),
-            message: format!(
-                "❌ Iris encountered an issue: {}",
-                error.chars().take(50).collect::<String>()
-            ),
-            color: METEOR_RED,
-            started_at: Instant::now(),
-            tools_executed: Vec::new(),
             current_step: 0,
-            total_steps: Some(5),
+            total_steps: None,
+            tokens: TokenMetrics::default(),
+            is_streaming: false,
         }
-    }
-
-    pub fn add_tool_executed(&mut self, tool_name: String) {
-        self.tools_executed.push(tool_name);
     }
 
     pub fn duration(&self) -> Duration {
@@ -209,23 +175,52 @@ impl IrisStatus {
         }
     }
 
+    /// Format status for display with live token counting
     pub fn format_for_display(&self) -> String {
         let duration = self.duration();
         let seconds = duration.as_secs();
 
+        // Progress bar
         let progress_bar = if let Some(total) = self.total_steps {
-            let filled = (self.current_step * 10) / total;
-            let empty = 10 - filled;
+            let filled = (self.current_step * 8) / total;
+            let empty = 8 - filled;
             format!(" [{}{}]", "█".repeat(filled), "░".repeat(empty))
         } else {
             String::new()
         };
 
-        if seconds > 0 {
-            format!("{}{} ({}s)", self.message, progress_bar, seconds)
+        // Token display for streaming
+        let token_info = if self.is_streaming && self.tokens.total_tokens > 0 {
+            let rate = if self.tokens.tokens_per_second > 0.0 {
+                format!(" | {:.0}t/s", self.tokens.tokens_per_second)
+            } else {
+                String::new()
+            };
+
+            let estimated = if let Some(est) = self.tokens.estimated_remaining {
+                format!(" | ~{est}t")
+            } else {
+                String::new()
+            };
+
+            format!(" | {}t{}{}", self.tokens.total_tokens, rate, estimated)
+        } else if self.tokens.total_tokens > 0 {
+            format!(" | {}t", self.tokens.total_tokens)
         } else {
-            format!("{}{}", self.message, progress_bar)
-        }
+            String::new()
+        };
+
+        // Duration display
+        let time_info = if seconds > 0 {
+            format!(" ({seconds}s)")
+        } else {
+            String::new()
+        };
+
+        format!(
+            "{}{}{}{}",
+            self.message, progress_bar, token_info, time_info
+        )
     }
 }
 
@@ -247,9 +242,54 @@ impl IrisStatusTracker {
         }
     }
 
+    /// Update status with dynamic message
     pub fn update(&self, status: IrisStatus) {
+        crate::log_debug!(
+            "📋 Status: Updating to phase: {:?}, message: '{}'",
+            status.phase,
+            status.message
+        );
         if let Ok(mut current_status) = self.status.lock() {
             *current_status = status;
+            crate::log_debug!("📋 Status: Update completed successfully");
+        } else {
+            crate::log_debug!("📋 Status: ⚠️ Failed to acquire status lock");
+        }
+    }
+
+    /// Update with dynamic LLM-generated message
+    pub fn update_dynamic(
+        &self,
+        phase: IrisPhase,
+        message: String,
+        step: usize,
+        total: Option<usize>,
+    ) {
+        crate::log_debug!(
+            "🎯 Status: Dynamic update - phase: {:?}, message: '{}', step: {}/{:?}",
+            phase,
+            message,
+            step,
+            total
+        );
+        self.update(IrisStatus::dynamic(phase, message, step, total));
+    }
+
+    /// Update streaming status with token metrics
+    pub fn update_streaming(
+        &self,
+        message: String,
+        tokens: TokenMetrics,
+        step: usize,
+        total: Option<usize>,
+    ) {
+        self.update(IrisStatus::streaming(message, tokens, step, total));
+    }
+
+    /// Update only token metrics for current status
+    pub fn update_tokens(&self, tokens: TokenMetrics) {
+        if let Ok(mut status) = self.status.lock() {
+            status.update_tokens(tokens);
         }
     }
 
@@ -268,42 +308,14 @@ impl IrisStatusTracker {
         }
     }
 
-    pub fn planning(&self) {
-        self.update(IrisStatus::planning());
-    }
-
-    pub fn tool_execution(&self, tool_name: &str, reason: &str) {
-        self.update(IrisStatus::tool_execution(tool_name, reason));
-    }
-
-    pub fn plan_expansion(&self) {
-        self.update(IrisStatus::plan_expansion());
-    }
-
-    pub fn synthesis(&self) {
-        self.update(IrisStatus::synthesis());
-    }
-
-    pub fn analysis(&self) {
-        self.update(IrisStatus::analysis());
-    }
-
-    pub fn generation(&self) {
-        self.update(IrisStatus::generation());
-    }
-
-    pub fn completed(&self) {
-        self.update(IrisStatus::completed());
-    }
-
+    /// Set error status
     pub fn error(&self, error: &str) {
         self.update(IrisStatus::error(error));
     }
 
-    pub fn add_tool_executed(&self, tool_name: String) {
-        if let Ok(mut status) = self.status.lock() {
-            status.add_tool_executed(tool_name);
-        }
+    /// Set completed status
+    pub fn completed(&self) {
+        self.update(IrisStatus::completed());
     }
 }
 
@@ -331,53 +343,51 @@ pub fn is_agent_mode_enabled() -> bool {
     AGENT_MODE_ENABLED.load(std::sync::atomic::Ordering::Relaxed)
 }
 
-/// Helper macros for easy status updates
+/// Helper macros for dynamic status updates with LLM messages
 #[macro_export]
-macro_rules! iris_status_planning {
-    () => {
-        $crate::agents::status::IRIS_STATUS.planning();
+macro_rules! iris_status_dynamic {
+    ($phase:expr, $message:expr, $step:expr) => {
+        $crate::agents::status::IRIS_STATUS.update_dynamic(
+            $phase,
+            $message.to_string(),
+            $step,
+            None,
+        );
+    };
+    ($phase:expr, $message:expr, $step:expr, $total:expr) => {
+        $crate::agents::status::IRIS_STATUS.update_dynamic(
+            $phase,
+            $message.to_string(),
+            $step,
+            Some($total),
+        );
     };
 }
 
 #[macro_export]
-macro_rules! iris_status_tool {
-    ($tool:expr, $reason:expr) => {
-        $crate::agents::status::IRIS_STATUS.tool_execution($tool, $reason);
+macro_rules! iris_status_streaming {
+    ($message:expr, $tokens:expr) => {
+        $crate::agents::status::IRIS_STATUS.update_streaming(
+            $message.to_string(),
+            $tokens,
+            0,
+            None,
+        );
+    };
+    ($message:expr, $tokens:expr, $step:expr, $total:expr) => {
+        $crate::agents::status::IRIS_STATUS.update_streaming(
+            $message.to_string(),
+            $tokens,
+            $step,
+            Some($total),
+        );
     };
 }
 
 #[macro_export]
-macro_rules! iris_status_expansion {
-    () => {
-        $crate::agents::status::IRIS_STATUS.plan_expansion();
-    };
-}
-
-#[macro_export]
-macro_rules! iris_status_synthesis {
-    () => {
-        $crate::agents::status::IRIS_STATUS.synthesis();
-    };
-}
-
-#[macro_export]
-macro_rules! iris_status_analysis {
-    () => {
-        $crate::agents::status::IRIS_STATUS.analysis();
-    };
-}
-
-#[macro_export]
-macro_rules! iris_status_generation {
-    () => {
-        $crate::agents::status::IRIS_STATUS.generation();
-    };
-}
-
-#[macro_export]
-macro_rules! iris_status_completed {
-    () => {
-        $crate::agents::status::IRIS_STATUS.completed();
+macro_rules! iris_status_tokens {
+    ($tokens:expr) => {
+        $crate::agents::status::IRIS_STATUS.update_tokens($tokens);
     };
 }
 
@@ -385,5 +395,12 @@ macro_rules! iris_status_completed {
 macro_rules! iris_status_error {
     ($error:expr) => {
         $crate::agents::status::IRIS_STATUS.error($error);
+    };
+}
+
+#[macro_export]
+macro_rules! iris_status_completed {
+    () => {
+        $crate::agents::status::IRIS_STATUS.completed();
     };
 }

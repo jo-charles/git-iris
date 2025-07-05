@@ -15,7 +15,6 @@ use crate::agents::{
     tools::{AgentTool, ToolRegistry},
 };
 use crate::context::CommitContext;
-use crate::{iris_status_expansion, iris_status_tool};
 
 use super::{LLMService, ResponseParser};
 
@@ -234,7 +233,8 @@ impl WorkflowOrchestrator {
                     String::new()
                 };
                 crate::log_debug!("🔧 Running: {}{}", plan.tool_name, operation_display);
-                iris_status_tool!(&plan.tool_name, &plan.reason);
+
+                // Skip tool execution status messages - only show LLM-generated ones
 
                 // Find the tool by name
                 let tool = self
@@ -282,7 +282,8 @@ impl WorkflowOrchestrator {
                                     } else {
                                         format!("{lines} lines, {chars} chars")
                                     }
-                                } else if let Some(files) = obj.get("files").and_then(|v| v.as_array())
+                                } else if let Some(files) =
+                                    obj.get("files").and_then(|v| v.as_array())
                                 {
                                     format!("{} files analyzed", files.len())
                                 } else {
@@ -341,7 +342,7 @@ impl WorkflowOrchestrator {
                             plan.reason
                         );
                     }
-                    iris_status_expansion!();
+                    // Skip plan expansion status - only show LLM-generated ones
                     current_plan.extend(expanded_plan);
                 }
             }
@@ -386,25 +387,27 @@ impl WorkflowOrchestrator {
             let can_parallelize = match tool_plan.tool_name.as_str() {
                 "Git Operations" => {
                     // Only allow one Git operation per batch to avoid conflicts
-                    !seen_tool_operations.iter().any(|key: &String| key.starts_with("Git Operations:"))
-                },
+                    !seen_tool_operations
+                        .iter()
+                        .any(|key: &String| key.starts_with("Git Operations:"))
+                }
                 "File Analyzer" => {
                     // File analysis is always safe to parallelize
                     true
-                }, 
+                }
                 "Workspace Management" => {
                     // Workspace operations are generally safe to parallelize
                     true
-                }, 
+                }
                 "Code Search" => {
                     // Code search might depend on context, be more conservative
                     // Don't parallelize if we already have other tools running
                     parallel_batch.is_empty()
-                },
+                }
                 _ => {
                     // Unknown tools should be sequential for safety
                     false
-                },
+                }
             };
 
             if can_parallelize && parallel_batch.len() < 2 {
@@ -420,7 +423,7 @@ impl WorkflowOrchestrator {
         // grab one more if it's safe to parallelize
         if parallel_batch.len() == 1 && !remaining.is_empty() {
             let first_tool = &parallel_batch[0].tool_name;
-            
+
             // Look for a complementary tool that's safe to run with the first one
             let mut complementary_idx = None;
             for (i, tool_plan) in remaining.iter().enumerate() {
