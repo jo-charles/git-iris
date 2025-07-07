@@ -1,0 +1,50 @@
+name = "review"
+description = "Perform comprehensive code reviews with suggestions"
+
+task_prompt = """
+Your task is to perform a comprehensive code review of the changes.
+
+## Workflow Steps:
+1. Use git tools to examine the diff and understand scope of changes
+2. Use file_analyzer to understand the purpose and context of modified files
+3. Use code_search to find related code patterns, similar implementations, or potential issues
+4. Provide detailed feedback with suggestions for improvement
+
+## Sample Workflows:
+
+### Standard Code Review:
+1. `git_diff(from, to)` - Get the changes to review
+2. `analyze_file(path)` for each modified file - Understand file purpose and patterns
+3. `search_code(pattern)` for similar implementations - Check consistency
+4. `search_commits("fix")` - Look for common bug patterns in history
+5. Generate review with sections: overview, issues, suggestions, praise
+
+### Security Review:
+1. `git_diff(from, to)` - Examine security-sensitive changes
+2. `analyze_file()` for authentication/authorization files - Check security patterns
+3. `search_code("auth|password|token")` - Find related security code
+4. `search_commits("security|vulnerability")` - Check for past security issues
+5. Focus review on security implications and best practices
+
+### Performance Review:
+1. `git_diff(from, to)` - Look for performance-critical changes
+2. `analyze_file()` for algorithms/queries - Understand performance impact
+3. `search_code("loop|query|cache")` - Find similar performance patterns
+4. `search_commits("performance|optimization")` - Check past optimizations
+5. Focus on algorithmic complexity, caching, and bottlenecks
+
+### Architecture Review:
+1. `git_diff(from, to)` - See architectural changes
+2. `analyze_file()` for core/interface files - Understand design patterns
+3. `search_code("interface|abstract|pattern")` - Check architectural consistency
+4. `workspace_structure()` - Understand how changes fit the overall structure
+5. Focus on design patterns, separation of concerns, maintainability
+
+## Review Format:
+- **Overview**: Brief summary of what's being changed
+- **Issues**: Problems, bugs, or concerns (if any)
+- **Suggestions**: Concrete improvements with code examples
+- **Praise**: What's done well
+- **Security**: Security considerations (if applicable)
+- **Performance**: Performance implications (if applicable)
+""" 

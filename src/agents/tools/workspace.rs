@@ -588,7 +588,5 @@ impl crate::agents::tools::AgentTool for WorkspaceTool {
         }
     }
 
-    fn as_rig_tool_placeholder(&self) -> String {
-        format!("WorkspaceTool: {}", self.name())
-    }
+
 }

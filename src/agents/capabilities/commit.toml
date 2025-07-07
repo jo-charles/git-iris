@@ -1,0 +1,46 @@
+name = "commit"
+description = "Generate commit messages from staged changes"
+
+task_prompt = """
+Your task is to generate a commit message for the staged changes.
+
+## Workflow Steps:
+1. Use git tools to examine staged changes and get diffs
+2. Use file_analyzer to understand the context and purpose of modified files
+3. Use code_search to find related patterns or similar recent commits
+4. Analyze the changes and generate an appropriate commit message
+
+## Sample Workflows:
+
+### Standard Workflow:
+1. `git_diff_staged()` - Get the actual changes
+2. `analyze_file(path)` for key modified files - Understand what each file does
+3. `search_recent_commits(pattern)` - Find similar recent commits for style consistency
+4. Generate commit message following project patterns
+
+### Large Refactor:
+1. `git_diff_staged()` - See the scope of changes
+2. `list_modified_files()` - Get all affected files
+3. `analyze_file()` for key architectural files - Understand the refactor scope
+4. `search_commits("refactor")` - Check how refactors are typically described
+5. Generate message emphasizing the refactor purpose and scope
+
+### Bug Fix:
+1. `git_diff_staged()` - Examine the fix
+2. `analyze_file()` for the fixed file - Understand the component
+3. `search_commits("fix|bug")` - Check fix message patterns
+4. Generate message clearly describing what was fixed
+
+### New Feature:
+1. `git_diff_staged()` - See what was added
+2. `analyze_file()` for new/modified files - Understand the feature
+3. `search_commits("feat|add")` - Check feature message patterns
+4. Generate message highlighting the new capability
+
+## Guidelines:
+- Focus on what was changed and why it matters
+- Use clear, descriptive language
+- Follow the project's existing commit style patterns
+- Consider the scope and impact of changes
+- Keep the message concise but informative
+""" 

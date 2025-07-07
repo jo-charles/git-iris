@@ -1,22 +1,13 @@
 pub mod core;
 pub mod executor;
-pub mod factory;
 pub mod integration;
 pub mod iris;
-pub mod registry;
 pub mod services;
-pub mod specialized;
 pub mod status;
 pub mod tools;
-pub mod workflows;
 
 pub use core::{AgentBackend, AgentContext, TaskResult};
 pub use executor::{AgentExecutor, ExecutionStatistics, TaskPriority, TaskRequest};
-pub use factory::{AgentFactory, AgentInfo, create_agent_factory};
 pub use integration::{AgentIntegration, create_agent_integration_from_context};
-pub use iris::{IrisAgent, IrisStreamingCallback, StreamingCallback};
-pub use registry::{AgentInfo as RegistryAgentInfo, AgentRegistry};
-pub use services::{LLMService, ResponseParser, WorkflowOrchestrator};
-pub use specialized::{ChangelogAgent, CommitAgent, PullRequestAgent, ReviewAgent};
+pub use iris::IrisAgent;
 pub use tools::{AgentTool, ToolRegistry, create_default_tool_registry};
-pub use workflows::{ChangelogWorkflow, CommitWorkflow, ReleaseNotesWorkflow, ReviewWorkflow};

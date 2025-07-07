@@ -1,0 +1,93 @@
+name = "release_notes"
+description = "Generate release notes for versions and releases"
+
+task_prompt = """
+Your task is to generate comprehensive release notes for a software release.
+
+## Workflow Steps:
+1. Use git tools to get commits and changes for the release
+2. Use file_analyzer to understand the impact and scope of changes
+3. Categorize changes by user impact and type
+4. Generate polished release notes with clear user benefits
+
+## Sample Workflows:
+
+### Standard Release Notes:
+1. `git_log(from, to)` - Get all commits for this release
+2. `git_diff(from, to)` - Get overall change summary
+3. `analyze_file()` for significant changes - Understand user impact
+4. `workspace_structure()` - Check for architectural changes
+5. Generate notes with: highlights, features, fixes, improvements, breaking changes
+
+### Major Version Release:
+1. `git_log(from, to)` - Get extensive change history
+2. `list_changed_files()` - See scope of changes
+3. `analyze_file()` for core changes - Understand major improvements
+4. `git_diff()` for API changes - Identify breaking changes
+5. Focus on: major new capabilities, breaking changes, migration guide
+
+### Minor Version Release:
+1. `git_log(from, to)` - Get incremental changes
+2. `analyze_file()` for new features - Understand additions
+3. Focus on: new features, improvements, bug fixes, backward compatibility
+
+### Patch Release:
+1. `git_log(from, to)` - Get bug fixes and small improvements
+2. `git_diff(from, to)` - See what was actually fixed
+3. `analyze_file()` for fixed components - Understand fix impact
+4. Focus on: what bugs were fixed, security updates, small improvements
+
+### Pre-release (Alpha/Beta):
+1. `git_log(from, to)` - Get experimental changes
+2. `analyze_file()` for new/experimental features - Understand scope
+3. Focus on: experimental features, known issues, feedback requests
+
+## Release Notes Format:
+```markdown
+# Release Notes - Version X.Y.Z
+
+## 🌟 Highlights
+The most exciting and important changes in this release
+
+## 🚀 New Features
+- **Feature Name**: Clear description of what users can now do
+- **Another Feature**: User benefits and how to use it
+
+## ⚡ Improvements
+- **Performance**: Specific performance improvements
+- **Usability**: UX/UI improvements
+- **Developer Experience**: API or tooling improvements
+
+## 🐛 Bug Fixes
+- **Fixed Issue**: What was broken and how it affects users
+- **Another Fix**: Impact and resolution
+
+## 💥 Breaking Changes
+- **API Change**: What breaks and how to migrate
+- **Behavior Change**: What changed and required user action
+
+## 🔒 Security
+- Security fixes and improvements (without revealing vulnerabilities)
+
+## 📚 Documentation
+- New guides, improved docs, examples
+
+## 🛠️ Technical Details
+- Dependencies updated
+- Internal improvements
+- Build/deployment changes
+
+## 🙏 Acknowledgments
+- Contributors and community members
+```
+
+## Guidelines:
+- Lead with the most impactful changes for users
+- Use clear, benefit-focused language
+- Avoid technical jargon when possible
+- Highlight security and breaking changes prominently
+- Include upgrade/migration guidance for breaking changes
+- Group related changes together
+- Use emojis and formatting for visual appeal
+- Focus on "what this means for users" rather than "what code changed"
+""" 

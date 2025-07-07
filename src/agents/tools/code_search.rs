@@ -233,7 +233,5 @@ impl AgentTool for CodeSearchTool {
         })
     }
 
-    fn as_rig_tool_placeholder(&self) -> String {
-        format!("CodeSearchTool: {}", self.name())
-    }
+
 }

@@ -40,15 +40,11 @@ pub trait AgentTool: Send + Sync {
 
     /// Get the tool's parameter schema
     fn parameter_schema(&self) -> serde_json::Value;
-
-    /// Convert to Rig Tool trait object (placeholder for future integration)
-    fn as_rig_tool_placeholder(&self) -> String;
 }
 
-/// Tool registry for managing available tools
+/// Simplified tool registry - we always provide all tools
 pub struct ToolRegistry {
     tools: HashMap<String, Arc<dyn AgentTool>>,
-    capability_index: HashMap<String, Vec<String>>,
 }
 
 impl Default for ToolRegistry {
@@ -61,49 +57,23 @@ impl ToolRegistry {
     pub fn new() -> Self {
         Self {
             tools: HashMap::new(),
-            capability_index: HashMap::new(),
         }
     }
 
     pub fn register_tool(&mut self, tool: Arc<dyn AgentTool>) {
-        let id = tool.id().to_string();
-
-        // Add to capability index
-        for capability in tool.capabilities() {
-            self.capability_index
-                .entry(capability)
-                .or_default()
-                .push(id.clone());
-        }
-
-        // Add to tools registry
-        self.tools.insert(id, tool);
+        self.tools.insert(tool.id().to_string(), tool);
     }
 
     pub fn get_tool(&self, id: &str) -> Option<Arc<dyn AgentTool>> {
         self.tools.get(id).cloned()
     }
 
-    pub fn get_tools_for_capability(&self, capability: &str) -> Result<Vec<Arc<dyn AgentTool>>> {
-        let empty_vec = Vec::new();
-        let tool_ids = self.capability_index.get(capability).unwrap_or(&empty_vec);
-
-        let mut tools = Vec::new();
-        for id in tool_ids {
-            if let Some(tool) = self.tools.get(id) {
-                tools.push(tool.clone());
-            }
-        }
-
-        Ok(tools)
+    pub fn get_all_tools(&self) -> Vec<Arc<dyn AgentTool>> {
+        self.tools.values().cloned().collect()
     }
 
-    pub fn list_tools(&self) -> Vec<String> {
+    pub fn list_tool_ids(&self) -> Vec<String> {
         self.tools.keys().cloned().collect()
-    }
-
-    pub fn list_capabilities(&self) -> Vec<String> {
-        self.capability_index.keys().cloned().collect()
     }
 }
 

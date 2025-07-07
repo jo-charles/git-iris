@@ -429,7 +429,5 @@ impl AgentTool for FileAnalyzerTool {
         })
     }
 
-    fn as_rig_tool_placeholder(&self) -> String {
-        format!("FileAnalyzerTool: {}", self.name())
-    }
+
 }

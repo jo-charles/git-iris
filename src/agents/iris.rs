@@ -1,329 +1,395 @@
-//! Iris Agent - The main coordination layer for Git-Iris AI operations
+//! Iris Agent - The unified AI agent for Git-Iris operations
 //!
-//! This is the streamlined version that leverages the new agent architecture
-//! with specialized agents, services, and workflows.
+//! This agent can handle any Git workflow task through capability-based prompts
+//! and multi-turn execution using Rig. One agent to rule them all! ✨
 
 use anyhow::Result;
 use async_trait::async_trait;
-use std::collections::HashMap;
-use std::sync::Arc;
+use rig::prelude::*;
+use rig::completion::{Prompt, ToolDefinition};
+use rig::providers::openai;
+use rig::tool::Tool;
+use serde::{Deserialize, Serialize};
+use serde_json::json;
+use std::path::PathBuf;
+use thiserror::Error;
+use tokio::fs;
 
-use crate::agents::{
-    core::{AgentBackend, AgentContext, IrisAgent as IrisAgentTrait, TaskResult},
-    services::{LLMService, ResponseParser, WorkflowOrchestrator},
-    specialized::{ChangelogAgent, CommitAgent, PullRequestAgent, ReviewAgent},
-    status::TokenMetrics,
-    tools::AgentTool,
-    workflows::{ChangelogWorkflow, CommitWorkflow, ReleaseNotesWorkflow, ReviewWorkflow},
-};
+use crate::config::Config;
 
-/// Streaming callback trait for real-time feedback with token counting
-#[async_trait]
+/// Streaming callback trait for backward compatibility with LLM service
+#[async_trait::async_trait]
 pub trait StreamingCallback: Send + Sync {
-    /// Called when a new chunk of text is received with token information
-    async fn on_chunk(&self, chunk: &str, tokens: Option<TokenMetrics>) -> Result<()>;
-
-    /// Called when streaming is complete
-    async fn on_complete(&self, full_response: &str, final_tokens: TokenMetrics) -> Result<()>;
-
-    /// Called when an error occurs during streaming
+    async fn on_chunk(&self, chunk: &str, tokens: Option<crate::agents::status::TokenMetrics>) -> Result<()>;
+    async fn on_complete(&self, full_response: &str, final_tokens: crate::agents::status::TokenMetrics) -> Result<()>;
     async fn on_error(&self, error: &anyhow::Error) -> Result<()>;
-
-    /// Called when status message should be updated (LLM-generated, max 80 chars)
     async fn on_status_update(&self, message: &str) -> Result<()>;
 }
 
-/// Dynamic streaming callback that updates the UI with live token counting
-pub struct IrisStreamingCallback {
-    current_tokens: Arc<std::sync::Mutex<TokenMetrics>>,
+/// Task capability definition loaded from TOML files
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskCapability {
+    pub name: String,
+    pub description: String,
+    pub task_prompt: String,
 }
 
-impl Default for IrisStreamingCallback {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+/// Simple Git status tool for Rig
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitStatusTool;
 
-impl IrisStreamingCallback {
-    pub fn new() -> Self {
-        Self {
-            current_tokens: Arc::new(std::sync::Mutex::new(TokenMetrics::default())),
-        }
-    }
-}
+#[derive(Debug, Error)]
+#[error("Git error")]
+pub struct GitError;
 
-#[async_trait]
-impl StreamingCallback for IrisStreamingCallback {
-    async fn on_chunk(&self, _chunk: &str, tokens: Option<TokenMetrics>) -> Result<()> {
-        if let Some(token_metrics) = tokens {
-            // Update token metrics only - no status updates
-            if let Ok(mut current) = self.current_tokens.lock() {
-                *current = token_metrics;
+impl Tool for GitStatusTool {
+    const NAME: &'static str = "git_status";
+    type Error = GitError;
+    type Args = ();
+    type Output = String;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        serde_json::from_value(json!({
+            "name": "git_status",
+            "description": "Get current Git repository status including staged and unstaged files",
+            "parameters": {
+                "type": "object",
+                "properties": {}
             }
-        }
-        Ok(())
+        })).expect("Valid tool definition")
     }
 
-    async fn on_complete(&self, _full_response: &str, final_tokens: TokenMetrics) -> Result<()> {
-        // Just mark as completed
-        if let Ok(mut current) = self.current_tokens.lock() {
-            *current = final_tokens;
-        }
-        crate::iris_status_completed!();
-        Ok(())
-    }
-
-    async fn on_error(&self, error: &anyhow::Error) -> Result<()> {
-        crate::iris_status_error!(&format!("Stream error: {error}"));
-        Ok(())
-    }
-
-    async fn on_status_update(&self, _message: &str) -> Result<()> {
-        // Skip status updates during streaming to prevent flipping
-        Ok(())
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+        use std::process::Command;
+        
+        let output = Command::new("git")
+            .args(["status", "--porcelain"])
+            .output()
+            .map_err(|_| GitError)?;
+            
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
     }
 }
 
-/// The streamlined Iris agent - coordinates specialized agents and workflows
+/// Simple Git diff tool for Rig
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitDiffTool;
+
+#[derive(Deserialize)]
+pub struct GitDiffArgs {
+    #[serde(default)]
+    pub staged: bool,
+}
+
+impl Tool for GitDiffTool {
+    const NAME: &'static str = "git_diff";
+    type Error = GitError;
+    type Args = GitDiffArgs;
+    type Output = String;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        serde_json::from_value(json!({
+            "name": "git_diff",
+            "description": "Get Git diff output for staged or unstaged changes",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "staged": {
+                        "type": "boolean",
+                        "description": "Get staged changes (--cached) instead of unstaged changes",
+                        "default": false
+                    }
+                }
+            }
+        })).expect("Valid tool definition")
+    }
+
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        use std::process::Command;
+        
+        let mut cmd = Command::new("git");
+        cmd.arg("diff");
+        
+        if args.staged {
+            cmd.arg("--cached");
+        }
+        
+        let output = cmd.output().map_err(|_| GitError)?;
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    }
+}
+
+/// File reading tool for Rig
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileReaderTool;
+
+#[derive(Deserialize)]
+pub struct FileReaderArgs {
+    pub path: String,
+}
+
+impl Tool for FileReaderTool {
+    const NAME: &'static str = "read_file";
+    type Error = GitError;
+    type Args = FileReaderArgs;
+    type Output = String;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        serde_json::from_value(json!({
+            "name": "read_file",
+            "description": "Read the contents of a file in the repository",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Path to the file to read"
+                    }
+                },
+                "required": ["path"]
+            }
+        })).expect("Valid tool definition")
+    }
+
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let content = tokio::fs::read_to_string(&args.path).await.map_err(|_| GitError)?;
+        Ok(content)
+    }
+}
+
+/// The unified Iris agent that handles all Git workflow tasks using Rig's multi-turn execution
 pub struct IrisAgent {
-    id: String,
-    name: String,
-    description: String,
-    capabilities: Vec<String>,
-    #[allow(dead_code)]
-    backend: AgentBackend,
-    #[allow(dead_code)]
-    tools: Vec<Arc<dyn AgentTool>>,
-    initialized: bool,
-
-    // Services
-    #[allow(dead_code)]
-    llm_service: LLMService,
-    #[allow(dead_code)]
-    parser: ResponseParser,
-    #[allow(dead_code)]
-    orchestrator: WorkflowOrchestrator,
-
-    // Specialized agents
-    #[allow(dead_code)]
-    commit_agent: CommitAgent,
-    review_agent: ReviewAgent,
-    #[allow(dead_code)]
-    changelog_agent: ChangelogAgent,
-    pr_agent: PullRequestAgent,
-
-    // Workflows
-    #[allow(dead_code)]
-    commit_workflow: CommitWorkflow,
-    #[allow(dead_code)]
-    review_workflow: ReviewWorkflow,
-    changelog_workflow: ChangelogWorkflow,
-    release_notes_workflow: ReleaseNotesWorkflow,
+    agent: rig::agent::Agent<openai::CompletionModel>,
+    capabilities: Vec<TaskCapability>,
 }
 
 impl IrisAgent {
-    /// Create a new streamlined Iris agent with the new architecture
-    pub fn new(backend: AgentBackend, tools: Vec<Arc<dyn AgentTool>>) -> Self {
-        // Initialize services
-        let llm_service = LLMService::new(backend.clone());
-        let parser = ResponseParser::new();
+    /// Create a new IrisAgent with the specified configuration
+    pub async fn new(config: &Config) -> Result<Self> {
+        // Load task capabilities from TOML files
+        let capabilities = Self::load_capabilities().await?;
+        
+        // Get provider config
+        let provider_config = config.get_provider_config(&config.default_provider)
+            .ok_or_else(|| anyhow::anyhow!("No configuration for provider: {}", config.default_provider))?;
+        
+        // Create the appropriate client based on provider
+        let agent = match config.default_provider.as_str() {
+            "openai" => {
+                let client = openai::Client::from_env();
+                client
+                    .agent(&provider_config.model)
+                    .preamble(&Self::create_system_prompt())
+                    .tool(GitStatusTool)
+                    .tool(GitDiffTool)
+                    .tool(FileReaderTool)
+                    .max_tokens(provider_config.get_token_limit().unwrap_or(4000) as u64)
+                    .temperature(0.1)
+                    .build()
+            }
+            "anthropic" => {
+                // We'll add Anthropic support later - for now, fall back to OpenAI
+                let client = openai::Client::from_env();
+                client
+                    .agent(&provider_config.model)
+                    .preamble(&Self::create_system_prompt())
+                    .tool(GitStatusTool)
+                    .tool(GitDiffTool)
+                    .tool(FileReaderTool)
+                    .max_tokens(provider_config.get_token_limit().unwrap_or(4000) as u64)
+                    .temperature(0.1)
+                    .build()
+            }
+            _ => {
+                return Err(anyhow::anyhow!("Unsupported provider: {}", config.default_provider));
+            }
+        };
 
-        // Create tool registry and populate it with provided tools
-        let mut tool_registry = crate::agents::tools::ToolRegistry::new();
-        for tool in &tools {
-            tool_registry.register_tool(tool.clone());
-        }
+        Ok(Self {
+            agent,
+            capabilities,
+        })
+    }
 
-        let tool_registry_arc = std::sync::Arc::new(tool_registry);
-        let orchestrator = WorkflowOrchestrator::new(
-            std::sync::Arc::new(llm_service.clone()),
-            tool_registry_arc.clone(),
+    /// Execute a task using multi-turn reasoning
+    pub async fn execute_task(&self, task_type: &str, user_request: &str) -> Result<String> {
+        // Find the capability for this task type
+        let capability = self.capabilities
+            .iter()
+            .find(|c| c.name == task_type)
+            .ok_or_else(|| anyhow::anyhow!("Unknown task type: {}", task_type))?;
+
+        // Combine the capability prompt with the user request
+        let full_prompt = format!(
+            "{}\n\nUser Request: {}\n\nPlease execute this task step by step, using the available tools as needed.",
+            capability.task_prompt,
+            user_request
         );
 
-        // Initialize specialized agents
-        let commit_agent = CommitAgent::new(&backend);
-        let review_agent = ReviewAgent::new_with_tool_registry(&backend, tool_registry_arc.clone());
-        let changelog_agent = ChangelogAgent::new(&backend);
-        let pr_agent = PullRequestAgent::new(&backend);
+        // Use multi-turn execution - the agent will iteratively call tools until completion
+        let result = self.agent
+            .prompt(&full_prompt)
+            .multi_turn(20)  // Allow up to 20 turns of tool calling
+            .await
+            .map_err(|e| anyhow::anyhow!("Agent execution failed: {}", e))?;
 
-        // Initialize workflows
-        let commit_workflow =
-            CommitWorkflow::new(llm_service.clone(), parser.clone(), orchestrator.clone());
-        let review_workflow =
-            ReviewWorkflow::new(llm_service.clone(), parser.clone(), orchestrator.clone());
-        let changelog_workflow = ChangelogWorkflow::new(llm_service.clone(), parser.clone());
-        let release_notes_workflow = ReleaseNotesWorkflow::new(llm_service.clone(), parser.clone());
+        Ok(result)
+    }
 
-        Self {
-            id: "iris".to_string(),
-            name: "Iris".to_string(),
-            description: "AI-powered Git workflow automation assistant".to_string(),
-            capabilities: vec![
-                "commit_generation".to_string(),
-                "code_review".to_string(),
-                "changelog_generation".to_string(),
-                "pr_generation".to_string(),
-                "release_notes".to_string(),
-            ],
-            backend,
-            tools,
-            initialized: false,
-            llm_service,
-            parser,
-            orchestrator,
-            commit_agent,
-            review_agent,
-            changelog_agent,
-            pr_agent,
-            commit_workflow,
-            review_workflow,
-            changelog_workflow,
-            release_notes_workflow,
+    /// Execute a task with streaming output (for real-time feedback)
+    pub async fn execute_task_streaming(&self, task_type: &str, user_request: &str) -> Result<String> {
+        // Find the capability for this task type
+        let capability = self.capabilities
+            .iter()
+            .find(|c| c.name == task_type)
+            .ok_or_else(|| anyhow::anyhow!("Unknown task type: {}", task_type))?;
+
+        let full_prompt = format!(
+            "{}\n\nUser Request: {}\n\nPlease execute this task step by step, using the available tools as needed.",
+            capability.task_prompt,
+            user_request
+        );
+
+        // For now, use regular execution. In the future, we can implement streaming
+        // using Rig's streaming capabilities from the examples
+        self.agent
+            .prompt(&full_prompt)
+            .multi_turn(20)
+            .await
+            .map_err(|e| anyhow::anyhow!("Agent execution failed: {}", e))
+    }
+
+    /// Create the main system prompt for the Iris agent
+    fn create_system_prompt() -> String {
+        r#"You are Iris, an intelligent Git workflow assistant designed to help developers with repository tasks.
+
+## Core Capabilities
+You can perform various Git-related tasks including:
+- Generating commit messages from staged changes
+- Performing comprehensive code reviews
+- Creating changelogs from Git history
+- Generating pull request descriptions
+- Analyzing code quality and structure
+
+## Tool Usage Guidelines
+1. **Always use tools** - Don't try to guess or assume file contents, Git state, or repository structure
+2. **Read before writing** - Use file analysis and Git tools to understand the current state
+3. **Be thorough** - Gather sufficient context before making recommendations
+4. **Iterate as needed** - Use multiple tool calls to build a complete understanding
+
+## Multi-turn Execution
+You can call tools multiple times in sequence to:
+- First understand the repository state
+- Analyze relevant files and changes
+- Gather additional context as needed
+- Provide comprehensive, accurate responses
+
+## Response Style
+- Be concise but thorough
+- Focus on actionable insights
+- Use clear, developer-friendly language
+- Structure responses with headings when appropriate
+
+Execute tasks step by step, using tools to gather accurate information about the repository state and changes."#.to_string()
+    }
+
+    /// Load task capabilities from TOML files
+    async fn load_capabilities() -> Result<Vec<TaskCapability>> {
+        let capabilities_dir = PathBuf::from("src/agents/capabilities");
+        let mut capabilities = Vec::new();
+
+        let mut entries = fs::read_dir(&capabilities_dir).await?;
+        while let Some(entry) = entries.next_entry().await? {
+            let path = entry.path();
+            if path.extension().and_then(|s| s.to_str()) == Some("toml") {
+                let content = fs::read_to_string(&path).await?;
+                let capability = Self::parse_capability(&content, &path)?;
+                capabilities.push(capability);
+            }
         }
+
+        Ok(capabilities)
     }
 
-    /// Generate commit message using the new architecture
-    pub async fn generate_commit_message(
-        &self,
-        context: &AgentContext,
-        params: &HashMap<String, serde_json::Value>,
-    ) -> Result<TaskResult> {
-        self.commit_agent
-            .execute_task("generate_commit_message", context, params)
-            .await
-    }
+    /// Parse a capability from TOML content
+    fn parse_capability(content: &str, path: &PathBuf) -> Result<TaskCapability> {
+        let parsed: toml::Value = toml::from_str(content)?;
+        
+        let name = path.file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("unknown")
+            .to_string();
 
-    /// Generate code review using the new architecture
-    pub async fn generate_code_review(
-        &self,
-        context: &AgentContext,
-        params: &HashMap<String, serde_json::Value>,
-    ) -> Result<TaskResult> {
-        self.review_agent
-            .execute_task("generate_code_review", context, params)
-            .await
-    }
-
-    /// Generate pull request using the new architecture
-    pub async fn generate_pull_request(
-        &self,
-        context: &AgentContext,
-        params: &HashMap<String, serde_json::Value>,
-    ) -> Result<TaskResult> {
-        self.pr_agent
-            .execute_task("generate_pr", context, params)
-            .await
-    }
-
-    /// Generate changelog using the new workflow architecture
-    pub async fn generate_changelog(
-        &self,
-        context: &AgentContext,
-        params: &HashMap<String, serde_json::Value>,
-    ) -> Result<TaskResult> {
-        let from_ref = params
-            .get("from_ref")
+        let description = parsed.get("description")
             .and_then(|v| v.as_str())
-            .unwrap_or("HEAD~1");
-        let to_ref = params
-            .get("to_ref")
-            .and_then(|v| v.as_str())
-            .unwrap_or("HEAD");
-        let version = params.get("version").and_then(|v| v.as_str());
+            .unwrap_or("")
+            .to_string();
 
-        self.changelog_workflow
-            .generate_changelog(context, from_ref, to_ref, version)
-            .await
+        let task_prompt = parsed.get("task_prompt")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+
+        Ok(TaskCapability {
+            name,
+            description,
+            task_prompt,
+        })
     }
 
-    /// Generate release notes using the new workflow architecture
-    pub async fn generate_release_notes(
-        &self,
-        context: &AgentContext,
-        params: &HashMap<String, serde_json::Value>,
-    ) -> Result<TaskResult> {
-        let from_ref = params
-            .get("from_ref")
-            .and_then(|v| v.as_str())
-            .unwrap_or("HEAD~1");
-        let to_ref = params
-            .get("to_ref")
-            .and_then(|v| v.as_str())
-            .unwrap_or("HEAD");
-        let version = params.get("version").and_then(|v| v.as_str());
+    /// Get available task capabilities
+    pub fn capabilities(&self) -> &[TaskCapability] {
+        &self.capabilities
+    }
 
-        self.release_notes_workflow
-            .generate_release_notes(context, from_ref, to_ref, version)
-            .await
+    /// Get a specific capability by name
+    pub fn get_capability(&self, name: &str) -> Option<&TaskCapability> {
+        self.capabilities.iter().find(|c| c.name == name)
     }
 }
 
-#[async_trait]
-impl IrisAgentTrait for IrisAgent {
-    fn id(&self) -> &str {
-        &self.id
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    async fn create_test_config() -> (Config, TempDir) {
+        let temp_dir = TempDir::new().unwrap();
+        let config = Config::default();
+        (config, temp_dir)
     }
 
-    fn name(&self) -> &str {
-        &self.name
-    }
-
-    fn description(&self) -> &str {
-        &self.description
-    }
-
-    fn capabilities(&self) -> Vec<String> {
-        self.capabilities.clone()
-    }
-
-    async fn execute_task(
-        &self,
-        task: &str,
-        context: &AgentContext,
-        params: &HashMap<String, serde_json::Value>,
-    ) -> Result<TaskResult> {
-        match task {
-            "generate_commit_message" => self.generate_commit_message(context, params).await,
-            "generate_review" => self.generate_code_review(context, params).await,
-            "generate_pr" => self.generate_pull_request(context, params).await,
-            "generate_changelog" => self.generate_changelog(context, params).await,
-            "generate_release_notes" => self.generate_release_notes(context, params).await,
-            _ => Err(anyhow::anyhow!("Unknown task: {}", task)),
+    #[tokio::test]
+    async fn test_iris_agent_creation() {
+        let (config, _temp_dir) = create_test_config().await;
+        
+        // This test requires API keys to be set, so we'll skip if not available
+        if std::env::var("OPENAI_API_KEY").is_err() {
+            return;
         }
+
+        let agent = IrisAgent::new(&config).await;
+        assert!(agent.is_ok());
     }
 
-    fn can_handle_task(&self, task: &str) -> bool {
-        matches!(
-            task,
-            "generate_commit_message"
-                | "generate_review"
-                | "generate_pr"
-                | "generate_changelog"
-                | "generate_release_notes"
-        )
+    #[tokio::test]
+    async fn test_capability_loading() {
+        let capabilities = IrisAgent::load_capabilities().await.unwrap();
+        assert!(!capabilities.is_empty());
+        
+        // Should have at least our basic capabilities
+        let capability_names: Vec<&str> = capabilities.iter().map(|c| c.name.as_str()).collect();
+        assert!(capability_names.contains(&"commit"));
+        assert!(capability_names.contains(&"review"));
     }
 
-    fn task_priority(&self, task: &str) -> u8 {
-        match task {
-            "generate_commit_message" => 10,
-            "generate_review" => 9,
-            "generate_pr" => 8,
-            "generate_changelog" => 7,
-            "generate_release_notes" => 6,
-            _ => 0,
-        }
-    }
-
-    async fn initialize(&mut self, _context: &AgentContext) -> Result<()> {
-        self.initialized = true;
-        Ok(())
-    }
-
-    async fn cleanup(&self) -> Result<()> {
-        Ok(())
-    }
-
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
+    #[tokio::test]
+    async fn test_capability_retrieval() {
+        let capabilities = IrisAgent::load_capabilities().await.unwrap();
+        
+        // Find a commit capability
+        let commit_capability = capabilities.iter().find(|c| c.name == "commit");
+        assert!(commit_capability.is_some());
+        assert_eq!(commit_capability.unwrap().name, "commit");
     }
 }

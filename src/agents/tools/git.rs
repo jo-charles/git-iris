@@ -288,7 +288,5 @@ impl AgentTool for GitTool {
         })
     }
 
-    fn as_rig_tool_placeholder(&self) -> String {
-        format!("GitTool: {}", self.name())
-    }
+
 }
