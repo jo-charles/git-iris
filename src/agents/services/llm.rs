@@ -6,10 +6,11 @@
 #![allow(clippy::unused_self)]
 
 use anyhow::Result;
-use futures::StreamExt;
+// use futures::StreamExt; // Currently unused
 use regex::Regex;
 
 use std::sync::LazyLock;
+// use std::sync::Arc; // Currently unused
 
 use crate::agents::{
     core::AgentBackend,
@@ -494,6 +495,7 @@ impl LLMService {
         clippy::cast_precision_loss,
         clippy::as_conversions
     )]
+    #[allow(dead_code)] // May be used in future streaming implementations
     fn create_streaming_token_metrics(&self, current_response: &str, chunk: &str) -> TokenMetrics {
         TokenMetrics {
             input_tokens: 0, // Would need actual API token count
@@ -583,7 +585,7 @@ impl LLMService {
     /// Execute generation using provider-agnostic approach
     async fn execute_generation(
         &self,
-        enhanced_system_prompt: &str,
+        _enhanced_system_prompt: &str,
         request: &GenerationRequest,
         callback: Option<&dyn StreamingCallback>,
     ) -> Result<(String, TokenMetrics)> {

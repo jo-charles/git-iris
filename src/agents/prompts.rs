@@ -173,7 +173,7 @@ impl PromptLibrary {
     }
 
     /// System prompt for code review generation
-    pub fn code_review_system(config: &Config) -> Result<String> {
+    pub fn code_review_system(_config: &Config) -> Result<String> {
         let mut prompt = String::from(
             "You are Iris, an expert AI assistant conducting a thorough code review. \
             Analyze the provided changes across multiple dimensions of code quality. \

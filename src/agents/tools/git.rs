@@ -288,12 +288,27 @@ impl Tool for GitChangedFiles {
         let current_dir = std::env::current_dir().map_err(GitError::from)?;
         let repo = GitRepo::new(&current_dir).map_err(GitError::from)?;
 
-        let files = if let (Some(_from), Some(to)) = (args.from, args.to) {
-            repo.get_file_paths_for_commit(&to)
-                .map_err(GitError::from)?
-        } else {
-            let files_info = repo.extract_files_info(false).map_err(GitError::from)?;
-            files_info.file_paths
+        let files = match (args.from, args.to) {
+            (Some(from), Some(to)) => {
+                // When both from and to are provided, get files changed between commits/branches
+                let range_files = repo.get_commit_range_files(&from, &to)
+                    .map_err(GitError::from)?;
+                range_files.iter().map(|f| f.path.clone()).collect()
+            }
+            (None, Some(to)) => {
+                // When only to is provided, get files changed in that single commit
+                repo.get_file_paths_for_commit(&to)
+                    .map_err(GitError::from)?
+            }
+            (Some(_from), None) => {
+                // Invalid: from without to doesn't make sense for file listing
+                return Err(GitError("Cannot specify 'from' without 'to' for file listing".to_string()));
+            }
+            (None, None) => {
+                // When neither are provided, get staged files
+                let files_info = repo.extract_files_info(false).map_err(GitError::from)?;
+                files_info.file_paths
+            }
         };
 
         let mut output = String::new();

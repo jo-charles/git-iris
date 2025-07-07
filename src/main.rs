@@ -4,7 +4,7 @@ use git_iris::cli;
 /// Main entry point for the application
 #[tokio::main]
 async fn main() -> Result<()> {
-    git_iris::logger::init().expect("Failed to initialize logger");
+    git_iris::logger::init().expect("Failed to initialize unified logging system");
     match cli::main().await {
         Ok(()) => Ok(()),
         Err(e) => {

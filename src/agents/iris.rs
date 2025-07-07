@@ -7,7 +7,7 @@ use anyhow::Result;
 use rig::agent::Agent;
 use rig::client::builder::DynClientBuilder;
 use rig::completion::{CompletionModel, Prompt};
-use rig::prelude::*;
+// use rig::prelude::*; // Currently unused
 use std::collections::HashMap;
 use tokio::fs;
 

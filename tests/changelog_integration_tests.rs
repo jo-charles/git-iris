@@ -19,7 +19,7 @@ mod test_utils;
 use test_utils::setup_git_repo_with_tags;
 
 fn setup_test_repo() -> Result<(TempDir, Repository)> {
-    let _ = logger::init(); // Initialize the logger
+    let _ = logger::init(); // Initialize the unified logging system
     logger::enable_logging(); // Enable logging
     logger::set_log_to_stdout(true);
 
