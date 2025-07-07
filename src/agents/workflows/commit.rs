@@ -98,14 +98,15 @@ impl CommitWorkflow {
         .with_confidence(0.92))
     }
 
-    /// Generate a commit message with streaming support
-    pub async fn generate_commit_message_streaming(
+    /// Generate a commit message with custom streaming callback
+    /// Note: All commit generation now streams by default internally - this provides custom callback support
+    pub async fn generate_commit_message_with_callback(
         &self,
         context: &AgentContext,
         params: &HashMap<String, serde_json::Value>,
         callback: &dyn StreamingCallback,
     ) -> Result<TaskResult> {
-        log_debug!("🚀 CommitWorkflow: Starting streaming commit message generation");
+        log_debug!("🚀 CommitWorkflow: Starting commit generation with custom callback");
 
         let use_gitmoji = params
             .get("use_gitmoji")
@@ -130,16 +131,15 @@ impl CommitWorkflow {
         let system_prompt = create_system_prompt(&config_clone)?;
         let user_prompt = create_user_prompt(&commit_context);
 
-        // Step 4: Generate with streaming
+        // Step 4: Generate with custom callback
         let request = GenerationRequest::new(system_prompt, user_prompt)
             .with_phase(IrisPhase::Generation)
             .with_context("commit message generation")
-            .with_streaming_callback(callback)
             .with_max_tokens(4096);
 
         let generated_message = self
             .llm_service
-            .generate_streaming(request, callback)
+            .generate_with_callback(request, callback)
             .await?;
 
         // Step 5: Parse response
@@ -148,14 +148,14 @@ impl CommitWorkflow {
             .parse_json_response::<GeneratedMessage>(&generated_message)?;
 
         log_debug!(
-            "✅ CommitWorkflow: Streaming complete - Title: '{}', {} chars total",
+            "✅ CommitWorkflow: Generated with callback - Title: '{}', {} chars total",
             parsed_response.title,
             parsed_response.message.len()
         );
 
         iris_status_completed!();
         Ok(TaskResult::success_with_data(
-            "Commit message generated successfully with streaming".to_string(),
+            "Commit message generated successfully".to_string(),
             serde_json::to_value(parsed_response)?,
         )
         .with_confidence(0.92))

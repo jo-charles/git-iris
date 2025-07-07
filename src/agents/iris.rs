@@ -193,20 +193,6 @@ impl IrisAgent {
             .await
     }
 
-    /// Generate commit message with streaming support
-    pub async fn generate_commit_message_streaming(
-        &self,
-        context: &AgentContext,
-        params: &HashMap<String, serde_json::Value>,
-        _callback: &dyn StreamingCallback,
-    ) -> Result<TaskResult> {
-        // For now, delegate to the commit agent
-        // TODO: Add streaming support to specialized agents
-        self.commit_agent
-            .execute_task("generate_commit_message", context, params)
-            .await
-    }
-
     /// Generate code review using the new architecture
     pub async fn generate_code_review(
         &self,

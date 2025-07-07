@@ -8,7 +8,7 @@
 use anyhow::Result;
 use futures::StreamExt;
 use regex::Regex;
-use rig::completion::Prompt;
+
 use rig::prelude::*;
 use rig::streaming::StreamingPrompt;
 use std::sync::LazyLock;
@@ -18,6 +18,34 @@ use crate::agents::{
     iris::StreamingCallback,
     status::{IRIS_STATUS, IrisPhase, IrisStatus, TokenMetrics},
 };
+
+/// Default silent streaming callback for cases where no callback is provided
+/// This ensures all LLM calls stream by default, even when no explicit callback is given
+pub struct DefaultStreamingCallback;
+
+#[async_trait::async_trait]
+impl StreamingCallback for DefaultStreamingCallback {
+    async fn on_chunk(&self, _chunk: &str, _tokens: Option<TokenMetrics>) -> Result<()> {
+        // Silent - just consume the chunks without UI updates
+        Ok(())
+    }
+
+    async fn on_complete(&self, _full_response: &str, _final_tokens: TokenMetrics) -> Result<()> {
+        // Silent completion
+        Ok(())
+    }
+
+    async fn on_error(&self, error: &anyhow::Error) -> Result<()> {
+        // Still log errors but don't update UI
+        crate::log_debug!("Stream error (silent): {error}");
+        Ok(())
+    }
+
+    async fn on_status_update(&self, _message: &str) -> Result<()> {
+        // Silent status updates
+        Ok(())
+    }
+}
 
 // Token limit for all operations - Claude can handle much more than 8192 tokens
 const DEFAULT_MAX_TOKENS: u64 = 8192;
@@ -318,22 +346,16 @@ impl LLMService {
         Self { backend }
     }
 
-    /// Generate text with LLM - unified pipeline for all agent operations
+    /// Generate text with LLM - ALWAYS streams using provided callback or default silent callback
+    /// This ensures all operations benefit from streaming architecture, even without explicit UI updates
     pub async fn generate(&self, request: GenerationRequest) -> Result<String> {
-        self.generate_internal(request, None).await
+        let default_callback = DefaultStreamingCallback;
+        self.generate_internal(request, Some(&default_callback))
+            .await
     }
 
-    /// Generate text using the fast model (optimized for speed over quality)
-    pub async fn fast_generate(&self, request: GenerationRequest) -> Result<String> {
-        let fast_request = GenerationRequest {
-            model_type: ModelType::Fast,
-            ..request
-        };
-        self.generate_internal(fast_request, None).await
-    }
-
-    /// Generate text with streaming support for real-time feedback
-    pub async fn generate_streaming(
+    /// Generate text with LLM using custom streaming callback for real-time feedback
+    pub async fn generate_with_callback(
         &self,
         request: GenerationRequest,
         callback: &dyn StreamingCallback,
@@ -341,7 +363,31 @@ impl LLMService {
         self.generate_internal(request, Some(callback)).await
     }
 
-    /// Analyze context using optimized analysis configuration (uses primary model)
+    /// Generate text using the fast model (optimized for speed over quality) - ALWAYS streams
+    pub async fn fast_generate(&self, request: GenerationRequest) -> Result<String> {
+        let fast_request = GenerationRequest {
+            model_type: ModelType::Fast,
+            ..request
+        };
+        let default_callback = DefaultStreamingCallback;
+        self.generate_internal(fast_request, Some(&default_callback))
+            .await
+    }
+
+    /// Generate text using the fast model with custom streaming callback
+    pub async fn fast_generate_with_callback(
+        &self,
+        request: GenerationRequest,
+        callback: &dyn StreamingCallback,
+    ) -> Result<String> {
+        let fast_request = GenerationRequest {
+            model_type: ModelType::Fast,
+            ..request
+        };
+        self.generate_internal(fast_request, Some(callback)).await
+    }
+
+    /// Analyze context using optimized analysis configuration (uses primary model) - ALWAYS streams
     pub async fn analyze(&self, prompt: &str) -> Result<String> {
         let system_prompt = "You are Iris, an expert AI assistant specializing in Git workflow automation and code analysis. \
                             Provide intelligent, structured analysis in the requested JSON format. \
@@ -355,7 +401,25 @@ impl LLMService {
         self.generate(request).await
     }
 
-    /// Fast analysis using the fast model for simple parsing/extraction tasks
+    /// Analyze context with custom streaming callback for real-time feedback
+    pub async fn analyze_with_callback(
+        &self,
+        prompt: &str,
+        callback: &dyn StreamingCallback,
+    ) -> Result<String> {
+        let system_prompt = "You are Iris, an expert AI assistant specializing in Git workflow automation and code analysis. \
+                            Provide intelligent, structured analysis in the requested JSON format. \
+                            You have deep understanding of software development patterns and can provide insightful analysis.";
+
+        let request = GenerationRequest::new(system_prompt.to_string(), prompt.to_string())
+            .with_temperature(0.3) // Lower temperature for consistent analysis
+            .with_phase(IrisPhase::Analysis)
+            .with_operation("analysis".to_string(), "gathering context".to_string());
+
+        self.generate_with_callback(request, callback).await
+    }
+
+    /// Fast analysis using the fast model for simple parsing/extraction tasks - ALWAYS streams
     pub async fn fast_analyze(&self, prompt: &str) -> Result<String> {
         let system_prompt = "You are Iris, a helpful AI assistant. Provide concise, structured responses in the requested format.";
 
@@ -366,6 +430,23 @@ impl LLMService {
             .with_model_type(ModelType::Fast);
 
         self.generate(request).await
+    }
+
+    /// Fast analysis with custom streaming callback
+    pub async fn fast_analyze_with_callback(
+        &self,
+        prompt: &str,
+        callback: &dyn StreamingCallback,
+    ) -> Result<String> {
+        let system_prompt = "You are Iris, a helpful AI assistant. Provide concise, structured responses in the requested format.";
+
+        let request = GenerationRequest::new(system_prompt.to_string(), prompt.to_string())
+            .with_temperature(0.1) // Very low temperature for consistent parsing
+            .with_phase(IrisPhase::Planning)
+            .with_operation("parsing".to_string(), "extracting information".to_string())
+            .with_model_type(ModelType::Fast);
+
+        self.generate_with_callback(request, callback).await
     }
 
     /// Get model information for logging
@@ -449,26 +530,6 @@ impl LLMService {
     }
 
     /// Create token metrics for non-streaming
-    #[allow(
-        clippy::cast_possible_truncation,
-        clippy::cast_precision_loss,
-        clippy::as_conversions
-    )]
-    fn create_non_streaming_token_metrics(
-        &self,
-        request: &GenerationRequest,
-        response: &str,
-    ) -> TokenMetrics {
-        TokenMetrics {
-            input_tokens: (request.system_prompt.len() + request.user_prompt.len()) as u32 / 4,
-            output_tokens: response.len() as u32 / 4,
-            total_tokens: (request.system_prompt.len() + request.user_prompt.len() + response.len())
-                as u32
-                / 4,
-            tokens_per_second: 0.0,
-            estimated_remaining: None,
-        }
-    }
 
     /// Handle post-processing: logging, cost estimation, and status extraction
     #[allow(
@@ -556,41 +617,36 @@ impl LLMService {
             .max_tokens(request.max_tokens)
             .build();
         let mut full_response = String::new();
-        let final_token_metrics;
 
-        if let Some(callback) = callback {
-            // Streaming pipeline
-            let mut stream = agent.stream_prompt(&request.user_prompt).await?;
-            while let Some(chunk_result) = stream.next().await {
-                match chunk_result {
-                    Ok(assistant_content) => {
-                        if let rig::completion::AssistantContent::Text(text) = assistant_content {
-                            if !text.text.is_empty() {
-                                let token_metrics =
-                                    self.create_streaming_token_metrics(&full_response, &text.text);
-                                callback
-                                    .on_chunk(&text.text, Some(token_metrics.clone()))
-                                    .await?;
-                                full_response.push_str(&text.text);
-                            }
+        // ALWAYS use streaming pipeline - callback is guaranteed to be provided (default or custom)
+        let callback =
+            callback.expect("Callback should always be provided in new streaming architecture");
+        let mut stream = agent.stream_prompt(&request.user_prompt).await?;
+        while let Some(chunk_result) = stream.next().await {
+            match chunk_result {
+                Ok(assistant_content) => {
+                    if let rig::completion::AssistantContent::Text(text) = assistant_content {
+                        if !text.text.is_empty() {
+                            let token_metrics =
+                                self.create_streaming_token_metrics(&full_response, &text.text);
+                            callback
+                                .on_chunk(&text.text, Some(token_metrics.clone()))
+                                .await?;
+                            full_response.push_str(&text.text);
                         }
                     }
-                    Err(e) => {
-                        let anyhow_error = anyhow::anyhow!("Streaming error: {}", e);
-                        callback.on_error(&anyhow_error).await?;
-                        return Err(e.into());
-                    }
+                }
+                Err(e) => {
+                    let anyhow_error = anyhow::anyhow!("Streaming error: {}", e);
+                    callback.on_error(&anyhow_error).await?;
+                    return Err(e.into());
                 }
             }
-            final_token_metrics = self.create_final_streaming_token_metrics(&full_response);
-            callback
-                .on_complete(&full_response, final_token_metrics.clone())
-                .await?;
-        } else {
-            // Non-streaming pipeline
-            full_response = agent.prompt(&request.user_prompt).await?;
-            final_token_metrics = self.create_non_streaming_token_metrics(request, &full_response);
         }
+        let final_token_metrics = self.create_final_streaming_token_metrics(&full_response);
+        callback
+            .on_complete(&full_response, final_token_metrics.clone())
+            .await?;
 
         Ok((full_response, final_token_metrics))
     }
@@ -623,52 +679,46 @@ impl LLMService {
             .max_tokens(request.max_tokens)
             .build();
         let mut full_response = String::new();
-        let final_token_metrics;
 
-        if let Some(callback) = callback {
-            // Streaming pipeline
-            let mut stream = agent.stream_prompt(&request.user_prompt).await?;
-            while let Some(chunk_result) = stream.next().await {
-                match chunk_result {
-                    Ok(assistant_content) => {
-                        if let rig::completion::AssistantContent::Text(text) = assistant_content {
-                            if !text.text.is_empty() {
-                                let token_metrics =
-                                    self.create_streaming_token_metrics(&full_response, &text.text);
-                                callback
-                                    .on_chunk(&text.text, Some(token_metrics.clone()))
-                                    .await?;
-                                full_response.push_str(&text.text);
-                            }
+        // ALWAYS use streaming pipeline - callback is guaranteed to be provided (default or custom)
+        let callback =
+            callback.expect("Callback should always be provided in new streaming architecture");
+        let mut stream = agent.stream_prompt(&request.user_prompt).await?;
+        while let Some(chunk_result) = stream.next().await {
+            match chunk_result {
+                Ok(assistant_content) => {
+                    if let rig::completion::AssistantContent::Text(text) = assistant_content {
+                        if !text.text.is_empty() {
+                            let token_metrics =
+                                self.create_streaming_token_metrics(&full_response, &text.text);
+                            callback
+                                .on_chunk(&text.text, Some(token_metrics.clone()))
+                                .await?;
+                            full_response.push_str(&text.text);
                         }
                     }
-                    Err(e) => {
-                        let anyhow_error = anyhow::anyhow!("Streaming error: {}", e);
-                        callback.on_error(&anyhow_error).await?;
-                        return Err(e.into());
-                    }
+                }
+                Err(e) => {
+                    let anyhow_error = anyhow::anyhow!("Streaming error: {}", e);
+                    callback.on_error(&anyhow_error).await?;
+                    return Err(e.into());
                 }
             }
-            final_token_metrics = self.create_final_streaming_token_metrics(&full_response);
-            callback
-                .on_complete(&full_response, final_token_metrics.clone())
-                .await?;
-        } else {
-            // Non-streaming pipeline
-            full_response = agent.prompt(&request.user_prompt).await?;
-            final_token_metrics = self.create_non_streaming_token_metrics(request, &full_response);
         }
+        let final_token_metrics = self.create_final_streaming_token_metrics(&full_response);
+        callback
+            .on_complete(&full_response, final_token_metrics.clone())
+            .await?;
 
         Ok((full_response, final_token_metrics))
     }
 
-    /// Internal generation pipeline with optional streaming
+    /// Internal generation pipeline - ALWAYS streams with provided callback
     #[allow(
         clippy::cast_possible_truncation,
         clippy::cast_precision_loss,
         clippy::as_conversions
     )]
-    #[allow(unused_assignments)]
     async fn generate_internal(
         &self,
         request: GenerationRequest,

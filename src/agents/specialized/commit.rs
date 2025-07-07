@@ -51,10 +51,23 @@ impl CommitAgent {
     }
 
     /// Generate a commit message with intelligent context analysis
+    /// Generate a commit message with optional streaming callback
+    /// Uses silent streaming by default, custom callback if provided
     pub async fn generate_commit_message(
         &self,
         context: &AgentContext,
         params: &HashMap<String, serde_json::Value>,
+    ) -> Result<TaskResult> {
+        self.generate_commit_message_with_callback(context, params, None)
+            .await
+    }
+
+    /// Generate a commit message with custom streaming callback for real-time feedback
+    pub async fn generate_commit_message_with_callback(
+        &self,
+        context: &AgentContext,
+        params: &HashMap<String, serde_json::Value>,
+        callback: Option<&dyn StreamingCallback>,
     ) -> Result<TaskResult> {
         let preset = params
             .get("preset")
@@ -66,8 +79,10 @@ impl CommitAgent {
             .and_then(serde_json::Value::as_bool)
             .unwrap_or(context.config.use_gitmoji);
 
+        let log_prefix = if callback.is_some() { "🌊" } else { "🤖" };
         log_debug!(
-            "🤖 CommitAgent: Generating commit message with preset: '{}', gitmoji: {}",
+            "{} CommitAgent: Generating commit message - preset: '{}', gitmoji: {}",
+            log_prefix,
             preset,
             use_gitmoji
         );
@@ -91,7 +106,7 @@ impl CommitAgent {
         let system_prompt = create_system_prompt(&config_clone)?;
         let user_prompt = create_user_prompt(&commit_context);
 
-        // Step 4: Generate using LLM service
+        // Step 4: Generate using LLM service (always streams - with default or custom callback)
         let request = GenerationRequest::builder()
             .system_prompt(system_prompt)
             .user_prompt(user_prompt)
@@ -102,7 +117,13 @@ impl CommitAgent {
             .total_steps(Some(5))
             .build()?;
 
-        let generated_message = self.llm_service.generate(request).await?;
+        let generated_message = if let Some(callback) = callback {
+            self.llm_service
+                .generate_with_callback(request, callback)
+                .await?
+        } else {
+            self.llm_service.generate(request).await?
+        };
 
         // Step 5: Parse and validate response using parser service
         let parsed_response = self
@@ -122,98 +143,18 @@ impl CommitAgent {
         .with_confidence(0.92))
     }
 
-    /// Generate a commit message with streaming support
-    pub async fn generate_commit_message_streaming(
-        &self,
-        context: &AgentContext,
-        params: &HashMap<String, serde_json::Value>,
-        callback: &dyn StreamingCallback,
-    ) -> Result<TaskResult> {
-        let preset = params
-            .get("preset")
-            .and_then(|v| v.as_str())
-            .unwrap_or("default");
-
-        let use_gitmoji = params
-            .get("gitmoji")
-            .and_then(serde_json::Value::as_bool)
-            .unwrap_or(context.config.use_gitmoji);
-
-        log_debug!(
-            "🌊 CommitAgent: Generating commit message with streaming - preset: '{}', gitmoji: {}",
-            preset,
-            use_gitmoji
-        );
-
-        // Step 1: Gather intelligent context
-        let intelligent_context = self
-            .orchestrator
-            .gather_intelligent_context(context)
-            .await?;
-
-        // Step 2: Build commit context
-        let commit_context = self
-            .orchestrator
-            .build_commit_context(context, &intelligent_context)
-            .await?;
-
-        // Step 3: Create prompts
-        let mut config_clone = (*context.config).clone();
-        config_clone.use_gitmoji = use_gitmoji;
-
-        let system_prompt = create_system_prompt(&config_clone)?;
-        let user_prompt = create_user_prompt(&commit_context);
-
-        // Step 4: Generate with streaming using LLM service
-        let request = GenerationRequest::builder()
-            .system_prompt(system_prompt)
-            .user_prompt(user_prompt)
-            .phase(IrisPhase::Generation)
-            .operation_type("commit message generation")
-            .with_context("crafting elegant commit message from staged changes")
-            .current_step(4)
-            .total_steps(Some(5))
-            .with_streaming_callback(callback)
-            .build()?;
-
-        let generated_message = self
-            .llm_service
-            .generate_streaming(request, callback)
-            .await?;
-
-        // Step 5: Parse and validate response
-        let parsed_response = self
-            .parser
-            .parse_json_response::<GeneratedMessage>(&generated_message)?;
-
-        log_debug!(
-            "✅ CommitAgent: Generated streaming commit message '{}'",
-            parsed_response.title
-        );
-
-        iris_status_completed!();
-        Ok(TaskResult::success_with_data(
-            "Commit message generated successfully with streaming".to_string(),
-            serde_json::to_value(parsed_response)?,
-        )
-        .with_confidence(0.92))
-    }
-
     /// Check if this agent can handle the given task
     pub fn can_handle_task(&self, task: &str) -> bool {
         matches!(
             task,
-            "generate_commit_message"
-                | "generate_commit_message_streaming"
-                | "validate_commit"
-                | "analyze_commit_changes"
+            "generate_commit_message" | "validate_commit" | "analyze_commit_changes"
         )
     }
 
     /// Get task priority for this agent's capabilities
     pub fn task_priority(&self, task: &str) -> u8 {
         match task {
-            "generate_commit_message" | "generate_commit_message_streaming" => 10, // Highest priority
+            "generate_commit_message" => 10, // Highest priority
             "validate_commit" => 8,
             "analyze_commit_changes" => 7,
             _ => 0,

@@ -151,7 +151,6 @@ impl AgentFactory {
         // Common tasks to check
         let tasks = vec![
             "generate_commit_message",
-            "generate_commit_message_streaming",
             "generate_code_review",
             "generate_pull_request",
             "generate_changelog",
