@@ -561,9 +561,6 @@ pub async fn handle_gen_with_agent(
             .generate_commit_message_with_params_streaming(agent_params, None)
             .await?;
 
-        // Mark completion
-        crate::agents::status::IRIS_STATUS.completed();
-
         // Give a moment for the completion message to be seen
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
@@ -639,9 +636,6 @@ pub async fn handle_review_with_agent(
         let review_data = integration
             .review_changes(commit_range.as_deref(), Some(focus_areas))
             .await?;
-
-        // Mark completion
-        crate::agents::status::IRIS_STATUS.completed();
 
         // Give a moment for the completion message to be seen
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;

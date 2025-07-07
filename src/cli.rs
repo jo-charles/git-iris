@@ -284,6 +284,13 @@ pub enum Commands {
         #[arg(long, help = "Set model for the specified provider")]
         model: Option<String>,
 
+        /// Set fast model for the specified provider (used for status updates and simple tasks)
+        #[arg(
+            long,
+            help = "Set fast model for the specified provider (used for status updates and simple tasks)"
+        )]
+        fast_model: Option<String>,
+
         /// Set token limit for the specified provider
         #[arg(long, help = "Set token limit for the specified provider")]
         token_limit: Option<usize>,
@@ -308,6 +315,13 @@ pub enum Commands {
         /// Set model for the specified provider
         #[arg(long, help = "Set model for the specified provider")]
         model: Option<String>,
+
+        /// Set fast model for the specified provider (used for status updates and simple tasks)
+        #[arg(
+            long,
+            help = "Set fast model for the specified provider (used for status updates and simple tasks)"
+        )]
+        fast_model: Option<String>,
 
         /// Set token limit for the specified provider
         #[arg(long, help = "Set token limit for the specified provider")]
@@ -466,6 +480,7 @@ fn handle_config(
     common: &CommonParams,
     api_key: Option<String>,
     model: Option<String>,
+    fast_model: Option<String>,
     token_limit: Option<usize>,
     param: Option<Vec<String>>,
 ) -> anyhow::Result<()> {
@@ -477,7 +492,7 @@ fn handle_config(
         token_limit,
         param
     );
-    commands::handle_config_command(common, api_key, model, token_limit, param)
+    commands::handle_config_command(common, api_key, model, fast_model, token_limit, param)
 }
 
 /// Handle the `Review` command
@@ -664,9 +679,10 @@ pub async fn handle_command(
             common,
             api_key,
             model,
+            fast_model,
             token_limit,
             param,
-        } => handle_config(&common, api_key, model, token_limit, param),
+        } => handle_config(&common, api_key, model, fast_model, token_limit, param),
         Commands::Review {
             common,
             print,
@@ -722,10 +738,18 @@ pub async fn handle_command(
         Commands::ProjectConfig {
             common,
             model,
+            fast_model,
             token_limit,
             param,
             print,
-        } => commands::handle_project_config_command(&common, model, token_limit, param, print),
+        } => commands::handle_project_config_command(
+            &common,
+            model,
+            fast_model,
+            token_limit,
+            param,
+            print,
+        ),
         Commands::ListPresets => commands::handle_list_presets_command(),
         Commands::Pr {
             common,

@@ -166,7 +166,7 @@ impl WorkflowOrchestrator {
             available_tools.join("\n")
         );
 
-        let planning_result = self.llm_service.analyze(&planning_prompt).await?;
+        let planning_result = self.llm_service.fast_analyze(&planning_prompt).await?;
 
         // Parse the tool plan
         let tool_plan = Self::parse_tool_plan(&planning_result);
@@ -200,10 +200,18 @@ impl WorkflowOrchestrator {
         let mut results = Vec::new();
         let mut current_plan = initial_plan.to_vec();
         let mut executed_tools = std::collections::HashSet::new();
+        let mut failed_tools = std::collections::HashSet::new();
+        let mut plan_expansion_count = 0;
+        const MAX_PLAN_EXPANSIONS: usize = 3; // Prevent infinite loops
+        const MAX_ITERATIONS: usize = 10; // Maximum total iterations
+        let mut iteration_count = 0;
 
         crate::log_debug!("🔧 Executing {} planned tools...", current_plan.len());
 
-        while !current_plan.is_empty() {
+        while !current_plan.is_empty() && iteration_count < MAX_ITERATIONS {
+            iteration_count += 1;
+            crate::log_debug!("🔄 Iteration {}/{}", iteration_count, MAX_ITERATIONS);
+
             // Group tools that can be executed in parallel (no interdependencies)
             let (parallel_batch, remaining_plan) = self.extract_parallel_batch(&current_plan);
             current_plan = remaining_plan;
@@ -224,6 +232,12 @@ impl WorkflowOrchestrator {
                 // Skip if we've already executed this exact tool+operation combination
                 if executed_tools.contains(&plan_key) {
                     crate::log_debug!("⏭️ Skipping duplicate: {}", plan_key);
+                    continue;
+                }
+
+                // Skip if this tool operation has previously failed
+                if failed_tools.contains(&plan_key) {
+                    crate::log_debug!("⏭️ Skipping previously failed: {}", plan_key);
                     continue;
                 }
 
@@ -268,6 +282,7 @@ impl WorkflowOrchestrator {
             let batch_results = future::join_all(batch_futures).await;
 
             // Process results from the parallel batch
+            let mut any_successful = false;
             for (plan, plan_key, execution_result) in batch_results {
                 match execution_result {
                     Ok(result) => {
@@ -300,6 +315,7 @@ impl WorkflowOrchestrator {
 
                         crate::log_debug!("✅ {}: {}", plan.tool_name, result_summary);
                         executed_tools.insert(plan_key);
+                        any_successful = true;
 
                         let tool_result = ToolResult {
                             tool_name: plan.tool_name.clone(),
@@ -312,18 +328,34 @@ impl WorkflowOrchestrator {
                     }
                     Err(e) => {
                         crate::log_debug!("❌ {} failed: {}", plan.tool_name, e);
+                        failed_tools.insert(plan_key);
                         // Continue with other tools even if one fails
                     }
                 }
             }
 
             // After executing a batch, check if we need to expand the plan
-            if results.len() <= 2 && !current_plan.is_empty() {
+            // Only expand if we've made progress and haven't exceeded limits
+            if any_successful
+                && results.len() <= 2
+                && !current_plan.is_empty()
+                && plan_expansion_count < MAX_PLAN_EXPANSIONS
+            {
+                plan_expansion_count += 1;
+                crate::log_debug!(
+                    "📋 Plan expansion {}/{} - attempting to expand based on {} results",
+                    plan_expansion_count,
+                    MAX_PLAN_EXPANSIONS,
+                    results.len()
+                );
+
                 // Only expand during early execution and if we have more tools planned
                 let expanded_plan = self
                     .expand_plan_based_on_context(context, &results, &current_plan)
                     .await?;
-                if !expanded_plan.is_empty() {
+                if expanded_plan.is_empty() {
+                    crate::log_debug!("📋 No additional tools suggested - stopping plan expansion");
+                } else {
                     crate::log_debug!(
                         "📋 Plan expanded with {} additional tools:",
                         expanded_plan.len()
@@ -345,10 +377,24 @@ impl WorkflowOrchestrator {
                     // Skip plan expansion status - only show LLM-generated ones
                     current_plan.extend(expanded_plan);
                 }
+            } else if plan_expansion_count >= MAX_PLAN_EXPANSIONS {
+                crate::log_debug!("🚫 Maximum plan expansions reached - stopping expansion");
+            } else if !any_successful {
+                crate::log_debug!(
+                    "🚫 No successful tool executions in this batch - stopping expansion"
+                );
             }
         }
 
-        crate::log_debug!("🎯 Completed {} tool executions", results.len());
+        if iteration_count >= MAX_ITERATIONS {
+            crate::log_debug!("🚫 Maximum iterations reached - stopping execution");
+        }
+
+        crate::log_debug!(
+            "🎯 Completed {} tool executions in {} iterations",
+            results.len(),
+            iteration_count
+        );
         Ok(results)
     }
 
@@ -568,7 +614,7 @@ impl WorkflowOrchestrator {
         );
 
         crate::log_debug!("🤖 Orchestrator: Requesting plan expansion from LLM");
-        let expansion_result = self.llm_service.analyze(&expansion_prompt).await?;
+        let expansion_result = self.llm_service.fast_analyze(&expansion_prompt).await?;
 
         // Parse the expanded plan
         let expanded_plan = Self::parse_tool_plan(&expansion_result);

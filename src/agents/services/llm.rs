@@ -33,6 +33,84 @@ static STATUS_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
     ]
 });
 
+/// Model type selection for different complexity tasks
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModelType {
+    /// Primary model for complex analysis, code generation, nuanced decisions
+    Primary,
+    /// Fast model for status updates, simple parsing, tool planning
+    Fast,
+}
+
+impl ModelType {
+    /// Determine model type based on operation characteristics
+    pub fn from_operation(operation_type: &str, phase: &IrisPhase) -> Self {
+        let op_lower = operation_type.to_lowercase();
+
+        match op_lower.as_str() {
+            // Fast operations - simple tasks that don't need deep reasoning
+            "status" | "status_update" | "status_generation" => ModelType::Fast,
+            "parsing" | "parse" | "extraction" => ModelType::Fast,
+            "simple_planning" | "tool_planning" => ModelType::Fast,
+            "validation" | "format_check" => ModelType::Fast,
+            "summary" | "summarization" => ModelType::Fast,
+            "list" | "listing" | "enumerate" => ModelType::Fast,
+
+            // Analysis tasks - use fast model for simple analysis, primary for complex
+            "analysis" => {
+                // Use fast model for tool planning and simple context analysis
+                match phase {
+                    IrisPhase::Planning | IrisPhase::ToolExecution { .. } => ModelType::Fast,
+                    _ => ModelType::Primary,
+                }
+            }
+
+            // Generation tasks - use fast for simple, primary for complex
+            "generation" => {
+                // Use fast model for tool planning and status generation
+                match phase {
+                    IrisPhase::Planning | IrisPhase::Initializing => ModelType::Fast,
+                    _ => ModelType::Primary,
+                }
+            }
+
+            // Complex operations that always need primary model
+            "commit_generation" | "commit_message_generation" => ModelType::Primary,
+            "code_review" | "review_generation" => ModelType::Primary,
+            "changelog_generation" => ModelType::Primary,
+            "pr_generation" | "pull_request_generation" => ModelType::Primary,
+            "synthesis" | "context_synthesis" => ModelType::Primary,
+
+            // Phase-based fallback with more aggressive fast model usage
+            _ => match phase {
+                // Fast model for planning and initialization phases
+                IrisPhase::Initializing | IrisPhase::Planning => ModelType::Fast,
+
+                // Fast model for tool execution unless it's complex synthesis
+                IrisPhase::ToolExecution { .. } => {
+                    if op_lower.contains("synthesis") || op_lower.contains("complex") {
+                        ModelType::Primary
+                    } else {
+                        ModelType::Fast
+                    }
+                }
+
+                // Fast model for plan expansion - just deciding what tools to use
+                IrisPhase::PlanExpansion => ModelType::Fast,
+
+                // Primary model for final analysis and generation
+                IrisPhase::Synthesis | IrisPhase::Analysis | IrisPhase::Generation => {
+                    ModelType::Primary
+                }
+
+                // Fast model for completion and error states
+                IrisPhase::Completed => ModelType::Fast,
+                IrisPhase::Error(_) => ModelType::Fast,
+            },
+        }
+    }
+}
+
 /// LLM service for unified language model operations
 #[derive(Clone)]
 pub struct LLMService {
@@ -51,6 +129,7 @@ pub struct GenerationRequest {
     pub context_hint: String,
     pub current_step: usize,
     pub total_steps: Option<usize>,
+    pub model_type: ModelType,
 }
 
 impl GenerationRequest {
@@ -65,6 +144,7 @@ impl GenerationRequest {
             context_hint: "processing request".to_string(),
             current_step: 1,
             total_steps: None,
+            model_type: ModelType::from_operation("generation", &IrisPhase::Generation),
         }
     }
 
@@ -76,12 +156,14 @@ impl GenerationRequest {
 
     #[must_use]
     pub fn with_phase(mut self, phase: IrisPhase) -> Self {
+        self.model_type = ModelType::from_operation(&self.operation_type, &phase);
         self.phase = phase;
         self
     }
 
     #[must_use]
     pub fn with_operation(mut self, operation_type: String, context_hint: String) -> Self {
+        self.model_type = ModelType::from_operation(&operation_type, &self.phase);
         self.operation_type = operation_type;
         self.context_hint = context_hint;
         self
@@ -96,6 +178,12 @@ impl GenerationRequest {
     #[must_use]
     pub fn with_max_tokens(mut self, max_tokens: u64) -> Self {
         self.max_tokens = max_tokens;
+        self
+    }
+
+    #[must_use]
+    pub fn with_model_type(mut self, model_type: ModelType) -> Self {
+        self.model_type = model_type;
         self
     }
 
@@ -235,6 +323,15 @@ impl LLMService {
         self.generate_internal(request, None).await
     }
 
+    /// Generate text using the fast model (optimized for speed over quality)
+    pub async fn fast_generate(&self, request: GenerationRequest) -> Result<String> {
+        let fast_request = GenerationRequest {
+            model_type: ModelType::Fast,
+            ..request
+        };
+        self.generate_internal(fast_request, None).await
+    }
+
     /// Generate text with streaming support for real-time feedback
     pub async fn generate_streaming(
         &self,
@@ -244,7 +341,7 @@ impl LLMService {
         self.generate_internal(request, Some(callback)).await
     }
 
-    /// Analyze context using optimized analysis configuration
+    /// Analyze context using optimized analysis configuration (uses primary model)
     pub async fn analyze(&self, prompt: &str) -> Result<String> {
         let system_prompt = "You are Iris, an expert AI assistant specializing in Git workflow automation and code analysis. \
                             Provide intelligent, structured analysis in the requested JSON format. \
@@ -252,8 +349,21 @@ impl LLMService {
 
         let request = GenerationRequest::new(system_prompt.to_string(), prompt.to_string())
             .with_temperature(0.3) // Lower temperature for consistent analysis
-            .with_phase(IrisPhase::Planning)
+            .with_phase(IrisPhase::Analysis)
             .with_operation("analysis".to_string(), "gathering context".to_string());
+
+        self.generate(request).await
+    }
+
+    /// Fast analysis using the fast model for simple parsing/extraction tasks
+    pub async fn fast_analyze(&self, prompt: &str) -> Result<String> {
+        let system_prompt = "You are Iris, a helpful AI assistant. Provide concise, structured responses in the requested format.";
+
+        let request = GenerationRequest::new(system_prompt.to_string(), prompt.to_string())
+            .with_temperature(0.1) // Very low temperature for consistent parsing
+            .with_phase(IrisPhase::Planning)
+            .with_operation("parsing".to_string(), "extracting information".to_string())
+            .with_model_type(ModelType::Fast);
 
         self.generate(request).await
     }
@@ -264,6 +374,33 @@ impl LLMService {
         request: GenerationRequest,
         callback: Option<&dyn StreamingCallback>,
     ) -> Result<String> {
+        // Track call metrics
+        let call_start = std::time::Instant::now();
+
+        // Determine selected model ahead of time for logging
+        let (selected_model, model_type_str) = match &self.backend {
+            AgentBackend::OpenAI {
+                model, fast_model, ..
+            } => match request.model_type {
+                ModelType::Primary => (model.as_str(), "Primary"),
+                ModelType::Fast => (fast_model.as_str(), "Fast"),
+            },
+            AgentBackend::Anthropic {
+                model, fast_model, ..
+            } => match request.model_type {
+                ModelType::Primary => (model.as_str(), "Primary"),
+                ModelType::Fast => (fast_model.as_str(), "Fast"),
+            },
+        };
+
+        crate::log_debug!(
+            "🚀 LLM Call Started | Model: {} ({}) | Operation: {} | Phase: {:?}",
+            selected_model,
+            model_type_str,
+            request.operation_type,
+            request.phase
+        );
+
         // Step 1: Sanitize inputs to prevent prompt injection
         let safe_operation_type = Self::sanitize_status_input(&request.operation_type);
         let safe_context_hint = Self::sanitize_status_input(&request.context_hint);
@@ -282,11 +419,22 @@ impl LLMService {
 
         // Step 3: Generate with the right pipeline based on streaming preference
         let mut full_response = String::new();
+        let mut final_token_metrics = TokenMetrics::default();
 
         match &self.backend {
-            AgentBackend::OpenAI { client, model } => {
+            AgentBackend::OpenAI {
+                client,
+                model,
+                fast_model,
+            } => {
+                // Select model based on complexity
+                let selected_model = match request.model_type {
+                    ModelType::Primary => model,
+                    ModelType::Fast => fast_model,
+                };
+
                 let agent = client
-                    .agent(model)
+                    .agent(selected_model)
                     .preamble(&enhanced_system_prompt)
                     .temperature(f64::from(request.temperature))
                     .max_tokens(request.max_tokens)
@@ -312,8 +460,11 @@ impl LLMService {
                                             tokens_per_second: 0.0, // Would be calculated by callback
                                             estimated_remaining: None,
                                         };
-                                        callback.on_chunk(&text.text, Some(token_metrics)).await?;
+                                        callback
+                                            .on_chunk(&text.text, Some(token_metrics.clone()))
+                                            .await?;
                                         full_response.push_str(&text.text);
+                                        final_token_metrics = token_metrics;
 
                                         // Skip real-time status extraction to avoid chaos
                                     }
@@ -327,22 +478,47 @@ impl LLMService {
                         }
                     }
                     // Create final token metrics
-                    let final_tokens = TokenMetrics {
+                    final_token_metrics = TokenMetrics {
                         input_tokens: 0, // Would need actual API token count
                         output_tokens: full_response.len() as u32,
                         total_tokens: full_response.len() as u32,
                         tokens_per_second: 0.0,
                         estimated_remaining: None,
                     };
-                    callback.on_complete(&full_response, final_tokens).await?;
+                    callback
+                        .on_complete(&full_response, final_token_metrics.clone())
+                        .await?;
                 } else {
                     // Non-streaming pipeline
                     full_response = agent.prompt(&request.user_prompt).await?;
+                    // Estimate token metrics for non-streaming
+                    final_token_metrics = TokenMetrics {
+                        input_tokens: (request.system_prompt.len() + request.user_prompt.len())
+                            as u32
+                            / 4, // Rough estimate: 4 chars per token
+                        output_tokens: full_response.len() as u32 / 4,
+                        total_tokens: (request.system_prompt.len()
+                            + request.user_prompt.len()
+                            + full_response.len()) as u32
+                            / 4,
+                        tokens_per_second: 0.0,
+                        estimated_remaining: None,
+                    };
                 }
             }
-            AgentBackend::Anthropic { client, model } => {
+            AgentBackend::Anthropic {
+                client,
+                model,
+                fast_model,
+            } => {
+                // Select model based on complexity
+                let selected_model = match request.model_type {
+                    ModelType::Primary => model,
+                    ModelType::Fast => fast_model,
+                };
+
                 let agent = client
-                    .agent(model)
+                    .agent(selected_model)
                     .preamble(&enhanced_system_prompt)
                     .temperature(f64::from(request.temperature))
                     .max_tokens(request.max_tokens)
@@ -368,8 +544,11 @@ impl LLMService {
                                             tokens_per_second: 0.0, // Would be calculated by callback
                                             estimated_remaining: None,
                                         };
-                                        callback.on_chunk(&text.text, Some(token_metrics)).await?;
+                                        callback
+                                            .on_chunk(&text.text, Some(token_metrics.clone()))
+                                            .await?;
                                         full_response.push_str(&text.text);
+                                        final_token_metrics = token_metrics;
 
                                         // Skip real-time status extraction to avoid chaos
                                     }
@@ -383,19 +562,67 @@ impl LLMService {
                         }
                     }
                     // Create final token metrics
-                    let final_tokens = TokenMetrics {
+                    final_token_metrics = TokenMetrics {
                         input_tokens: 0, // Would need actual API token count
                         output_tokens: full_response.len() as u32,
                         total_tokens: full_response.len() as u32,
                         tokens_per_second: 0.0,
                         estimated_remaining: None,
                     };
-                    callback.on_complete(&full_response, final_tokens).await?;
+                    callback
+                        .on_complete(&full_response, final_token_metrics.clone())
+                        .await?;
                 } else {
                     // Non-streaming pipeline
                     full_response = agent.prompt(&request.user_prompt).await?;
+                    // Estimate token metrics for non-streaming
+                    final_token_metrics = TokenMetrics {
+                        input_tokens: (request.system_prompt.len() + request.user_prompt.len())
+                            as u32
+                            / 4,
+                        output_tokens: full_response.len() as u32 / 4,
+                        total_tokens: (request.system_prompt.len()
+                            + request.user_prompt.len()
+                            + full_response.len()) as u32
+                            / 4,
+                        tokens_per_second: 0.0,
+                        estimated_remaining: None,
+                    };
                 }
             }
+        }
+
+        // Calculate call duration and performance metrics
+        let call_duration = call_start.elapsed();
+        let tokens_per_second = if call_duration.as_secs_f32() > 0.0 {
+            final_token_metrics.output_tokens as f32 / call_duration.as_secs_f32()
+        } else {
+            0.0
+        };
+
+        // Comprehensive logging of LLM call completion
+        crate::log_debug!(
+            "✅ LLM Call Completed | Model: {} ({}) | Duration: {:.2}s | Tokens: in={} out={} total={} | Speed: {:.1}t/s | Operation: {} | Response length: {} chars",
+            selected_model,
+            model_type_str,
+            call_duration.as_secs_f32(),
+            final_token_metrics.input_tokens,
+            final_token_metrics.output_tokens,
+            final_token_metrics.total_tokens,
+            tokens_per_second,
+            request.operation_type,
+            full_response.len()
+        );
+
+        // Log cost estimation for major providers
+        let estimated_cost = estimate_call_cost(selected_model, &final_token_metrics);
+        if estimated_cost > 0.0 {
+            crate::log_debug!(
+                "💰 Estimated cost: ${:.4} | Model: {} | Operation: {}",
+                estimated_cost,
+                selected_model,
+                request.operation_type
+            );
         }
 
         // Step 4: Extract status for non-streaming requests
@@ -531,5 +758,61 @@ impl LLMService {
                 }
             }
         }
+    }
+}
+
+/// Estimate the cost of an LLM call based on model and token usage
+/// Returns estimated cost in USD, or 0.0 if model pricing is unknown
+fn estimate_call_cost(model: &str, tokens: &TokenMetrics) -> f64 {
+    // Pricing per 1M tokens (as of 2024) - these are approximate and change frequently
+    let (input_cost_per_million, output_cost_per_million) = match model.to_lowercase().as_str() {
+        // Anthropic Claude models
+        "claude-sonnet-4-20250514" | "claude-3-5-sonnet-20241022" => (3.0, 15.0),
+        "claude-3-5-haiku-latest" | "claude-3-5-haiku-20241022" => (1.0, 5.0),
+        "claude-3-opus-20240229" => (15.0, 75.0),
+
+        // OpenAI models
+        "gpt-4o" | "gpt-4o-2024-08-06" => (2.5, 10.0),
+        "gpt-4o-mini" | "gpt-4o-mini-2024-07-18" => (0.15, 0.6),
+        "gpt-4-turbo" => (10.0, 30.0),
+        "gpt-3.5-turbo" => (0.5, 1.5),
+
+        // Google models (Gemini)
+        "gemini-2.5-pro-preview-06-05" | "gemini-pro" => (1.25, 5.0),
+        "gemini-flash" => (0.075, 0.3),
+
+        // Unknown models
+        _ => return 0.0,
+    };
+
+    let input_cost = (f64::from(tokens.input_tokens) / 1_000_000.0) * input_cost_per_million;
+    let output_cost = (f64::from(tokens.output_tokens) / 1_000_000.0) * output_cost_per_million;
+
+    input_cost + output_cost
+}
+
+/// Log aggregated session statistics for analysis
+/// This could be expanded in the future to track usage patterns across sessions
+#[allow(dead_code)]
+fn log_session_statistics(
+    operation_counts: &std::collections::HashMap<String, u32>,
+    total_tokens: u32,
+    total_cost: f64,
+    session_duration: std::time::Duration,
+) {
+    crate::log_debug!(
+        "📊 Session Statistics | Operations: {} | Total tokens: {} | Total cost: ${:.4} | Duration: {:.1}s",
+        operation_counts.len(),
+        total_tokens,
+        total_cost,
+        session_duration.as_secs_f32()
+    );
+
+    // Log top operations by frequency
+    let mut sorted_ops: Vec<_> = operation_counts.iter().collect();
+    sorted_ops.sort_by(|a, b| b.1.cmp(a.1));
+
+    for (operation, count) in sorted_ops.iter().take(5) {
+        crate::log_debug!("  📈 {}: {} calls", operation, count);
     }
 }

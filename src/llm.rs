@@ -253,6 +253,21 @@ pub fn get_default_model_for_provider(provider_type: &str) -> &'static str {
     }
 }
 
+/// Returns the default fast model for a given provider (optimized for speed over quality)
+pub fn get_default_fast_model_for_provider(provider_type: &str) -> &'static str {
+    match provider_type.to_lowercase().as_str() {
+        "anthropic" => "claude-3-5-haiku-latest",
+        "openai" => "gpt-4o-mini",
+        "google" => "gemini-1.5-flash",
+        "groq" => "llama-3.1-8b-instant",
+        "xai" => "grok-2-beta",        // No fast variant available
+        "deepseek" => "deepseek-chat", // No fast variant available
+        "ollama" => "llama3:8b",       // Smaller variant
+        "phind" => "phind-v2",         // No fast variant available
+        _ => "gpt-4o-mini",            // Default to OpenAI's fast model
+    }
+}
+
 /// Returns the default token limit for a given provider
 pub fn get_default_token_limit_for_provider(provider_type: &str) -> Result<usize> {
     let limit = match provider_type.to_lowercase().as_str() {

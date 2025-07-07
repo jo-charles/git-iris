@@ -69,6 +69,37 @@ impl GitTool {
     /// Get file changes between commits or branches
     fn get_diff_info(context: &AgentContext, from: &str, to: &str) -> Result<serde_json::Value> {
         let repo = &context.git_repo;
+
+        // Special case: if to_ref is "staged", we want to compare against staged changes
+        if to == "staged" {
+            log::debug!("📋 Git Operations: Handling 'staged' reference - from: {from}, to: {to}");
+            let files_info = repo.extract_files_info(false)?;
+            let staged_files = files_info.staged_files;
+
+            // If from_ref is "HEAD", we're comparing HEAD to staged changes
+            if from == "HEAD" {
+                log::debug!(
+                    "📋 Git Operations: Returning {} staged files for HEAD->staged diff",
+                    staged_files.len()
+                );
+                return Ok(serde_json::json!({
+                    "from": from,
+                    "to": "staged (current index)",
+                    "commits": [],
+                    "changed_files": staged_files.iter().map(|f| serde_json::json!({
+                        "path": f.path,
+                        "change_type": f.change_type,
+                        "diff": f.diff,
+                        "analysis": f.analysis
+                    })).collect::<Vec<_>>(),
+                    "total_changes": staged_files.len(),
+                    "note": "This shows the staged changes ready for commit"
+                }));
+            }
+        }
+
+        // Normal case: both from and to are valid Git references
+        log::debug!("📋 Git Operations: Using normal diff - from: {from}, to: {to}");
         let files = repo.get_commit_range_files(from, to)?;
         let commits = repo.get_commits_for_pr(from, to)?;
 
@@ -172,7 +203,7 @@ impl AgentTool for GitTool {
     }
 
     fn description(&self) -> &'static str {
-        "Perform Git operations like examining commits, branches, file status, and repository information"
+        "Perform Git operations like examining commits, branches, file status, and repository information. Use 'staged' as to_ref to see staged changes ready for commit."
     }
 
     fn capabilities(&self) -> Vec<String> {
@@ -228,7 +259,7 @@ impl AgentTool for GitTool {
                 "operation": {
                     "type": "string",
                     "enum": ["info", "commit_info", "diff", "status", "metadata"],
-                    "description": "Git operation to perform"
+                    "description": "Git operation to perform: 'info' for repo info, 'commit_info' for specific commit details, 'diff' for changes between refs, 'status' for current repo status, 'metadata' for project metadata"
                 },
                 "commit_id": {
                     "type": "string",
@@ -236,11 +267,11 @@ impl AgentTool for GitTool {
                 },
                 "from_ref": {
                     "type": "string",
-                    "description": "Source reference for diff operation (commit, branch, or tag)"
+                    "description": "Source reference for diff operation (commit hash, branch name, tag, or 'HEAD')"
                 },
                 "to_ref": {
                     "type": "string",
-                    "description": "Target reference for diff operation (commit, branch, or tag)"
+                    "description": "Target reference for diff operation (commit hash, branch name, tag, or 'staged' for current staged changes)"
                 },
                 "include_unstaged": {
                     "type": "boolean",

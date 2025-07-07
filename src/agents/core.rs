@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::config::Config;
+use crate::llm::get_default_fast_model_for_provider;
 
 /// Agent execution context containing shared state and configuration
 #[derive(Debug, Clone)]
@@ -132,10 +133,12 @@ pub enum AgentBackend {
     OpenAI {
         client: openai::Client,
         model: String,
+        fast_model: String,
     },
     Anthropic {
         client: anthropic::Client,
         model: String,
+        fast_model: String,
     },
 }
 
@@ -172,7 +175,16 @@ impl AgentBackend {
                     provider_config.model.clone()
                 };
 
-                Ok(AgentBackend::OpenAI { client, model })
+                let fast_model = provider_config
+                    .fast_model
+                    .clone()
+                    .unwrap_or_else(|| get_default_fast_model_for_provider("openai").to_string());
+
+                Ok(AgentBackend::OpenAI {
+                    client,
+                    model,
+                    fast_model,
+                })
             }
             "anthropic" => {
                 // Anthropic client constructor requires more parameters
@@ -188,12 +200,36 @@ impl AgentBackend {
                     provider_config.model.clone()
                 };
 
-                Ok(AgentBackend::Anthropic { client, model })
+                let fast_model = provider_config.fast_model.clone().unwrap_or_else(|| {
+                    get_default_fast_model_for_provider("anthropic").to_string()
+                });
+
+                Ok(AgentBackend::Anthropic {
+                    client,
+                    model,
+                    fast_model,
+                })
             }
             _ => Err(anyhow::anyhow!(
                 "Unsupported provider for agent framework: {}",
                 provider_name
             )),
+        }
+    }
+
+    /// Get the primary model name
+    pub fn primary_model(&self) -> &str {
+        match self {
+            AgentBackend::OpenAI { model, .. } => model,
+            AgentBackend::Anthropic { model, .. } => model,
+        }
+    }
+
+    /// Get the fast model name  
+    pub fn fast_model(&self) -> &str {
+        match self {
+            AgentBackend::OpenAI { fast_model, .. } => fast_model,
+            AgentBackend::Anthropic { fast_model, .. } => fast_model,
         }
     }
 }

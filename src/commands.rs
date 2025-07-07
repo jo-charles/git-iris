@@ -36,6 +36,7 @@ fn apply_config_changes(
     config: &mut Config,
     common: &CommonParams,
     model: Option<String>,
+    fast_model: Option<String>,
     token_limit: Option<usize>,
     param: Option<Vec<String>>,
     api_key: Option<String>,
@@ -77,6 +78,14 @@ fn apply_config_changes(
     if let Some(model) = model {
         if provider_config.model != model {
             provider_config.model = model;
+            changes_made = true;
+        }
+    }
+
+    // Apply fast model change
+    if let Some(fast_model) = fast_model {
+        if provider_config.fast_model != Some(fast_model.clone()) {
+            provider_config.fast_model = Some(fast_model);
             changes_made = true;
         }
     }
@@ -136,6 +145,7 @@ pub fn handle_config_command(
     common: &CommonParams,
     api_key: Option<String>,
     model: Option<String>,
+    fast_model: Option<String>,
     token_limit: Option<usize>,
     param: Option<Vec<String>>,
 ) -> anyhow::Result<()> {
@@ -151,8 +161,15 @@ pub fn handle_config_command(
     let mut config = Config::load()?;
 
     // Apply configuration changes
-    let changes_made =
-        apply_config_changes(&mut config, common, model, token_limit, param, api_key)?;
+    let changes_made = apply_config_changes(
+        &mut config,
+        common,
+        model,
+        fast_model,
+        token_limit,
+        param,
+        api_key,
+    )?;
 
     if changes_made {
         config.save()?;
@@ -186,11 +203,12 @@ fn apply_project_config_changes(
     config: &mut Config,
     common: &CommonParams,
     model: Option<String>,
+    fast_model: Option<String>,
     token_limit: Option<usize>,
     param: Option<Vec<String>>,
 ) -> anyhow::Result<bool> {
     // Use the shared function but don't pass an API key (never stored in project configs)
-    apply_config_changes(config, common, model, token_limit, param, None)
+    apply_config_changes(config, common, model, fast_model, token_limit, param, None)
 }
 
 /// Handle printing current project configuration
@@ -238,6 +256,7 @@ fn print_project_config() {
 pub fn handle_project_config_command(
     common: &CommonParams,
     model: Option<String>,
+    fast_model: Option<String>,
     token_limit: Option<usize>,
     param: Option<Vec<String>>,
     print: bool,
@@ -265,7 +284,7 @@ pub fn handle_project_config_command(
 
     // Apply changes and track if any were made
     let changes_made =
-        apply_project_config_changes(&mut config, common, model, token_limit, param)?;
+        apply_project_config_changes(&mut config, common, model, fast_model, token_limit, param)?;
 
     if changes_made {
         // Save to project config file
@@ -374,6 +393,19 @@ fn print_configuration(config: &Config) {
         let model_label = "Model:".yellow().bold();
         let model_value = provider_config.model.bright_cyan();
         println!("  {} {} {}", "✨".yellow(), model_label, model_value);
+
+        // Fast model with lightning emoji
+        let fast_model_label = "Fast Model:".yellow().bold();
+        let fast_model_value = provider_config
+            .fast_model
+            .as_ref()
+            .map_or("Default".bright_yellow(), |m| m.bright_cyan());
+        println!(
+            "  {} {} {}",
+            "⚡".yellow(),
+            fast_model_label,
+            fast_model_value
+        );
 
         // Token limit with gauge emoji
         let token_limit_label = "Token Limit:".yellow().bold();

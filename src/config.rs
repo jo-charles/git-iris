@@ -44,8 +44,10 @@ pub struct Config {
 pub struct ProviderConfig {
     /// API key for the provider
     pub api_key: String,
-    /// Model to be used with the provider
+    /// Primary model to be used with the provider (for complex analysis)
     pub model: String,
+    /// Fast model for simple tasks (status updates, parsing, etc.)
+    pub fast_model: Option<String>,
     /// Additional parameters for the provider
     #[serde(default)]
     pub additional_params: HashMap<String, String>,
@@ -171,6 +173,11 @@ impl Config {
             // Don't override API keys from project config (security)
             if !proj_provider_config.model.is_empty() {
                 entry.model = proj_provider_config.model;
+            }
+
+            // Override fast model if set in project config
+            if proj_provider_config.fast_model.is_some() {
+                entry.fast_model = proj_provider_config.fast_model;
             }
 
             // Merge additional params
@@ -322,6 +329,7 @@ impl Config {
         provider: Option<String>,
         api_key: Option<String>,
         model: Option<String>,
+        fast_model: Option<String>,
         additional_params: Option<HashMap<String, String>>,
         use_gitmoji: Option<bool>,
         instructions: Option<String>,
@@ -350,6 +358,9 @@ impl Config {
         }
         if let Some(model) = model {
             provider_config.model = model;
+        }
+        if let Some(fast_model) = fast_model {
+            provider_config.fast_model = Some(fast_model);
         }
         if let Some(params) = additional_params {
             provider_config.additional_params.extend(params);
@@ -451,6 +462,7 @@ impl ProviderConfig {
         Self {
             api_key: String::new(),
             model: get_default_model_for_provider(provider).to_string(),
+            fast_model: None,
             additional_params: HashMap::new(),
             token_limit: None, // Will use the default from get_default_token_limit_for_provider
         }
