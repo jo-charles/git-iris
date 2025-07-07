@@ -368,24 +368,9 @@ impl LLMService {
         self.generate(request).await
     }
 
-    /// Internal generation pipeline with optional streaming
-    #[allow(
-        clippy::cast_possible_truncation,
-        clippy::cast_precision_loss,
-        clippy::as_conversions
-    )]
-    #[allow(unused_assignments)]
-    #[allow(clippy::too_many_lines)]
-    async fn generate_internal(
-        &self,
-        request: GenerationRequest,
-        callback: Option<&dyn StreamingCallback>,
-    ) -> Result<String> {
-        // Track call metrics
-        let call_start = std::time::Instant::now();
-
-        // Determine selected model ahead of time for logging
-        let (selected_model, model_type_str) = match &self.backend {
+    /// Get model information for logging
+    fn get_model_info(&self, request: &GenerationRequest) -> (&str, &str) {
+        match &self.backend {
             AgentBackend::OpenAI {
                 model, fast_model, ..
             }
@@ -395,8 +380,16 @@ impl LLMService {
                 ModelType::Primary => (model.as_str(), "Primary"),
                 ModelType::Fast => (fast_model.as_str(), "Fast"),
             },
-        };
+        }
+    }
 
+    /// Log the start of an LLM call
+    fn log_call_start(
+        &self,
+        selected_model: &str,
+        model_type_str: &str,
+        request: &GenerationRequest,
+    ) {
         crate::log_debug!(
             "🚀 LLM Call Started | Model: {} ({}) | Operation: {} | Phase: {:?}",
             selected_model,
@@ -404,12 +397,13 @@ impl LLMService {
             request.operation_type,
             request.phase
         );
+    }
 
-        // Step 1: Sanitize inputs to prevent prompt injection
+    /// Create enhanced system prompt with status instructions
+    fn create_enhanced_system_prompt(&self, request: &GenerationRequest) -> String {
         let safe_operation_type = Self::sanitize_status_input(&request.operation_type);
         let safe_context_hint = Self::sanitize_status_input(&request.context_hint);
 
-        // Step 2: Add status instruction for LLM-generated progress messages
         let status_instruction = format!(
             "Include: STATUS: [progress message under 70 characters]...\n\
             Context: {} for {}\n\
@@ -417,183 +411,81 @@ impl LLMService {
             Examples: 🔍 Dissecting your code... 🧠 Connecting the dots... 🎯 Zeroing in on the perfect solution...",
             &safe_operation_type, &safe_context_hint
         );
-        let enhanced_system_prompt = format!("{}\n\n{}", request.system_prompt, status_instruction);
 
         crate::log_debug!("🌟 LLM Service: Added status instruction for dynamic messages");
+        format!("{}\n\n{}", request.system_prompt, status_instruction)
+    }
 
-        // Step 3: Generate with the right pipeline based on streaming preference
-        let mut full_response = String::new();
-        let mut final_token_metrics = TokenMetrics::default();
-
-        match &self.backend {
-            AgentBackend::OpenAI {
-                client,
-                model,
-                fast_model,
-            } => {
-                // Select model based on complexity
-                let selected_model = match request.model_type {
-                    ModelType::Primary => model,
-                    ModelType::Fast => fast_model,
-                };
-
-                let agent = client
-                    .agent(selected_model)
-                    .preamble(&enhanced_system_prompt)
-                    .temperature(f64::from(request.temperature))
-                    .max_tokens(request.max_tokens)
-                    .build();
-
-                if let Some(callback) = callback {
-                    // Streaming pipeline - stable status updates only
-                    let mut stream = agent.stream_prompt(&request.user_prompt).await?;
-                    while let Some(chunk_result) = stream.next().await {
-                        match chunk_result {
-                            Ok(assistant_content) => {
-                                if let rig::completion::AssistantContent::Text(text) =
-                                    assistant_content
-                                {
-                                    if !text.text.is_empty() {
-                                        // Create token metrics for streaming
-                                        let token_metrics = TokenMetrics {
-                                            input_tokens: 0, // Would need actual API token count
-                                            output_tokens: full_response.len() as u32
-                                                + text.text.len() as u32,
-                                            total_tokens: full_response.len() as u32
-                                                + text.text.len() as u32,
-                                            tokens_per_second: 0.0, // Would be calculated by callback
-                                            estimated_remaining: None,
-                                        };
-                                        callback
-                                            .on_chunk(&text.text, Some(token_metrics.clone()))
-                                            .await?;
-                                        full_response.push_str(&text.text);
-
-                                        // Skip real-time status extraction to avoid chaos
-                                    }
-                                }
-                            }
-                            Err(e) => {
-                                let anyhow_error = anyhow::anyhow!("Streaming error: {}", e);
-                                callback.on_error(&anyhow_error).await?;
-                                return Err(e.into());
-                            }
-                        }
-                    }
-                    // Create final token metrics
-                    final_token_metrics = TokenMetrics {
-                        input_tokens: 0, // Would need actual API token count
-                        output_tokens: full_response.len() as u32,
-                        total_tokens: full_response.len() as u32,
-                        tokens_per_second: 0.0,
-                        estimated_remaining: None,
-                    };
-                    callback
-                        .on_complete(&full_response, final_token_metrics.clone())
-                        .await?;
-                } else {
-                    // Non-streaming pipeline
-                    full_response = agent.prompt(&request.user_prompt).await?;
-                    // Estimate token metrics for non-streaming
-                    final_token_metrics = TokenMetrics {
-                        input_tokens: (request.system_prompt.len() + request.user_prompt.len())
-                            as u32
-                            / 4, // Rough estimate: 4 chars per token
-                        output_tokens: full_response.len() as u32 / 4,
-                        total_tokens: (request.system_prompt.len()
-                            + request.user_prompt.len()
-                            + full_response.len()) as u32
-                            / 4,
-                        tokens_per_second: 0.0,
-                        estimated_remaining: None,
-                    };
-                }
-            }
-            AgentBackend::Anthropic {
-                client,
-                model,
-                fast_model,
-            } => {
-                // Select model based on complexity
-                let selected_model = match request.model_type {
-                    ModelType::Primary => model,
-                    ModelType::Fast => fast_model,
-                };
-
-                let agent = client
-                    .agent(selected_model)
-                    .preamble(&enhanced_system_prompt)
-                    .temperature(f64::from(request.temperature))
-                    .max_tokens(request.max_tokens)
-                    .build();
-
-                if let Some(callback) = callback {
-                    // Streaming pipeline - stable status updates only
-                    let mut stream = agent.stream_prompt(&request.user_prompt).await?;
-                    while let Some(chunk_result) = stream.next().await {
-                        match chunk_result {
-                            Ok(assistant_content) => {
-                                if let rig::completion::AssistantContent::Text(text) =
-                                    assistant_content
-                                {
-                                    if !text.text.is_empty() {
-                                        // Create token metrics for streaming
-                                        let token_metrics = TokenMetrics {
-                                            input_tokens: 0, // Would need actual API token count
-                                            output_tokens: full_response.len() as u32
-                                                + text.text.len() as u32,
-                                            total_tokens: full_response.len() as u32
-                                                + text.text.len() as u32,
-                                            tokens_per_second: 0.0, // Would be calculated by callback
-                                            estimated_remaining: None,
-                                        };
-                                        callback
-                                            .on_chunk(&text.text, Some(token_metrics.clone()))
-                                            .await?;
-                                        full_response.push_str(&text.text);
-
-                                        // Skip real-time status extraction to avoid chaos
-                                    }
-                                }
-                            }
-                            Err(e) => {
-                                let anyhow_error = anyhow::anyhow!("Streaming error: {}", e);
-                                callback.on_error(&anyhow_error).await?;
-                                return Err(e.into());
-                            }
-                        }
-                    }
-                    // Create final token metrics
-                    final_token_metrics = TokenMetrics {
-                        input_tokens: 0, // Would need actual API token count
-                        output_tokens: full_response.len() as u32,
-                        total_tokens: full_response.len() as u32,
-                        tokens_per_second: 0.0,
-                        estimated_remaining: None,
-                    };
-                    callback
-                        .on_complete(&full_response, final_token_metrics.clone())
-                        .await?;
-                } else {
-                    // Non-streaming pipeline
-                    full_response = agent.prompt(&request.user_prompt).await?;
-                    // Estimate token metrics for non-streaming
-                    final_token_metrics = TokenMetrics {
-                        input_tokens: (request.system_prompt.len() + request.user_prompt.len())
-                            as u32
-                            / 4,
-                        output_tokens: full_response.len() as u32 / 4,
-                        total_tokens: (request.system_prompt.len()
-                            + request.user_prompt.len()
-                            + full_response.len()) as u32
-                            / 4,
-                        tokens_per_second: 0.0,
-                        estimated_remaining: None,
-                    };
-                }
-            }
+    /// Create token metrics for streaming chunks
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_precision_loss,
+        clippy::as_conversions
+    )]
+    fn create_streaming_token_metrics(&self, current_response: &str, chunk: &str) -> TokenMetrics {
+        TokenMetrics {
+            input_tokens: 0, // Would need actual API token count
+            output_tokens: current_response.len() as u32 + chunk.len() as u32,
+            total_tokens: current_response.len() as u32 + chunk.len() as u32,
+            tokens_per_second: 0.0, // Would be calculated by callback
+            estimated_remaining: None,
         }
+    }
 
+    /// Create final token metrics for streaming
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_precision_loss,
+        clippy::as_conversions
+    )]
+    fn create_final_streaming_token_metrics(&self, response: &str) -> TokenMetrics {
+        TokenMetrics {
+            input_tokens: 0, // Would need actual API token count
+            output_tokens: response.len() as u32,
+            total_tokens: response.len() as u32,
+            tokens_per_second: 0.0,
+            estimated_remaining: None,
+        }
+    }
+
+    /// Create token metrics for non-streaming
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_precision_loss,
+        clippy::as_conversions
+    )]
+    fn create_non_streaming_token_metrics(
+        &self,
+        request: &GenerationRequest,
+        response: &str,
+    ) -> TokenMetrics {
+        TokenMetrics {
+            input_tokens: (request.system_prompt.len() + request.user_prompt.len()) as u32 / 4,
+            output_tokens: response.len() as u32 / 4,
+            total_tokens: (request.system_prompt.len() + request.user_prompt.len() + response.len())
+                as u32
+                / 4,
+            tokens_per_second: 0.0,
+            estimated_remaining: None,
+        }
+    }
+
+    /// Handle post-processing: logging, cost estimation, and status extraction
+    #[allow(
+        clippy::cast_precision_loss,
+        clippy::as_conversions,
+        clippy::too_many_arguments
+    )]
+    fn handle_post_processing(
+        &self,
+        request: &GenerationRequest,
+        response: &str,
+        selected_model: &str,
+        model_type_str: &str,
+        call_start: std::time::Instant,
+        final_token_metrics: &TokenMetrics,
+        callback: Option<&dyn StreamingCallback>,
+    ) {
         // Calculate call duration and performance metrics
         let call_duration = call_start.elapsed();
         let tokens_per_second = if call_duration.as_secs_f32() > 0.0 {
@@ -613,11 +505,11 @@ impl LLMService {
             final_token_metrics.total_tokens,
             tokens_per_second,
             request.operation_type,
-            full_response.len()
+            response.len()
         );
 
         // Log cost estimation for major providers
-        let estimated_cost = estimate_call_cost(selected_model, &final_token_metrics);
+        let estimated_cost = estimate_call_cost(selected_model, final_token_metrics);
         if estimated_cost > 0.0 {
             crate::log_debug!(
                 "💰 Estimated cost: ${:.4} | Model: {} | Operation: {}",
@@ -627,13 +519,189 @@ impl LLMService {
             );
         }
 
-        // Step 4: Extract status for non-streaming requests
+        // Extract status for non-streaming requests
         if callback.is_none() {
             crate::log_debug!("🌟 LLM Service: Extracting status from non-streaming response");
-            self.update_status_from_response(&full_response, &request);
+            self.update_status_from_response(response, request);
         } else {
             crate::log_debug!("🌟 LLM Service: Skipping status extraction for streaming request");
         }
+    }
+
+    /// Execute generation with `OpenAI` backend
+    async fn execute_openai_generation(
+        &self,
+        enhanced_system_prompt: &str,
+        request: &GenerationRequest,
+        callback: Option<&dyn StreamingCallback>,
+    ) -> Result<(String, TokenMetrics)> {
+        let AgentBackend::OpenAI {
+            client,
+            model,
+            fast_model,
+        } = &self.backend
+        else {
+            return Err(anyhow::anyhow!("Expected OpenAI backend"));
+        };
+
+        let selected_model = match request.model_type {
+            ModelType::Primary => model,
+            ModelType::Fast => fast_model,
+        };
+
+        let agent = client
+            .agent(selected_model)
+            .preamble(enhanced_system_prompt)
+            .temperature(f64::from(request.temperature))
+            .max_tokens(request.max_tokens)
+            .build();
+        let mut full_response = String::new();
+        let final_token_metrics;
+
+        if let Some(callback) = callback {
+            // Streaming pipeline
+            let mut stream = agent.stream_prompt(&request.user_prompt).await?;
+            while let Some(chunk_result) = stream.next().await {
+                match chunk_result {
+                    Ok(assistant_content) => {
+                        if let rig::completion::AssistantContent::Text(text) = assistant_content {
+                            if !text.text.is_empty() {
+                                let token_metrics =
+                                    self.create_streaming_token_metrics(&full_response, &text.text);
+                                callback
+                                    .on_chunk(&text.text, Some(token_metrics.clone()))
+                                    .await?;
+                                full_response.push_str(&text.text);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        let anyhow_error = anyhow::anyhow!("Streaming error: {}", e);
+                        callback.on_error(&anyhow_error).await?;
+                        return Err(e.into());
+                    }
+                }
+            }
+            final_token_metrics = self.create_final_streaming_token_metrics(&full_response);
+            callback
+                .on_complete(&full_response, final_token_metrics.clone())
+                .await?;
+        } else {
+            // Non-streaming pipeline
+            full_response = agent.prompt(&request.user_prompt).await?;
+            final_token_metrics = self.create_non_streaming_token_metrics(request, &full_response);
+        }
+
+        Ok((full_response, final_token_metrics))
+    }
+
+    /// Execute generation with `Anthropic` backend
+    async fn execute_anthropic_generation(
+        &self,
+        enhanced_system_prompt: &str,
+        request: &GenerationRequest,
+        callback: Option<&dyn StreamingCallback>,
+    ) -> Result<(String, TokenMetrics)> {
+        let AgentBackend::Anthropic {
+            client,
+            model,
+            fast_model,
+        } = &self.backend
+        else {
+            return Err(anyhow::anyhow!("Expected Anthropic backend"));
+        };
+
+        let selected_model = match request.model_type {
+            ModelType::Primary => model,
+            ModelType::Fast => fast_model,
+        };
+
+        let agent = client
+            .agent(selected_model)
+            .preamble(enhanced_system_prompt)
+            .temperature(f64::from(request.temperature))
+            .max_tokens(request.max_tokens)
+            .build();
+        let mut full_response = String::new();
+        let final_token_metrics;
+
+        if let Some(callback) = callback {
+            // Streaming pipeline
+            let mut stream = agent.stream_prompt(&request.user_prompt).await?;
+            while let Some(chunk_result) = stream.next().await {
+                match chunk_result {
+                    Ok(assistant_content) => {
+                        if let rig::completion::AssistantContent::Text(text) = assistant_content {
+                            if !text.text.is_empty() {
+                                let token_metrics =
+                                    self.create_streaming_token_metrics(&full_response, &text.text);
+                                callback
+                                    .on_chunk(&text.text, Some(token_metrics.clone()))
+                                    .await?;
+                                full_response.push_str(&text.text);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        let anyhow_error = anyhow::anyhow!("Streaming error: {}", e);
+                        callback.on_error(&anyhow_error).await?;
+                        return Err(e.into());
+                    }
+                }
+            }
+            final_token_metrics = self.create_final_streaming_token_metrics(&full_response);
+            callback
+                .on_complete(&full_response, final_token_metrics.clone())
+                .await?;
+        } else {
+            // Non-streaming pipeline
+            full_response = agent.prompt(&request.user_prompt).await?;
+            final_token_metrics = self.create_non_streaming_token_metrics(request, &full_response);
+        }
+
+        Ok((full_response, final_token_metrics))
+    }
+
+    /// Internal generation pipeline with optional streaming
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_precision_loss,
+        clippy::as_conversions
+    )]
+    #[allow(unused_assignments)]
+    async fn generate_internal(
+        &self,
+        request: GenerationRequest,
+        callback: Option<&dyn StreamingCallback>,
+    ) -> Result<String> {
+        let call_start = std::time::Instant::now();
+        let (selected_model, model_type_str) = self.get_model_info(&request);
+        self.log_call_start(selected_model, model_type_str, &request);
+
+        let enhanced_system_prompt = self.create_enhanced_system_prompt(&request);
+
+        // Step 3: Generate with the right pipeline based on streaming preference
+        let (full_response, final_token_metrics) = match &self.backend {
+            AgentBackend::OpenAI { .. } => {
+                self.execute_openai_generation(&enhanced_system_prompt, &request, callback)
+                    .await?
+            }
+            AgentBackend::Anthropic { .. } => {
+                self.execute_anthropic_generation(&enhanced_system_prompt, &request, callback)
+                    .await?
+            }
+        };
+
+        // Handle post-processing: logging, cost estimation, and status extraction
+        self.handle_post_processing(
+            &request,
+            &full_response,
+            selected_model,
+            model_type_str,
+            call_start,
+            &final_token_metrics,
+            callback,
+        );
 
         Ok(full_response.trim().to_string())
     }

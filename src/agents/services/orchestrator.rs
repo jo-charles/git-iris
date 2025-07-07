@@ -4,7 +4,8 @@
 //! tool coordination, and intelligent context gathering.
 
 use anyhow::Result;
-use futures::future;
+use futures::future::BoxFuture;
+use futures::{FutureExt, future};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::Write;
@@ -69,6 +70,20 @@ pub struct WorkflowResult {
     pub tool_results: Vec<ToolResult>,
     pub execution_time: std::time::Duration,
 }
+
+/// Execution state for tool processing
+#[derive(Debug)]
+struct ExecutionState {
+    results: Vec<ToolResult>,
+    current_plan: Vec<ToolPlan>,
+    executed_tools: std::collections::HashSet<String>,
+    failed_tools: std::collections::HashSet<String>,
+    plan_expansion_count: usize,
+    iteration_count: usize,
+}
+
+/// Type alias for complex future type
+type ToolExecutionFuture = BoxFuture<'static, (ToolPlan, String, Result<serde_json::Value>)>;
 
 impl WorkflowOrchestrator {
     pub fn new(llm_service: Arc<LLMService>, tool_registry: Arc<ToolRegistry>) -> Self {
@@ -255,249 +270,322 @@ impl WorkflowOrchestrator {
     }
 
     /// Execute the planned tool calls with dynamic plan adjustment and parallel execution where possible
-    #[allow(clippy::too_many_lines)]
     async fn execute_planned_tool_calls(
         &self,
         context: &AgentContext,
         initial_plan: &[ToolPlan],
     ) -> Result<Vec<ToolResult>> {
-        const MAX_PLAN_EXPANSIONS: usize = 3; // Prevent infinite loops
-        const MAX_ITERATIONS: usize = 10; // Maximum total iterations
+        let mut execution_state = Self::initialize_execution_state(initial_plan);
 
-        let mut results = Vec::new();
-        let mut current_plan = initial_plan.to_vec();
-        let mut executed_tools = std::collections::HashSet::new();
-        let mut failed_tools = std::collections::HashSet::new();
-        let mut plan_expansion_count = 0;
-        let mut iteration_count = 0;
+        crate::log_debug!(
+            "🔧 Executing {} planned tools...",
+            execution_state.current_plan.len()
+        );
 
-        crate::log_debug!("🔧 Executing {} planned tools...", current_plan.len());
+        while !execution_state.current_plan.is_empty()
+            && execution_state.iteration_count < Self::MAX_ITERATIONS
+        {
+            execution_state.iteration_count += 1;
+            crate::log_debug!(
+                "🔄 Iteration {}/{}",
+                execution_state.iteration_count,
+                Self::MAX_ITERATIONS
+            );
 
-        while !current_plan.is_empty() && iteration_count < MAX_ITERATIONS {
-            iteration_count += 1;
-            crate::log_debug!("🔄 Iteration {}/{}", iteration_count, MAX_ITERATIONS);
+            // Execute a batch of tools in parallel
+            let batch_results = self
+                .execute_tool_batch(context, &mut execution_state)
+                .await?;
 
-            // Group tools that can be executed in parallel (no interdependencies)
-            let (parallel_batch, remaining_plan) = Self::extract_parallel_batch(&current_plan);
-            current_plan = remaining_plan;
+            // Process the results and update state
+            let any_successful = Self::process_batch_results(batch_results, &mut execution_state);
 
-            if parallel_batch.len() > 1 {
-                crate::log_debug!("⚡ Running {} tools in parallel...", parallel_batch.len());
+            // Check if we need to expand the plan with additional tools
+            if Self::should_expand_plan(&execution_state, any_successful) {
+                self.handle_plan_expansion(context, &mut execution_state)
+                    .await?;
+            } else {
+                Self::log_expansion_skip_reason(&execution_state, any_successful);
             }
+        }
 
-            // Execute the parallel batch
-            let mut batch_futures = Vec::new();
-            for plan in parallel_batch {
-                let plan_key = format!(
-                    "{}:{}",
-                    plan.tool_name,
-                    plan.operation.as_deref().unwrap_or("default")
-                );
+        Ok(Self::finalize_execution(&execution_state))
+    }
 
-                // Skip if we've already executed this exact tool+operation combination
-                if executed_tools.contains(&plan_key) {
-                    crate::log_debug!("⏭️ Skipping duplicate: {}", plan_key);
-                    continue;
+    const MAX_PLAN_EXPANSIONS: usize = 3;
+    const MAX_ITERATIONS: usize = 10;
+
+    /// Initialize the execution state for tool processing
+    fn initialize_execution_state(initial_plan: &[ToolPlan]) -> ExecutionState {
+        ExecutionState {
+            results: Vec::new(),
+            current_plan: initial_plan.to_vec(),
+            executed_tools: std::collections::HashSet::new(),
+            failed_tools: std::collections::HashSet::new(),
+            plan_expansion_count: 0,
+            iteration_count: 0,
+        }
+    }
+
+    /// Execute a batch of tools in parallel
+    async fn execute_tool_batch(
+        &self,
+        context: &AgentContext,
+        execution_state: &mut ExecutionState,
+    ) -> Result<Vec<(ToolPlan, String, Result<serde_json::Value>)>> {
+        // Group tools that can be executed in parallel
+        let (parallel_batch, remaining_plan) =
+            Self::extract_parallel_batch(&execution_state.current_plan);
+        execution_state.current_plan = remaining_plan;
+
+        if parallel_batch.len() > 1 {
+            crate::log_debug!("⚡ Running {} tools in parallel...", parallel_batch.len());
+        }
+
+        // Create futures for parallel execution
+        let mut batch_futures = Vec::new();
+        for plan in parallel_batch {
+            if let Some(future) =
+                self.create_tool_execution_future(context, &plan, execution_state)?
+            {
+                batch_futures.push(future);
+            }
+        }
+
+        // Execute all tools concurrently
+        Ok(future::join_all(batch_futures).await)
+    }
+
+    /// Create a future for executing a single tool
+    fn create_tool_execution_future(
+        &self,
+        context: &AgentContext,
+        plan: &ToolPlan,
+        execution_state: &ExecutionState,
+    ) -> Result<Option<ToolExecutionFuture>> {
+        let plan_key = format!(
+            "{}:{}",
+            plan.tool_name,
+            plan.operation.as_deref().unwrap_or("default")
+        );
+
+        // Skip if already executed or failed
+        if execution_state.executed_tools.contains(&plan_key) {
+            crate::log_debug!("⏭️ Skipping duplicate: {}", plan_key);
+            return Ok(None);
+        }
+
+        if execution_state.failed_tools.contains(&plan_key) {
+            crate::log_debug!("⏭️ Skipping previously failed: {}", plan_key);
+            return Ok(None);
+        }
+
+        let operation_display = if let Some(op) = &plan.operation {
+            format!(" ({op})")
+        } else {
+            String::new()
+        };
+        crate::log_debug!("🔧 Running: {}{}", plan.tool_name, operation_display);
+
+        // Find the tool and prepare parameters
+        let tool = self
+            .find_tool_by_name(&plan.tool_name)
+            .ok_or_else(|| anyhow::anyhow!("Tool not found: {}", plan.tool_name))?;
+
+        let mut params = plan.parameters.clone();
+        if let Some(operation) = &plan.operation {
+            params.insert(
+                "operation".to_string(),
+                serde_json::Value::String(operation.clone()),
+            );
+        }
+
+        let context_clone = context.clone();
+        let tool_clone = tool.clone();
+        let plan_clone = plan.clone();
+        let plan_key_clone = plan_key.clone();
+
+        Ok(Some(
+            async move {
+                let result = tool_clone.execute(&context_clone, &params).await;
+                (plan_clone, plan_key_clone, result)
+            }
+            .boxed(),
+        ))
+    }
+
+    /// Process the results from a batch of tool executions
+    fn process_batch_results(
+        batch_results: Vec<(ToolPlan, String, Result<serde_json::Value>)>,
+        execution_state: &mut ExecutionState,
+    ) -> bool {
+        let mut any_successful = false;
+
+        for (plan, plan_key, execution_result) in batch_results {
+            match execution_result {
+                Ok(result) => {
+                    let result_summary = Self::create_result_summary(&result);
+                    crate::log_debug!("✅ {}: {}", plan.tool_name, result_summary);
+
+                    execution_state.executed_tools.insert(plan_key);
+                    any_successful = true;
+
+                    let tool_result = ToolResult {
+                        tool_name: plan.tool_name.clone(),
+                        operation: plan.operation.clone(),
+                        result,
+                        reason: plan.reason.clone(),
+                    };
+
+                    execution_state.results.push(tool_result);
                 }
-
-                // Skip if this tool operation has previously failed
-                if failed_tools.contains(&plan_key) {
-                    crate::log_debug!("⏭️ Skipping previously failed: {}", plan_key);
-                    continue;
+                Err(e) => {
+                    crate::log_debug!("❌ {} failed: {}", plan.tool_name, e);
+                    execution_state.failed_tools.insert(plan_key);
                 }
+            }
+        }
 
-                let operation_display = if let Some(op) = &plan.operation {
+        any_successful
+    }
+
+    /// Create a summary string for a tool execution result
+    fn create_result_summary(result: &serde_json::Value) -> String {
+        match result {
+            serde_json::Value::Object(obj) => {
+                if let Some(content) = obj.get("content").and_then(|v| v.as_str()) {
+                    let lines = content.lines().count();
+                    let chars = content.len();
+                    if chars > 500 {
+                        format!("{lines}+ lines, {chars}+ chars")
+                    } else {
+                        format!("{lines} lines, {chars} chars")
+                    }
+                } else if let Some(files) = obj.get("files").and_then(|v| v.as_array()) {
+                    format!("{} files analyzed", files.len())
+                } else {
+                    "structured data".to_string()
+                }
+            }
+            serde_json::Value::Array(arr) => format!("{} items", arr.len()),
+            serde_json::Value::String(s) => {
+                let lines = s.lines().count();
+                format!("{lines} lines")
+            }
+            _ => "data".to_string(),
+        }
+    }
+
+    /// Determine if the plan should be expanded with additional tools
+    fn should_expand_plan(execution_state: &ExecutionState, any_successful: bool) -> bool {
+        if !any_successful
+            || execution_state.plan_expansion_count >= Self::MAX_PLAN_EXPANSIONS
+            || execution_state.current_plan.is_empty()
+        {
+            return false;
+        }
+
+        // Check if we have essential minimum for commit generation
+        let has_git_diff = execution_state.results.iter().any(|r| {
+            r.tool_name == "Git Operations"
+                && r.operation.as_deref() == Some("diff")
+                && (r.result.get("changed_files").is_some()
+                    || r.result
+                        .get("content")
+                        .is_some_and(|c| c.as_str().is_some_and(|s| s.len() > 50)))
+        });
+
+        let has_file_analysis = execution_state.results.iter().any(|r| {
+            r.tool_name == "File Analyzer"
+                && (r.result.get("files").is_some() || r.result.get("analysis").is_some())
+        });
+
+        let essential_context_exists = has_git_diff || has_file_analysis;
+
+        if essential_context_exists {
+            crate::log_debug!("🎯 Essential context detected - skipping further expansion");
+            false
+        } else {
+            crate::log_debug!("⚠️ No essential context found - allowing minimal expansion");
+            execution_state.current_plan.len() <= 2
+        }
+    }
+
+    /// Handle plan expansion by requesting additional tools
+    async fn handle_plan_expansion(
+        &self,
+        context: &AgentContext,
+        execution_state: &mut ExecutionState,
+    ) -> Result<()> {
+        execution_state.plan_expansion_count += 1;
+        crate::log_debug!(
+            "📋 Plan expansion {}/{} - essential information missing from {} results",
+            execution_state.plan_expansion_count,
+            Self::MAX_PLAN_EXPANSIONS,
+            execution_state.results.len()
+        );
+
+        let expanded_plan = self
+            .expand_plan_based_on_context(
+                context,
+                &execution_state.results,
+                &execution_state.current_plan,
+            )
+            .await?;
+
+        if expanded_plan.is_empty() {
+            crate::log_debug!("📋 No additional tools suggested - context appears sufficient");
+        } else {
+            crate::log_debug!(
+                "📋 Plan expanded with {} additional tools:",
+                expanded_plan.len()
+            );
+            for (i, plan) in expanded_plan.iter().enumerate() {
+                let operation_info = if let Some(op) = &plan.operation {
                     format!(" ({op})")
                 } else {
                     String::new()
                 };
-                crate::log_debug!("🔧 Running: {}{}", plan.tool_name, operation_display);
-
-                // Skip tool execution status messages - only show LLM-generated ones
-
-                // Find the tool by name
-                let tool = self
-                    .find_tool_by_name(&plan.tool_name)
-                    .ok_or_else(|| anyhow::anyhow!("Tool not found: {}", plan.tool_name))?;
-
-                // Prepare parameters
-                let mut params = plan.parameters.clone();
-                if let Some(operation) = &plan.operation {
-                    params.insert(
-                        "operation".to_string(),
-                        serde_json::Value::String(operation.clone()),
-                    );
-                }
-
-                // Create future for this tool execution
-                let context_clone = context.clone();
-                let tool_clone = tool.clone();
-                let plan_clone = plan.clone();
-                let plan_key_clone = plan_key.clone();
-
-                let future = async move {
-                    let result = tool_clone.execute(&context_clone, &params).await;
-                    (plan_clone, plan_key_clone, result)
-                };
-
-                batch_futures.push(future);
-            }
-
-            // Execute all tools in this batch concurrently
-            let batch_results = future::join_all(batch_futures).await;
-
-            // Process results from the parallel batch
-            let mut any_successful = false;
-            for (plan, plan_key, execution_result) in batch_results {
-                match execution_result {
-                    Ok(result) => {
-                        // Log a brief summary of what we got back
-                        let result_summary = match &result {
-                            serde_json::Value::Object(obj) => {
-                                if let Some(content) = obj.get("content").and_then(|v| v.as_str()) {
-                                    let lines = content.lines().count();
-                                    let chars = content.len();
-                                    if chars > 500 {
-                                        format!("{lines}+ lines, {chars}+ chars")
-                                    } else {
-                                        format!("{lines} lines, {chars} chars")
-                                    }
-                                } else if let Some(files) =
-                                    obj.get("files").and_then(|v| v.as_array())
-                                {
-                                    format!("{} files analyzed", files.len())
-                                } else {
-                                    "structured data".to_string()
-                                }
-                            }
-                            serde_json::Value::Array(arr) => format!("{} items", arr.len()),
-                            serde_json::Value::String(s) => {
-                                let lines = s.lines().count();
-                                format!("{lines} lines")
-                            }
-                            _ => "data".to_string(),
-                        };
-
-                        crate::log_debug!("✅ {}: {}", plan.tool_name, result_summary);
-                        executed_tools.insert(plan_key);
-                        any_successful = true;
-
-                        let tool_result = ToolResult {
-                            tool_name: plan.tool_name.clone(),
-                            operation: plan.operation.clone(),
-                            result,
-                            reason: plan.reason.clone(),
-                        };
-
-                        results.push(tool_result);
-                    }
-                    Err(e) => {
-                        crate::log_debug!("❌ {} failed: {}", plan.tool_name, e);
-                        failed_tools.insert(plan_key);
-                        // Continue with other tools even if one fails
-                    }
-                }
-            }
-
-            // After executing a batch, check if we need to expand the plan
-            // NEW AGGRESSIVE LOGIC: Only expand if we're genuinely missing critical data
-            let should_expand = if any_successful
-                && plan_expansion_count < MAX_PLAN_EXPANSIONS
-                && !current_plan.is_empty()
-            {
-                // Check if we have the ESSENTIAL minimum for commit generation
-                let has_git_diff = results.iter().any(|r| {
-                    r.tool_name == "Git Operations"
-                        && r.operation.as_deref() == Some("diff")
-                        && (
-                            // Check for structured response with changed_files
-                            r.result.get("changed_files").is_some() ||
-                            // Fallback: check for any meaningful git data
-                            r.result.get("content").is_some_and(|c| 
-                                c.as_str().is_some_and(|s| s.len() > 50)
-                            )
-                        )
-                });
-
-                let has_file_analysis = results.iter().any(|r| {
-                    r.tool_name == "File Analyzer"
-                        && (r.result.get("files").is_some() || r.result.get("analysis").is_some())
-                });
-
-                // AGGRESSIVE: If we have git diff OR file analysis, we're good to go
-                // No need for additional context gathering
-                let essential_context_exists = has_git_diff || has_file_analysis;
-
-                if essential_context_exists {
-                    crate::log_debug!("🎯 Essential context detected - skipping further expansion");
-                    false // Don't expand - we have enough
-                } else {
-                    // Only expand if we literally have no useful data at all
-                    crate::log_debug!("⚠️ No essential context found - allowing minimal expansion");
-                    current_plan.len() <= 2 // Only allow expansion if we have very few remaining tools
-                }
-            } else {
-                false
-            };
-
-            if should_expand {
-                plan_expansion_count += 1;
                 crate::log_debug!(
-                    "📋 Plan expansion {}/{} - essential information missing from {} results",
-                    plan_expansion_count,
-                    MAX_PLAN_EXPANSIONS,
-                    results.len()
+                    "  {}. {}{} - {}",
+                    i + 1,
+                    plan.tool_name,
+                    operation_info,
+                    plan.reason
                 );
-
-                let expanded_plan = self
-                    .expand_plan_based_on_context(context, &results, &current_plan)
-                    .await?;
-                if expanded_plan.is_empty() {
-                    crate::log_debug!(
-                        "📋 No additional tools suggested - context appears sufficient"
-                    );
-                } else {
-                    crate::log_debug!(
-                        "📋 Plan expanded with {} additional tools:",
-                        expanded_plan.len()
-                    );
-                    for (i, plan) in expanded_plan.iter().enumerate() {
-                        let operation_info = if let Some(op) = &plan.operation {
-                            format!(" ({op})")
-                        } else {
-                            String::new()
-                        };
-                        crate::log_debug!(
-                            "  {}. {}{} - {}",
-                            i + 1,
-                            plan.tool_name,
-                            operation_info,
-                            plan.reason
-                        );
-                    }
-                    current_plan.extend(expanded_plan);
-                }
-            } else if plan_expansion_count >= MAX_PLAN_EXPANSIONS {
-                crate::log_debug!("🚫 Maximum plan expansions reached - stopping expansion");
-            } else if !any_successful {
-                crate::log_debug!(
-                    "🚫 No successful tool executions in this batch - stopping expansion"
-                );
-            } else {
-                crate::log_debug!("✅ Sufficient context gathered - skipping plan expansion");
             }
+            execution_state.current_plan.extend(expanded_plan);
         }
 
-        if iteration_count >= MAX_ITERATIONS {
+        Ok(())
+    }
+
+    /// Log the reason for skipping plan expansion
+    fn log_expansion_skip_reason(execution_state: &ExecutionState, any_successful: bool) {
+        if execution_state.plan_expansion_count >= Self::MAX_PLAN_EXPANSIONS {
+            crate::log_debug!("🚫 Maximum plan expansions reached - stopping expansion");
+        } else if !any_successful {
+            crate::log_debug!(
+                "🚫 No successful tool executions in this batch - stopping expansion"
+            );
+        } else {
+            crate::log_debug!("✅ Sufficient context gathered - skipping plan expansion");
+        }
+    }
+
+    /// Finalize execution and return results
+    fn finalize_execution(execution_state: &ExecutionState) -> Vec<ToolResult> {
+        if execution_state.iteration_count >= Self::MAX_ITERATIONS {
             crate::log_debug!("🚫 Maximum iterations reached - stopping execution");
         }
 
         crate::log_debug!(
             "🎯 Completed {} tool executions in {} iterations",
-            results.len(),
-            iteration_count
+            execution_state.results.len(),
+            execution_state.iteration_count
         );
-        Ok(results)
+
+        execution_state.results.clone()
     }
 
     /// Extract a batch of tools that can be executed in parallel
@@ -720,77 +808,27 @@ impl WorkflowOrchestrator {
     }
 
     /// Build prompt to synthesize tool results into intelligent context
-    #[allow(clippy::too_many_lines)]
     fn build_tool_synthesis_prompt(tool_results: &[ToolResult]) -> String {
-        let mut prompt = String::from(
+        let mut prompt = Self::create_base_synthesis_prompt();
+        Self::add_tool_results_to_prompt(&mut prompt, tool_results);
+        Self::add_diff_content_to_prompt(&mut prompt, tool_results);
+        Self::add_json_format_to_prompt(&mut prompt);
+        prompt
+    }
+
+    /// Create the base prompt for tool result synthesis
+    fn create_base_synthesis_prompt() -> String {
+        String::from(
             "You are Iris, an expert AI assistant synthesizing information from multiple tools to understand Git changes.\n\n\
             Your task is to analyze the tool results and provide intelligent insights about file relevance, change purpose, and overall impact.\n\n\
             Tool Results Summary:\n\n",
-        );
+        )
+    }
 
+    /// Add tool result summaries to the synthesis prompt
+    fn add_tool_results_to_prompt(prompt: &mut String, tool_results: &[ToolResult]) {
         for (i, result) in tool_results.iter().enumerate() {
-            // Create concise summaries instead of dumping full raw data
-            let result_summary = match result.tool_name.as_str() {
-                "Git Operations" => {
-                    if let Some(content) = result.result.get("content").and_then(|c| c.as_str()) {
-                        match result.operation.as_deref() {
-                            Some("diff") => {
-                                let lines = content.lines().count();
-                                let additions =
-                                    content.lines().filter(|l| l.starts_with('+')).count();
-                                let deletions =
-                                    content.lines().filter(|l| l.starts_with('-')).count();
-
-                                // Extract just the file paths and key changes
-                                let files: Vec<&str> = content
-                                    .lines()
-                                    .filter(|l| l.starts_with("diff --git"))
-                                    .filter_map(|l| l.split_whitespace().nth(3))
-                                    .collect();
-
-                                format!(
-                                    "Git diff: {} files changed, {} lines total, +{} -{} changes. Files: {}",
-                                    files.len(),
-                                    lines,
-                                    additions,
-                                    deletions,
-                                    files.join(", ")
-                                )
-                            }
-                            Some("status") => {
-                                let staged_count =
-                                    content.lines().filter(|l| l.contains("staged")).count();
-                                format!("Git status: {staged_count} staged files ready for commit")
-                            }
-                            _ => format!(
-                                "Git operation: {} lines of output",
-                                content.lines().count()
-                            ),
-                        }
-                    } else {
-                        "Git operation completed".to_string()
-                    }
-                }
-                "File Analyzer" => {
-                    if let Some(files) = result.result.get("files").and_then(|f| f.as_array()) {
-                        format!(
-                            "File analysis: {} files analyzed with detailed insights",
-                            files.len()
-                        )
-                    } else {
-                        "File analysis completed".to_string()
-                    }
-                }
-                "Workspace Management" => {
-                    if let Some(content) = result.result.get("content").and_then(|c| c.as_str()) {
-                        let lines = content.lines().count();
-                        format!("Workspace structure: {lines} items discovered")
-                    } else {
-                        "Workspace structure analyzed".to_string()
-                    }
-                }
-                _ => "Tool execution completed".to_string(),
-            };
+            let result_summary = Self::summarize_tool_result(result);
 
             write!(
                 prompt,
@@ -806,40 +844,116 @@ impl WorkflowOrchestrator {
             )
             .unwrap();
         }
+    }
 
-        // Only include essential raw content for git diffs (truncated)
+    /// Create a concise summary for a single tool result
+    fn summarize_tool_result(result: &ToolResult) -> String {
+        match result.tool_name.as_str() {
+            "Git Operations" => Self::summarize_git_operation_result(result),
+            "File Analyzer" => Self::summarize_file_analyzer_result(result),
+            "Workspace Management" => Self::summarize_workspace_result(result),
+            _ => "Tool execution completed".to_string(),
+        }
+    }
+
+    /// Summarize Git Operations tool result
+    fn summarize_git_operation_result(result: &ToolResult) -> String {
+        if let Some(content) = result.result.get("content").and_then(|c| c.as_str()) {
+            match result.operation.as_deref() {
+                Some("diff") => {
+                    let lines = content.lines().count();
+                    let additions = content.lines().filter(|l| l.starts_with('+')).count();
+                    let deletions = content.lines().filter(|l| l.starts_with('-')).count();
+
+                    // Extract just the file paths and key changes
+                    let files: Vec<&str> = content
+                        .lines()
+                        .filter(|l| l.starts_with("diff --git"))
+                        .filter_map(|l| l.split_whitespace().nth(3))
+                        .collect();
+
+                    format!(
+                        "Git diff: {} files changed, {} lines total, +{} -{} changes. Files: {}",
+                        files.len(),
+                        lines,
+                        additions,
+                        deletions,
+                        files.join(", ")
+                    )
+                }
+                Some("status") => {
+                    let staged_count = content.lines().filter(|l| l.contains("staged")).count();
+                    format!("Git status: {staged_count} staged files ready for commit")
+                }
+                _ => format!("Git operation: {} lines of output", content.lines().count()),
+            }
+        } else {
+            "Git operation completed".to_string()
+        }
+    }
+
+    /// Summarize File Analyzer tool result
+    fn summarize_file_analyzer_result(result: &ToolResult) -> String {
+        if let Some(files) = result.result.get("files").and_then(|f| f.as_array()) {
+            format!(
+                "File analysis: {} files analyzed with detailed insights",
+                files.len()
+            )
+        } else {
+            "File analysis completed".to_string()
+        }
+    }
+
+    /// Summarize Workspace Management tool result
+    fn summarize_workspace_result(result: &ToolResult) -> String {
+        if let Some(content) = result.result.get("content").and_then(|c| c.as_str()) {
+            let lines = content.lines().count();
+            format!("Workspace structure: {lines} items discovered")
+        } else {
+            "Workspace structure analyzed".to_string()
+        }
+    }
+
+    /// Add essential git diff content to the synthesis prompt
+    fn add_diff_content_to_prompt(prompt: &mut String, tool_results: &[ToolResult]) {
         if let Some(git_diff) = tool_results
             .iter()
             .find(|r| r.tool_name == "Git Operations" && r.operation.as_deref() == Some("diff"))
         {
             if let Some(content) = git_diff.result.get("content").and_then(|c| c.as_str()) {
-                // Include key parts of the diff but limit to essential changes
-                let truncated_diff = if content.len() > 2000 {
-                    let lines: Vec<&str> = content.lines().collect();
-                    let essential_lines: Vec<&str> = lines
-                        .iter()
-                        .filter(|l| {
-                            l.starts_with("diff --git")
-                                || l.starts_with("@@")
-                                || (l.starts_with('+') && !l.starts_with("+++"))
-                                || (l.starts_with('-') && !l.starts_with("---"))
-                        })
-                        .take(50) // Limit to 50 essential lines
-                        .copied()
-                        .collect();
-
-                    format!(
-                        "{}\n... (diff truncated for efficiency) ...",
-                        essential_lines.join("\n")
-                    )
-                } else {
-                    content.to_string()
-                };
-
+                let truncated_diff = Self::truncate_diff_content(content);
                 write!(prompt, "=== KEY DIFF CONTENT ===\n{truncated_diff}\n\n").unwrap();
             }
         }
+    }
 
+    /// Truncate diff content to essential changes only
+    fn truncate_diff_content(content: &str) -> String {
+        if content.len() > 2000 {
+            let lines: Vec<&str> = content.lines().collect();
+            let essential_lines: Vec<&str> = lines
+                .iter()
+                .filter(|l| {
+                    l.starts_with("diff --git")
+                        || l.starts_with("@@")
+                        || (l.starts_with('+') && !l.starts_with("+++"))
+                        || (l.starts_with('-') && !l.starts_with("---"))
+                })
+                .take(50) // Limit to 50 essential lines
+                .copied()
+                .collect();
+
+            format!(
+                "{}\n... (diff truncated for efficiency) ...",
+                essential_lines.join("\n")
+            )
+        } else {
+            content.to_string()
+        }
+    }
+
+    /// Add the expected JSON output format to the synthesis prompt
+    fn add_json_format_to_prompt(prompt: &mut String) {
         prompt.push_str(
             "Based on these tool results, as Iris provide your analysis in this JSON format:\n\
             {\n\
@@ -857,8 +971,6 @@ impl WorkflowOrchestrator {
               \"project_insights\": \"How this fits into the larger codebase\"\n\
             }",
         );
-
-        prompt
     }
 
     /// Parse tool planning response into structured tool plan
