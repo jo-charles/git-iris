@@ -220,16 +220,15 @@ impl AgentBackend {
     /// Get the primary model name
     pub fn primary_model(&self) -> &str {
         match self {
-            AgentBackend::OpenAI { model, .. } => model,
-            AgentBackend::Anthropic { model, .. } => model,
+            AgentBackend::OpenAI { model, .. } | AgentBackend::Anthropic { model, .. } => model,
         }
     }
 
     /// Get the fast model name  
     pub fn fast_model(&self) -> &str {
         match self {
-            AgentBackend::OpenAI { fast_model, .. } => fast_model,
-            AgentBackend::Anthropic { fast_model, .. } => fast_model,
+            AgentBackend::OpenAI { fast_model, .. }
+            | AgentBackend::Anthropic { fast_model, .. } => fast_model,
         }
     }
 }

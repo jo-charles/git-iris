@@ -115,7 +115,7 @@ impl AgentIntegration {
         callback: Option<&dyn StreamingCallback>,
     ) -> Result<String> {
         // Use default callback if none provided
-        let default_callback = IrisStreamingCallback::new(true);
+        let default_callback = IrisStreamingCallback::new();
         let callback = callback.unwrap_or(&default_callback);
 
         // Find the Iris agent

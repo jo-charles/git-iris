@@ -257,7 +257,6 @@ pub fn get_default_model_for_provider(provider_type: &str) -> &'static str {
 pub fn get_default_fast_model_for_provider(provider_type: &str) -> &'static str {
     match provider_type.to_lowercase().as_str() {
         "anthropic" => "claude-3-5-haiku-latest",
-        "openai" => "gpt-4o-mini",
         "google" => "gemini-1.5-flash",
         "groq" => "llama-3.1-8b-instant",
         "xai" => "grok-2-beta",        // No fast variant available

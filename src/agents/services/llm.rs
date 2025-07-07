@@ -49,12 +49,11 @@ impl ModelType {
 
         match op_lower.as_str() {
             // Fast operations - simple tasks that don't need deep reasoning
-            "status" | "status_update" | "status_generation" => ModelType::Fast,
-            "parsing" | "parse" | "extraction" => ModelType::Fast,
-            "simple_planning" | "tool_planning" => ModelType::Fast,
-            "validation" | "format_check" => ModelType::Fast,
-            "summary" | "summarization" => ModelType::Fast,
-            "list" | "listing" | "enumerate" => ModelType::Fast,
+            "status" | "status_update" | "status_generation" | "parsing" | "parse"
+            | "extraction" | "simple_planning" | "tool_planning" | "validation"
+            | "format_check" | "summary" | "summarization" | "list" | "listing" | "enumerate" => {
+                ModelType::Fast
+            }
 
             // Analysis tasks - use fast model for simple analysis, primary for complex
             "analysis" => {
@@ -75,16 +74,24 @@ impl ModelType {
             }
 
             // Complex operations that always need primary model
-            "commit_generation" | "commit_message_generation" => ModelType::Primary,
-            "code_review" | "review_generation" => ModelType::Primary,
-            "changelog_generation" => ModelType::Primary,
-            "pr_generation" | "pull_request_generation" => ModelType::Primary,
-            "synthesis" | "context_synthesis" => ModelType::Primary,
+            "commit_generation"
+            | "commit_message_generation"
+            | "code_review"
+            | "review_generation"
+            | "changelog_generation"
+            | "pr_generation"
+            | "pull_request_generation"
+            | "synthesis"
+            | "context_synthesis" => ModelType::Primary,
 
             // Phase-based fallback with more aggressive fast model usage
             _ => match phase {
                 // Fast model for planning and initialization phases
-                IrisPhase::Initializing | IrisPhase::Planning => ModelType::Fast,
+                IrisPhase::Initializing
+                | IrisPhase::Planning
+                | IrisPhase::PlanExpansion
+                | IrisPhase::Completed
+                | IrisPhase::Error(_) => ModelType::Fast,
 
                 // Fast model for tool execution unless it's complex synthesis
                 IrisPhase::ToolExecution { .. } => {
@@ -95,17 +102,10 @@ impl ModelType {
                     }
                 }
 
-                // Fast model for plan expansion - just deciding what tools to use
-                IrisPhase::PlanExpansion => ModelType::Fast,
-
                 // Primary model for final analysis and generation
                 IrisPhase::Synthesis | IrisPhase::Analysis | IrisPhase::Generation => {
                     ModelType::Primary
                 }
-
-                // Fast model for completion and error states
-                IrisPhase::Completed => ModelType::Fast,
-                IrisPhase::Error(_) => ModelType::Fast,
             },
         }
     }
@@ -369,6 +369,13 @@ impl LLMService {
     }
 
     /// Internal generation pipeline with optional streaming
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_precision_loss,
+        clippy::as_conversions
+    )]
+    #[allow(unused_assignments)]
+    #[allow(clippy::too_many_lines)]
     async fn generate_internal(
         &self,
         request: GenerationRequest,
@@ -381,11 +388,8 @@ impl LLMService {
         let (selected_model, model_type_str) = match &self.backend {
             AgentBackend::OpenAI {
                 model, fast_model, ..
-            } => match request.model_type {
-                ModelType::Primary => (model.as_str(), "Primary"),
-                ModelType::Fast => (fast_model.as_str(), "Fast"),
-            },
-            AgentBackend::Anthropic {
+            }
+            | AgentBackend::Anthropic {
                 model, fast_model, ..
             } => match request.model_type {
                 ModelType::Primary => (model.as_str(), "Primary"),
@@ -464,7 +468,6 @@ impl LLMService {
                                             .on_chunk(&text.text, Some(token_metrics.clone()))
                                             .await?;
                                         full_response.push_str(&text.text);
-                                        final_token_metrics = token_metrics;
 
                                         // Skip real-time status extraction to avoid chaos
                                     }
@@ -548,7 +551,6 @@ impl LLMService {
                                             .on_chunk(&text.text, Some(token_metrics.clone()))
                                             .await?;
                                         full_response.push_str(&text.text);
-                                        final_token_metrics = token_metrics;
 
                                         // Skip real-time status extraction to avoid chaos
                                     }
@@ -647,21 +649,6 @@ impl LLMService {
             .to_string()
     }
 
-    /// Create status instruction to add to prompts
-    fn create_status_instruction(
-        &self,
-        _phase: &IrisPhase,
-        operation_type: &str,
-        context_hint: &str,
-    ) -> String {
-        format!(
-            "Include: STATUS: [progress message under 70 characters]...\n\
-            Context: {operation_type} for {context_hint}\n\
-            Style: Professional with subtle personality - clever but not mystical.\n\
-            Examples: 🔍 Dissecting your code... 🧠 Connecting the dots... 🎯 Zeroing in on the perfect solution..."
-        )
-    }
-
     /// Extract status message from LLM response that includes status in structured format
     fn extract_status_from_response(response: &str, phase: &IrisPhase) -> String {
         crate::log_debug!(
@@ -731,34 +718,6 @@ impl LLMService {
         std::thread::sleep(std::time::Duration::from_millis(500));
         crate::log_debug!("🌟 LLM Service: Status display pause completed");
     }
-
-    /// Check streaming text for status updates and update UI in real-time
-    fn check_and_update_streaming_status(chunk: &str, request: &GenerationRequest) {
-        // Look for complete STATUS lines in the chunk
-        if chunk.contains("STATUS:") {
-            // Extract the status message using our regex patterns
-            for re in STATUS_PATTERNS.iter() {
-                if let Some(captures) = re.captures(chunk) {
-                    if let Some(status_match) = captures.get(1) {
-                        let status = status_match.as_str().trim().to_string();
-                        if !status.is_empty() && status.len() > 5 {
-                            crate::log_debug!(
-                                "🌊 LLM Service: Real-time streaming status update: '{}'",
-                                status
-                            );
-                            IRIS_STATUS.update(IrisStatus::dynamic(
-                                request.phase.clone(),
-                                status,
-                                request.current_step,
-                                request.total_steps,
-                            ));
-                            return;
-                        }
-                    }
-                }
-            }
-        }
-    }
 }
 
 /// Estimate the cost of an LLM call based on model and token usage
@@ -789,30 +748,4 @@ fn estimate_call_cost(model: &str, tokens: &TokenMetrics) -> f64 {
     let output_cost = (f64::from(tokens.output_tokens) / 1_000_000.0) * output_cost_per_million;
 
     input_cost + output_cost
-}
-
-/// Log aggregated session statistics for analysis
-/// This could be expanded in the future to track usage patterns across sessions
-#[allow(dead_code)]
-fn log_session_statistics(
-    operation_counts: &std::collections::HashMap<String, u32>,
-    total_tokens: u32,
-    total_cost: f64,
-    session_duration: std::time::Duration,
-) {
-    crate::log_debug!(
-        "📊 Session Statistics | Operations: {} | Total tokens: {} | Total cost: ${:.4} | Duration: {:.1}s",
-        operation_counts.len(),
-        total_tokens,
-        total_cost,
-        session_duration.as_secs_f32()
-    );
-
-    // Log top operations by frequency
-    let mut sorted_ops: Vec<_> = operation_counts.iter().collect();
-    sorted_ops.sort_by(|a, b| b.1.cmp(a.1));
-
-    for (operation, count) in sorted_ops.iter().take(5) {
-        crate::log_debug!("  📈 {}: {} calls", operation, count);
-    }
 }

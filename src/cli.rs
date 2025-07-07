@@ -649,6 +649,7 @@ async fn handle_serve(
 }
 
 /// Handle the command based on parsed arguments
+#[allow(clippy::too_many_lines)]
 pub async fn handle_command(
     command: Commands,
     repository_url: Option<String>,

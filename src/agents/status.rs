@@ -63,12 +63,11 @@ impl IrisStatus {
         let color = match phase {
             IrisPhase::Initializing => CELESTIAL_BLUE,
             IrisPhase::Planning => NEBULA_PURPLE,
-            IrisPhase::ToolExecution { .. } => AURORA_GREEN,
+            IrisPhase::ToolExecution { .. } | IrisPhase::Completed => AURORA_GREEN,
             IrisPhase::PlanExpansion => PLASMA_CYAN,
             IrisPhase::Synthesis => GALAXY_PINK,
             IrisPhase::Analysis => SOLAR_YELLOW,
             IrisPhase::Generation => STARLIGHT,
-            IrisPhase::Completed => AURORA_GREEN,
             IrisPhase::Error(_) => METEOR_RED,
         };
 
@@ -124,7 +123,10 @@ impl IrisStatus {
         // Update tokens per second based on elapsed time
         let elapsed = self.started_at.elapsed().as_secs_f32();
         if elapsed > 0.0 {
-            self.tokens.tokens_per_second = self.tokens.output_tokens as f32 / elapsed;
+            #[allow(clippy::cast_precision_loss, clippy::as_conversions)]
+            {
+                self.tokens.tokens_per_second = self.tokens.output_tokens as f32 / elapsed;
+            }
         }
     }
 

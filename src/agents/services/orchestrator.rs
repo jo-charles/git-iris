@@ -255,18 +255,20 @@ impl WorkflowOrchestrator {
     }
 
     /// Execute the planned tool calls with dynamic plan adjustment and parallel execution where possible
+    #[allow(clippy::too_many_lines)]
     async fn execute_planned_tool_calls(
         &self,
         context: &AgentContext,
         initial_plan: &[ToolPlan],
     ) -> Result<Vec<ToolResult>> {
+        const MAX_PLAN_EXPANSIONS: usize = 3; // Prevent infinite loops
+        const MAX_ITERATIONS: usize = 10; // Maximum total iterations
+
         let mut results = Vec::new();
         let mut current_plan = initial_plan.to_vec();
         let mut executed_tools = std::collections::HashSet::new();
         let mut failed_tools = std::collections::HashSet::new();
         let mut plan_expansion_count = 0;
-        const MAX_PLAN_EXPANSIONS: usize = 3; // Prevent infinite loops
-        const MAX_ITERATIONS: usize = 10; // Maximum total iterations
         let mut iteration_count = 0;
 
         crate::log_debug!("🔧 Executing {} planned tools...", current_plan.len());
@@ -276,7 +278,7 @@ impl WorkflowOrchestrator {
             crate::log_debug!("🔄 Iteration {}/{}", iteration_count, MAX_ITERATIONS);
 
             // Group tools that can be executed in parallel (no interdependencies)
-            let (parallel_batch, remaining_plan) = self.extract_parallel_batch(&current_plan);
+            let (parallel_batch, remaining_plan) = Self::extract_parallel_batch(&current_plan);
             current_plan = remaining_plan;
 
             if parallel_batch.len() > 1 {
@@ -499,7 +501,7 @@ impl WorkflowOrchestrator {
     }
 
     /// Extract a batch of tools that can be executed in parallel
-    fn extract_parallel_batch(&self, plan: &[ToolPlan]) -> (Vec<ToolPlan>, Vec<ToolPlan>) {
+    fn extract_parallel_batch(plan: &[ToolPlan]) -> (Vec<ToolPlan>, Vec<ToolPlan>) {
         if plan.is_empty() {
             return (Vec::new(), Vec::new());
         }
@@ -537,12 +539,8 @@ impl WorkflowOrchestrator {
                         .iter()
                         .any(|key: &String| key.starts_with("Git Operations:"))
                 }
-                "File Analyzer" => {
-                    // File analysis is always safe to parallelize
-                    true
-                }
-                "Workspace Management" => {
-                    // Workspace operations are generally safe to parallelize
+                "File Analyzer" | "Workspace Management" => {
+                    // File analysis and workspace operations are safe to parallelize
                     true
                 }
                 "Code Search" => {
@@ -574,11 +572,9 @@ impl WorkflowOrchestrator {
             let mut complementary_idx = None;
             for (i, tool_plan) in remaining.iter().enumerate() {
                 let is_complementary = match (first_tool.as_str(), tool_plan.tool_name.as_str()) {
-                    ("Git Operations", "Workspace Management") => true,
-                    ("Git Operations", "File Analyzer") => false, // File analyzer might depend on git results
-                    ("Workspace Management", "Git Operations") => true,
-                    ("Workspace Management", "File Analyzer") => true,
-                    ("File Analyzer", "Workspace Management") => true,
+                    ("Git Operations" | "File Analyzer", "Workspace Management")
+                    | ("Workspace Management", "Git Operations" | "File Analyzer") => true,
+                    // File analyzer might depend on git results, so don't run in parallel
                     _ => false,
                 };
 
@@ -724,6 +720,7 @@ impl WorkflowOrchestrator {
     }
 
     /// Build prompt to synthesize tool results into intelligent context
+    #[allow(clippy::too_many_lines)]
     fn build_tool_synthesis_prompt(tool_results: &[ToolResult]) -> String {
         let mut prompt = String::from(
             "You are Iris, an expert AI assistant synthesizing information from multiple tools to understand Git changes.\n\n\

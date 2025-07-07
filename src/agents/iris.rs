@@ -35,14 +35,18 @@ pub trait StreamingCallback: Send + Sync {
 
 /// Dynamic streaming callback that updates the UI with live token counting
 pub struct IrisStreamingCallback {
-    show_chunks: bool,
     current_tokens: Arc<std::sync::Mutex<TokenMetrics>>,
 }
 
+impl Default for IrisStreamingCallback {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl IrisStreamingCallback {
-    pub fn new(show_chunks: bool) -> Self {
+    pub fn new() -> Self {
         Self {
-            show_chunks,
             current_tokens: Arc::new(std::sync::Mutex::new(TokenMetrics::default())),
         }
     }
