@@ -95,6 +95,57 @@ impl WorkflowOrchestrator {
         // Phase 3: Synthesize results using LLM
         crate::log_debug!("🤖 Synthesizing {} tool results...", tool_results.len());
 
+        // OPTIMIZATION: Skip synthesis for simple cases where we have direct git data
+        let has_git_diff = tool_results
+            .iter()
+            .any(|r| r.tool_name == "Git Operations" && r.operation.as_deref() == Some("diff"));
+        let has_file_analysis = tool_results.iter().any(|r| r.tool_name == "File Analyzer");
+
+        // If we have basic git operations, skip synthesis and return raw results
+        if (has_git_diff || has_file_analysis) && tool_results.len() <= 4 {
+            crate::log_debug!("🎯 Basic operations detected - skipping synthesis for efficiency");
+
+            // Convert tool results directly to IntelligentContext structure
+            let mut files_with_relevance = Vec::new();
+
+            for result in &tool_results {
+                if result.tool_name == "Git Operations"
+                    && result.operation.as_deref() == Some("diff")
+                {
+                    if let Some(content) = result.result.get("content").and_then(|c| c.as_str()) {
+                        // Extract file paths from git diff
+                        let file_paths: Vec<&str> = content
+                            .lines()
+                            .filter(|l| l.starts_with("diff --git"))
+                            .filter_map(|l| l.split_whitespace().nth(3))
+                            .collect();
+
+                        for path in file_paths {
+                            files_with_relevance.push(FileRelevance {
+                                path: path.to_string(),
+                                relevance_score: 0.9,
+                                analysis: "Modified file with staged changes".to_string(),
+                                key_changes: vec!["Direct git diff changes".to_string()],
+                                impact_assessment: "High - staged for commit".to_string(),
+                            });
+                        }
+                    }
+                }
+            }
+
+            return Ok(IntelligentContext {
+                files_with_relevance,
+                change_summary: "Git changes ready for commit generation".to_string(),
+                technical_analysis: "Direct tool results bypass synthesis for efficiency"
+                    .to_string(),
+                project_insights: "Basic operations detected - no additional analysis needed"
+                    .to_string(),
+            });
+        }
+
+        // Only use synthesis for complex cases with many tools
+        crate::log_debug!("🧠 Complex analysis needed - performing full synthesis");
+
         let synthesis_prompt = Self::build_tool_synthesis_prompt(&tool_results);
         let synthesis_result = self.llm_service.analyze(&synthesis_prompt).await?;
 
@@ -129,16 +180,16 @@ impl WorkflowOrchestrator {
             })
             .collect();
 
-        // Create initial tool planning prompt
+        // Create initial tool planning prompt - make it more comprehensive to reduce expansion needs
         let planning_prompt = format!(
-            "You are Iris, an intelligent AI assistant specialized in Git workflow automation and analysis. Create an initial plan for tools to use to gather comprehensive context.\n\n\
+            "You are Iris, an intelligent AI assistant specialized in Git workflow automation and analysis. Create a COMPREHENSIVE plan for tools to use to gather complete context.\n\n\
             Your Task: Analyze Git changes to understand their purpose, impact, and relevance for generating a high-quality commit message.\n\n\
             Available tools at your disposal:\n{}\n\n\
             Repository context:\n\
             - This is a Git repository with staged changes\n\
             - You need to understand what changed and why\n\
-            - You should gather enough context to assess file relevance and change impact\n\
-            - You can expand or adjust this plan as you discover more context\n\n\
+            - Create a COMPLETE plan upfront to avoid multiple rounds of expansion\n\
+            - Prioritize essential tools that provide maximum insight\n\n\
             TOOL PARAMETER REQUIREMENTS:\n\
             Git Operations:\n\
             - diff: requires \"from_ref\" and \"to_ref\" (e.g., \"HEAD~1\", \"HEAD\")\n\
@@ -149,20 +200,32 @@ impl WorkflowOrchestrator {
             - search: requires \"query\" (string) and \"search_type\" (\"function\", \"class\", \"text\")\n\
             Workspace Management:\n\
             - list: optional \"path\" (string)\n\n\
+            STRATEGIC PLANNING GUIDANCE:\n\
+            1. ALWAYS start with Git Operations diff to see what changed\n\
+            2. Include Git Operations status to understand staged vs unstaged state\n\
+            3. Consider File Analyzer for key modified files\n\
+            4. Include Workspace Management to understand project structure\n\
+            5. Plan 3-4 essential tools to get comprehensive context in one pass\n\n\
             IMPORTANT: Respond with ONLY a valid JSON array, nothing else. No explanations, no markdown formatting, just the raw JSON.\n\n\
             Expected format:\n\
             [\n\
               {{\n\
                 \"tool_name\": \"Git Operations\",\n\
                 \"operation\": \"diff\",\n\
-                \"parameters\": {{\"from_ref\": \"HEAD~1\", \"to_ref\": \"HEAD\"}},\n\
-                \"reason\": \"I need to see the actual code changes to understand what was modified\"\n\
+                \"parameters\": {{\"from_ref\": \"HEAD~1\", \"to_ref\": \"staged\"}},\n\
+                \"reason\": \"See actual staged changes to understand modifications\"\n\
+              }},\n\
+              {{\n\
+                \"tool_name\": \"Git Operations\",\n\
+                \"operation\": \"status\",\n\
+                \"parameters\": {{\"include_unstaged\": false}},\n\
+                \"reason\": \"Get clean status of staged files for commit\"\n\
               }}\n\
             ]\n\n\
             Available tool names: \"Git Operations\", \"File Analyzer\", \"Code Search\", \"Workspace Management\"\n\
             Common operations: \"diff\", \"status\", \"analyze\", \"search\", \"list\"\n\
             \n\
-            Start with 2-3 essential tool calls:",
+            Create a comprehensive 3-4 tool plan:",
             available_tools.join("\n")
         );
 
@@ -335,26 +398,62 @@ impl WorkflowOrchestrator {
             }
 
             // After executing a batch, check if we need to expand the plan
-            // Only expand if we've made progress and haven't exceeded limits
-            if any_successful
-                && results.len() <= 2
-                && !current_plan.is_empty()
+            // NEW AGGRESSIVE LOGIC: Only expand if we're genuinely missing critical data
+            let should_expand = if any_successful
                 && plan_expansion_count < MAX_PLAN_EXPANSIONS
+                && !current_plan.is_empty()
             {
+                // Check if we have the ESSENTIAL minimum for commit generation
+                let has_git_diff = results.iter().any(|r| {
+                    r.tool_name == "Git Operations"
+                        && r.operation.as_deref() == Some("diff")
+                        && (
+                            // Check for structured response with changed_files
+                            r.result.get("changed_files").is_some() ||
+                            // Fallback: check for any meaningful git data
+                            r.result.get("content").is_some_and(|c| 
+                                c.as_str().is_some_and(|s| s.len() > 50)
+                            )
+                        )
+                });
+
+                let has_file_analysis = results.iter().any(|r| {
+                    r.tool_name == "File Analyzer"
+                        && (r.result.get("files").is_some() || r.result.get("analysis").is_some())
+                });
+
+                // AGGRESSIVE: If we have git diff OR file analysis, we're good to go
+                // No need for additional context gathering
+                let essential_context_exists = has_git_diff || has_file_analysis;
+
+                if essential_context_exists {
+                    crate::log_debug!("🎯 Essential context detected - skipping further expansion");
+                    false // Don't expand - we have enough
+                } else {
+                    // Only expand if we literally have no useful data at all
+                    crate::log_debug!("⚠️ No essential context found - allowing minimal expansion");
+                    current_plan.len() <= 2 // Only allow expansion if we have very few remaining tools
+                }
+            } else {
+                false
+            };
+
+            if should_expand {
                 plan_expansion_count += 1;
                 crate::log_debug!(
-                    "📋 Plan expansion {}/{} - attempting to expand based on {} results",
+                    "📋 Plan expansion {}/{} - essential information missing from {} results",
                     plan_expansion_count,
                     MAX_PLAN_EXPANSIONS,
                     results.len()
                 );
 
-                // Only expand during early execution and if we have more tools planned
                 let expanded_plan = self
                     .expand_plan_based_on_context(context, &results, &current_plan)
                     .await?;
                 if expanded_plan.is_empty() {
-                    crate::log_debug!("📋 No additional tools suggested - stopping plan expansion");
+                    crate::log_debug!(
+                        "📋 No additional tools suggested - context appears sufficient"
+                    );
                 } else {
                     crate::log_debug!(
                         "📋 Plan expanded with {} additional tools:",
@@ -374,7 +473,6 @@ impl WorkflowOrchestrator {
                             plan.reason
                         );
                     }
-                    // Skip plan expansion status - only show LLM-generated ones
                     current_plan.extend(expanded_plan);
                 }
             } else if plan_expansion_count >= MAX_PLAN_EXPANSIONS {
@@ -383,6 +481,8 @@ impl WorkflowOrchestrator {
                 crate::log_debug!(
                     "🚫 No successful tool executions in this batch - stopping expansion"
                 );
+            } else {
+                crate::log_debug!("✅ Sufficient context gathered - skipping plan expansion");
             }
         }
 
@@ -579,35 +679,32 @@ impl WorkflowOrchestrator {
 
         let expansion_prompt = format!(
             "TASK: Determine if additional tools are needed for complete context analysis.\n\n\
-            DISCOVERED CONTEXT:\n{}\n\n\
+            CURRENT CONTEXT SUMMARY:\n{}\n\n\
             REMAINING PLANNED TOOLS:\n{}\n\n\
-            AVAILABLE ADDITIONAL TOOLS:\n{}\n\n\
+            ANALYSIS: Review the discovered context. Do we have:\n\
+            ✓ Git changes (diff content)?\n\
+            ✓ File status information?\n\
+            ✓ Understanding of modified files?\n\
+            \n\
             INSTRUCTIONS:\n\
-            - If you have sufficient context for analysis, return: []\n\
-            - If you need more tools, return JSON array with tool specifications\n\
-            - Focus only on essential missing information gaps\n\
-            - Avoid redundant tool calls\n\n\
-            PARAMETER EXAMPLES:\n\
-            Git Operations diff: {{\"from_ref\": \"HEAD~1\", \"to_ref\": \"HEAD\"}}\n\
-            Git Operations status: {{\"include_unstaged\": true}}\n\
-            File Analyzer: {{\"file_paths\": [\"path1\", \"path2\"]}}\n\
-            Code Search: {{\"query\": \"function_name\", \"search_type\": \"function\"}}\n\
-            Workspace Management: {{\"operation\": \"list\", \"path\": \"src/\"}}\n\n\
-            RESPONSE FORMAT (JSON only, no explanations):\n\
+            - If sufficient context exists for commit analysis: return []\n\
+            - If critical information is missing: return minimal JSON array\n\
+            - Focus ONLY on essential gaps, avoid redundancy\n\
+            - Maximum 2 additional tools\n\n\
+            AVAILABLE TOOLS:\n{}\n\n\
+            RESPONSE FORMAT (JSON only):\n\
             [] OR [\n\
               {{\n\
-                \"tool_name\": \"Exact Tool Name\",\n\
-                \"operation\": \"operation_name\",\n\
-                \"parameters\": {{\"correct_param\": \"value\"}},\n\
-                \"reason\": \"Brief reason for this tool\"\n\
+                \"tool_name\": \"Tool Name\",\n\
+                \"operation\": \"operation\",\n\
+                \"parameters\": {{\"param\": \"value\"}},\n\
+                \"reason\": \"Critical missing information\"\n\
               }}\n\
-            ]\n\n\
-            Valid tool names: \"Git Operations\", \"File Analyzer\", \"Code Search\", \"Workspace Management\"\n\
-            Valid operations: \"diff\", \"status\", \"analyze\", \"search\", \"list\"",
-            context_summary,
+            ]",
+            context_summary.trim(),
             remaining_plan
                 .iter()
-                .map(|p| format!("{} ({})", p.tool_name, p.reason))
+                .map(|p| p.tool_name.to_string())
                 .collect::<Vec<_>>()
                 .join(", "),
             available_tools.join("\n")
@@ -631,25 +728,119 @@ impl WorkflowOrchestrator {
         let mut prompt = String::from(
             "You are Iris, an expert AI assistant synthesizing information from multiple tools to understand Git changes.\n\n\
             Your task is to analyze the tool results and provide intelligent insights about file relevance, change purpose, and overall impact.\n\n\
-            Tool Results:\n\n",
+            Tool Results Summary:\n\n",
         );
 
         for (i, result) in tool_results.iter().enumerate() {
+            // Create concise summaries instead of dumping full raw data
+            let result_summary = match result.tool_name.as_str() {
+                "Git Operations" => {
+                    if let Some(content) = result.result.get("content").and_then(|c| c.as_str()) {
+                        match result.operation.as_deref() {
+                            Some("diff") => {
+                                let lines = content.lines().count();
+                                let additions =
+                                    content.lines().filter(|l| l.starts_with('+')).count();
+                                let deletions =
+                                    content.lines().filter(|l| l.starts_with('-')).count();
+
+                                // Extract just the file paths and key changes
+                                let files: Vec<&str> = content
+                                    .lines()
+                                    .filter(|l| l.starts_with("diff --git"))
+                                    .filter_map(|l| l.split_whitespace().nth(3))
+                                    .collect();
+
+                                format!(
+                                    "Git diff: {} files changed, {} lines total, +{} -{} changes. Files: {}",
+                                    files.len(),
+                                    lines,
+                                    additions,
+                                    deletions,
+                                    files.join(", ")
+                                )
+                            }
+                            Some("status") => {
+                                let staged_count =
+                                    content.lines().filter(|l| l.contains("staged")).count();
+                                format!("Git status: {staged_count} staged files ready for commit")
+                            }
+                            _ => format!(
+                                "Git operation: {} lines of output",
+                                content.lines().count()
+                            ),
+                        }
+                    } else {
+                        "Git operation completed".to_string()
+                    }
+                }
+                "File Analyzer" => {
+                    if let Some(files) = result.result.get("files").and_then(|f| f.as_array()) {
+                        format!(
+                            "File analysis: {} files analyzed with detailed insights",
+                            files.len()
+                        )
+                    } else {
+                        "File analysis completed".to_string()
+                    }
+                }
+                "Workspace Management" => {
+                    if let Some(content) = result.result.get("content").and_then(|c| c.as_str()) {
+                        let lines = content.lines().count();
+                        format!("Workspace structure: {lines} items discovered")
+                    } else {
+                        "Workspace structure analyzed".to_string()
+                    }
+                }
+                _ => "Tool execution completed".to_string(),
+            };
+
             write!(
                 prompt,
                 "=== TOOL RESULT {} ===\n\
-                Tool: {}\n\
-                Operation: {}\n\
+                Tool: {} ({})\n\
                 Purpose: {}\n\
-                Result:\n{}\n\n",
+                Summary: {}\n\n",
                 i + 1,
                 result.tool_name,
-                result.operation.as_deref().unwrap_or("N/A"),
+                result.operation.as_deref().unwrap_or("default"),
                 result.reason,
-                serde_json::to_string_pretty(&result.result)
-                    .unwrap_or_else(|_| "Unable to serialize".to_string())
+                result_summary
             )
             .unwrap();
+        }
+
+        // Only include essential raw content for git diffs (truncated)
+        if let Some(git_diff) = tool_results
+            .iter()
+            .find(|r| r.tool_name == "Git Operations" && r.operation.as_deref() == Some("diff"))
+        {
+            if let Some(content) = git_diff.result.get("content").and_then(|c| c.as_str()) {
+                // Include key parts of the diff but limit to essential changes
+                let truncated_diff = if content.len() > 2000 {
+                    let lines: Vec<&str> = content.lines().collect();
+                    let essential_lines: Vec<&str> = lines
+                        .iter()
+                        .filter(|l| {
+                            l.starts_with("diff --git")
+                                || l.starts_with("@@")
+                                || (l.starts_with('+') && !l.starts_with("+++"))
+                                || (l.starts_with('-') && !l.starts_with("---"))
+                        })
+                        .take(50) // Limit to 50 essential lines
+                        .copied()
+                        .collect();
+
+                    format!(
+                        "{}\n... (diff truncated for efficiency) ...",
+                        essential_lines.join("\n")
+                    )
+                } else {
+                    content.to_string()
+                };
+
+                write!(prompt, "=== KEY DIFF CONTENT ===\n{truncated_diff}\n\n").unwrap();
+            }
         }
 
         prompt.push_str(

@@ -76,26 +76,24 @@ impl GitTool {
             let files_info = repo.extract_files_info(false)?;
             let staged_files = files_info.staged_files;
 
-            // If from_ref is "HEAD", we're comparing HEAD to staged changes
-            if from == "HEAD" {
-                log::debug!(
-                    "📋 Git Operations: Returning {} staged files for HEAD->staged diff",
-                    staged_files.len()
-                );
-                return Ok(serde_json::json!({
-                    "from": from,
-                    "to": "staged (current index)",
-                    "commits": [],
-                    "changed_files": staged_files.iter().map(|f| serde_json::json!({
-                        "path": f.path,
-                        "change_type": f.change_type,
-                        "diff": f.diff,
-                        "analysis": f.analysis
-                    })).collect::<Vec<_>>(),
-                    "total_changes": staged_files.len(),
-                    "note": "This shows the staged changes ready for commit"
-                }));
-            }
+            // Handle any from_ref when to_ref is "staged"
+            log::debug!(
+                "📋 Git Operations: Returning {} staged files for {from}->staged diff",
+                staged_files.len()
+            );
+            return Ok(serde_json::json!({
+                "from": from,
+                "to": "staged (current index)",
+                "commits": [],
+                "changed_files": staged_files.iter().map(|f| serde_json::json!({
+                    "path": f.path,
+                    "change_type": f.change_type,
+                    "diff": f.diff,
+                    "analysis": f.analysis
+                })).collect::<Vec<_>>(),
+                "total_changes": staged_files.len(),
+                "note": format!("Shows staged changes ready for commit (compared to {})", from)
+            }));
         }
 
         // Normal case: both from and to are valid Git references
