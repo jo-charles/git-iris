@@ -232,6 +232,4 @@ impl AgentTool for CodeSearchTool {
             "required": ["query", "search_type"]
         })
     }
-
-
 }

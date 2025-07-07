@@ -1,45 +1,61 @@
 use anyhow::Result;
-use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::config::Config;
 use crate::git::GitRepo;
 
-/// Unified Agent Backend Configuration  
+/// Simplified Agent Backend that works with Rig's provider system
 #[derive(Debug, Clone)]
 pub struct AgentBackend {
     pub provider_name: String,
-    pub model_name: String,
-    pub config: Config,
+    pub model: String,
 }
 
 impl AgentBackend {
-    pub fn new(provider_name: String, model_name: String, config: Config) -> Self {
-        Self { 
+    pub fn new(provider_name: String, model: String) -> Self {
+        Self {
             provider_name,
-            model_name, 
-            config 
+            model,
         }
+    }
+
+    /// Create backend from Git-Iris configuration
+    pub fn from_config(config: &Config) -> Result<Self> {
+        let provider_config = config
+            .get_provider_config(&config.default_provider)
+            .ok_or_else(|| {
+                anyhow::anyhow!("No configuration for provider: {}", config.default_provider)
+            })?;
+
+        Ok(Self {
+            provider_name: config.default_provider.clone(),
+            model: provider_config.model.clone(),
+        })
     }
 }
 
-/// Agent Context containing all necessary state for task execution
+/// Agent context containing Git repository and configuration
 #[derive(Debug, Clone)]
 pub struct AgentContext {
-    pub config: Arc<Config>,
+    pub config: Config,
     pub git_repo: Arc<GitRepo>,
-    pub backend: AgentBackend,
 }
 
 impl AgentContext {
-    pub fn new(config: Config, git_repo: GitRepo, backend: AgentBackend) -> Self {
+    pub fn new(config: Config, git_repo: GitRepo) -> Self {
         Self {
-            config: Arc::new(config),
+            config,
             git_repo: Arc::new(git_repo),
-            backend,
         }
+    }
+
+    pub fn repo(&self) -> &GitRepo {
+        &self.git_repo
+    }
+
+    pub fn config(&self) -> &Config {
+        &self.config
     }
 }
 
@@ -93,86 +109,4 @@ impl TaskResult {
         self.execution_time = Some(duration);
         self
     }
-}
-
-/// Task capability definition 
-#[derive(Debug, Clone)]
-pub struct TaskCapability {
-    pub name: String,
-    pub description: String,
-    pub system_prompt: String,
-    pub required_tools: Vec<String>,
-    pub example_flow: Option<String>,
-}
-
-impl TaskCapability {
-    pub fn new(
-        name: impl Into<String>,
-        description: impl Into<String>,
-        system_prompt: impl Into<String>,
-    ) -> Self {
-        Self {
-            name: name.into(),
-            description: description.into(),
-            system_prompt: system_prompt.into(),
-            required_tools: Vec::new(),
-            example_flow: None,
-        }
-    }
-
-    pub fn with_tools(mut self, tools: Vec<String>) -> Self {
-        self.required_tools = tools;
-        self
-    }
-
-    pub fn with_example_flow(mut self, flow: impl Into<String>) -> Self {
-        self.example_flow = Some(flow.into());
-        self
-    }
-}
-
-/// Unified Agent trait - simplified from the old complex system
-#[async_trait]
-pub trait UnifiedAgent: Send + Sync {
-    /// Execute a task with the agent
-    async fn execute_task(
-        &self,
-        task: &str,
-        context: &AgentContext,
-        params: &HashMap<String, serde_json::Value>,
-    ) -> Result<TaskResult>;
-
-    /// Get available task capabilities
-    fn get_capabilities(&self) -> Vec<TaskCapability>;
-
-    /// Check if agent can handle specific task
-    fn can_handle_task(&self, task: &str) -> bool {
-        self.get_capabilities()
-            .iter()
-            .any(|cap| cap.name == task)
-    }
-}
-
-/// Legacy trait for backward compatibility - will be removed
-#[async_trait]
-pub trait IrisAgent: Send + Sync {
-    fn id(&self) -> &str;
-    fn name(&self) -> &str;
-    fn description(&self) -> &str;
-    fn capabilities(&self) -> Vec<String>;
-
-    async fn execute_task(
-        &self,
-        task: &str,
-        context: &AgentContext,
-        params: &HashMap<String, serde_json::Value>,
-    ) -> Result<TaskResult>;
-
-    fn can_handle_task(&self, task: &str) -> bool;
-    fn task_priority(&self, task: &str) -> u8;
-
-    async fn initialize(&mut self, context: &AgentContext) -> Result<()>;
-    async fn cleanup(&self) -> Result<()>;
-
-    fn as_any(&self) -> &dyn std::any::Any;
 }

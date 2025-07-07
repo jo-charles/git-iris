@@ -1,7 +1,7 @@
-use anyhow::Result;
-use std::fmt::Write;
 use crate::config::Config;
 use crate::context::CommitContext;
+use anyhow::Result;
+use std::fmt::Write;
 
 /// Comprehensive prompt library for the Iris agent framework
 /// This centralizes all prompts used across different tools and use cases
@@ -31,18 +31,30 @@ impl PromptLibrary {
             - Overall change summary (what is the main purpose)\n\
             - Technical analysis (implementation details, patterns, architecture)\n\
             - Project insights (how this fits into the larger codebase)\n\n\
-            Files for you to analyze:\n\n"
+            Files for you to analyze:\n\n",
         );
 
         for (index, file) in git_context.staged_files.iter().enumerate() {
-            write!(prompt, "=== FILE {} ===\n\
+            write!(
+                prompt,
+                "=== FILE {} ===\n\
                 Path: {}\n\
                 Change Type: {:?}\n\
-                Diff:\n{}\n\n", index + 1, file.path, file.change_type, file.diff).unwrap();
+                Diff:\n{}\n\n",
+                index + 1,
+                file.path,
+                file.change_type,
+                file.diff
+            )
+            .unwrap();
 
             if let Some(content) = &file.content {
-                write!(prompt, "Full Content:\n{}\n\
-                    --- End of File ---\n\n", content).unwrap();
+                write!(
+                    prompt,
+                    "Full Content:\n{content}\n\
+                    --- End of File ---\n\n"
+                )
+                .unwrap();
             }
         }
 
@@ -61,7 +73,7 @@ impl PromptLibrary {
               \"change_summary\": \"Overall purpose of these changes\",\n\
               \"technical_analysis\": \"Implementation details and patterns\",\n\
               \"project_insights\": \"How this fits into the larger codebase\"\n\
-            }"
+            }",
         );
 
         Ok(prompt)
@@ -85,7 +97,7 @@ impl PromptLibrary {
             9. Focus on the concrete changes and their effects.\n\
             10. Include technical details when relevant.\n\
             11. For non-trivial changes, include a brief explanation of the change's purpose.\n\
-            12. Only describe changes that are explicitly shown in the provided context.\n\n"
+            12. Only describe changes that are explicitly shown in the provided context.\n\n",
         );
 
         if config.use_gitmoji {
@@ -112,20 +124,22 @@ impl PromptLibrary {
               \"emoji\": \"string or null\",\n\
               \"title\": \"string\",\n\
               \"message\": \"string\"\n\
-            }"
+            }",
         );
 
         Ok(prompt)
     }
 
     /// User prompt for commit message generation with intelligent context
-    pub fn commit_message_user(commit_context: &CommitContext, intelligent_summary: &str) -> String {
+    pub fn commit_message_user(
+        commit_context: &CommitContext,
+        intelligent_summary: &str,
+    ) -> String {
         let mut prompt = format!(
             "Based on the following intelligent analysis and context, generate a Git commit message:\n\n\
             Branch: {}\n\n\
             Intelligent Analysis:\n{}\n\n",
-            commit_context.branch,
-            intelligent_summary
+            commit_context.branch, intelligent_summary
         );
 
         if !commit_context.recent_commits.is_empty() {
@@ -138,15 +152,21 @@ impl PromptLibrary {
 
         prompt.push_str("Staged changes:\n");
         for file in &commit_context.staged_files {
-            writeln!(prompt, "{} - {}", file.path, match file.change_type {
-                crate::context::ChangeType::Added => "Added",
-                crate::context::ChangeType::Modified => "Modified", 
-                crate::context::ChangeType::Deleted => "Deleted",
-            }).unwrap();
+            writeln!(
+                prompt,
+                "{} - {}",
+                file.path,
+                match file.change_type {
+                    crate::context::ChangeType::Added => "Added",
+                    crate::context::ChangeType::Modified => "Modified",
+                    crate::context::ChangeType::Deleted => "Deleted",
+                }
+            )
+            .unwrap();
         }
 
         if let Some(lang) = &commit_context.project_metadata.language {
-            writeln!(prompt, "\nProject language: {}", lang).unwrap();
+            writeln!(prompt, "\nProject language: {lang}").unwrap();
         }
 
         prompt
@@ -167,16 +187,15 @@ impl PromptLibrary {
             - Error Handling: Insufficient or improper error handling\n\
             - Testing: Gaps in test coverage or missing test scenarios\n\
             - Best Practices: Violations of established coding standards\n\
-            - Style: Inconsistencies in code style or formatting\n\n"
+            - Style: Inconsistencies in code style or formatting\n\n",
         );
 
-        if let Some(lang) = config.project_metadata.language.as_ref() {
-            writeln!(prompt, "Consider best practices specific to {} development.\n", lang).unwrap();
-        }
+        // Language-specific best practices can be added when we have project metadata
+        prompt.push_str("Consider language-specific best practices and conventions.\n\n");
 
         prompt.push_str(
             "As Iris, provide your analysis in the specified JSON format with detailed findings \
-            for each dimension where issues are identified."
+            for each dimension where issues are identified.",
         );
 
         Ok(prompt)
@@ -189,21 +208,29 @@ impl PromptLibrary {
             Branch: {}\n\n\
             Intelligent Analysis:\n{}\n\n\
             Detailed changes:\n\n",
-            commit_context.branch,
-            intelligent_analysis
+            commit_context.branch, intelligent_analysis
         );
 
         for (index, file) in commit_context.staged_files.iter().enumerate() {
-            write!(prompt, "=== FILE {} ===\n\
+            write!(
+                prompt,
+                "=== FILE {} ===\n\
                 Path: {}\n\
                 Change Type: {:?}\n\
                 Analysis: {:?}\n\
-                Diff:\n{}\n\n", index + 1, file.path, file.change_type, file.analysis, file.diff).unwrap();
+                Diff:\n{}\n\n",
+                index + 1,
+                file.path,
+                file.change_type,
+                file.analysis,
+                file.diff
+            )
+            .unwrap();
         }
 
         prompt.push_str(
             "Provide a detailed code review focusing on code quality, \
-            potential issues, and recommendations for improvement."
+            potential issues, and recommendations for improvement.",
         );
 
         prompt
@@ -221,18 +248,16 @@ impl PromptLibrary {
             - Changes: Detailed breakdown of modifications\n\
             - Testing: How the changes have been tested\n\
             - Impact: Potential effects on the system\n\
-            - Notes: Any additional context or considerations\n\n"
+            - Notes: Any additional context or considerations\n\n",
         );
 
         if config.use_gitmoji {
-            prompt.push_str(
-                "Include appropriate emoji in the title if it helps clarity.\n\n"
-            );
+            prompt.push_str("Include appropriate emoji in the title if it helps clarity.\n\n");
         }
 
         prompt.push_str(
             "As Iris, format the response as a well-structured markdown document \
-            suitable for a pull request description."
+            suitable for a pull request description.",
         );
 
         Ok(prompt)
@@ -240,16 +265,15 @@ impl PromptLibrary {
 
     /// User prompt for pull request description generation
     pub fn pull_request_user(
-        commit_context: &CommitContext, 
+        commit_context: &CommitContext,
         commit_messages: &[String],
-        intelligent_analysis: &str
+        intelligent_analysis: &str,
     ) -> String {
         let mut prompt = format!(
             "Generate a pull request description for the following changes:\n\n\
             Branch: {}\n\n\
             Intelligent Analysis:\n{}\n\n",
-            commit_context.branch,
-            intelligent_analysis
+            commit_context.branch, intelligent_analysis
         );
 
         if !commit_messages.is_empty() {
@@ -262,16 +286,22 @@ impl PromptLibrary {
 
         prompt.push_str("Changed files:\n");
         for file in &commit_context.staged_files {
-            writeln!(prompt, "- {} ({})", file.path, match file.change_type {
-                crate::context::ChangeType::Added => "added",
-                crate::context::ChangeType::Modified => "modified",
-                crate::context::ChangeType::Deleted => "deleted",
-            }).unwrap();
+            writeln!(
+                prompt,
+                "- {} ({})",
+                file.path,
+                match file.change_type {
+                    crate::context::ChangeType::Added => "added",
+                    crate::context::ChangeType::Modified => "modified",
+                    crate::context::ChangeType::Deleted => "deleted",
+                }
+            )
+            .unwrap();
         }
 
         prompt.push_str(
             "\nCreate a comprehensive pull request description that explains \
-            the purpose, implementation, and impact of these changes."
+            the purpose, implementation, and impact of these changes.",
         );
 
         prompt
@@ -309,8 +339,9 @@ impl PromptLibrary {
               }}\n\
             ]",
             task_description,
-            available_tools.iter()
-                .map(|tool| format!("- {}", tool))
+            available_tools
+                .iter()
+                .map(|tool| format!("- {tool}"))
                 .collect::<Vec<_>>()
                 .join("\n")
         )
@@ -321,7 +352,7 @@ impl PromptLibrary {
         original_prompt: &str,
         llm_response: &str,
         desired_outcome: &str,
-        issues_found: &[String]
+        issues_found: &[String],
     ) -> String {
         format!(
             "Analyze this prompt-response pair and suggest improvements:\n\n\
@@ -338,8 +369,9 @@ impl PromptLibrary {
             original_prompt,
             llm_response.chars().take(500).collect::<String>(),
             desired_outcome,
-            issues_found.iter()
-                .map(|issue| format!("- {}", issue))
+            issues_found
+                .iter()
+                .map(|issue| format!("- {issue}"))
                 .collect::<Vec<_>>()
                 .join("\n")
         )

@@ -428,6 +428,4 @@ impl AgentTool for FileAnalyzerTool {
             "required": ["file_paths"]
         })
     }
-
-
 }

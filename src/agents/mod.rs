@@ -1,13 +1,27 @@
+//! Agent system for Git-Iris
+//!
+//! This module provides the foundation for AI agent orchestration in Git-Iris,
+//! including setup, core types, and execution management.
+
+// Core agent components
 pub mod core;
-pub mod executor;
-pub mod integration;
 pub mod iris;
+pub mod prompts;
+
+// Agent services
 pub mod services;
-pub mod status;
+
+// Agent tools
 pub mod tools;
 
+// Setup and configuration
+pub mod setup;
+
+// Status and reporting
+pub mod status;
+
+// Re-exports for public API
 pub use core::{AgentBackend, AgentContext, TaskResult};
-pub use executor::{AgentExecutor, ExecutionStatistics, TaskPriority, TaskRequest};
-pub use integration::{AgentIntegration, create_agent_integration_from_context};
-pub use iris::IrisAgent;
-pub use tools::{AgentTool, ToolRegistry, create_default_tool_registry};
+pub use iris::{IrisAgent, IrisAgentBuilder, StreamingCallback};
+pub use setup::{AgentSetupService, handle_with_agent};
+pub use tools::{GitChangedFiles, GitDiff, GitLog, GitRepoInfo, GitStatus};

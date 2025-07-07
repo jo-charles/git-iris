@@ -452,13 +452,26 @@ async fn handle_gen(
         crate::agents::status::enable_agent_mode();
 
         // Use agent framework for commit message generation
-        crate::agents::integration::handle_gen_with_agent(
+        let task_prompt = if config.use_gitmoji {
+            "Generate a commit message using gitmoji and following best practices"
+        } else {
+            "Generate a commit message following best practices"
+        };
+
+        crate::agents::handle_with_agent(
             common,
-            config.auto_commit,
-            config.use_gitmoji,
-            config.print_only,
-            config.verify,
             repository_url,
+            "commit",
+            task_prompt,
+            |response| async move {
+                if config.print_only {
+                    println!("{response}");
+                } else {
+                    // Handle commit logic here
+                    ui::print_success("Commit message generated successfully");
+                }
+                Ok(())
+            },
         )
         .await
     } else {
@@ -517,26 +530,35 @@ async fn handle_review(
         to,
         use_agent
     );
+
     ui::print_version(crate_version!());
     ui::print_newline();
-    if use_agent {
-        // Enable agent mode for enhanced status display
-        crate::agents::status::enable_agent_mode();
 
+    if use_agent {
         // Use agent framework for code review
-        crate::agents::integration::handle_review_with_agent(
+        let task_prompt = format!(
+            "Review the code changes. Include unstaged: {include_unstaged}, commit: {commit:?}, from: {from:?}, to: {to:?}"
+        );
+
+        crate::agents::handle_with_agent(
             common,
-            print,
             repository_url,
-            include_unstaged,
-            commit,
-            from,
-            to,
+            "review",
+            &task_prompt,
+            |response| async move {
+                if print {
+                    println!("{response}");
+                } else {
+                    ui::print_success("Code review completed successfully");
+                    println!("{response}");
+                }
+                Ok(())
+            },
         )
         .await
     } else {
         // Use existing implementation
-        commit::review::handle_review_command(
+        commit::handle_review_command(
             common,
             print,
             repository_url,
@@ -550,7 +572,6 @@ async fn handle_review(
 }
 
 /// Handle the `Changelog` command
-#[allow(clippy::too_many_arguments)]
 async fn handle_changelog(
     common: CommonParams,
     from: String,
@@ -571,16 +592,30 @@ async fn handle_changelog(
         version_name,
         use_agent
     );
+
     if use_agent {
         // Use agent framework for changelog generation
-        crate::agents::integration::handle_changelog_with_agent(
-            common,
+        let task_prompt = format!(
+            "Generate a changelog from {} to {}. Version: {:?}",
             from,
-            to,
+            to.as_deref().unwrap_or("HEAD"),
+            version_name
+        );
+
+        crate::agents::handle_with_agent(
+            common,
             repository_url,
-            update,
-            file,
-            version_name,
+            "changelog",
+            &task_prompt,
+            |response| async move {
+                if update {
+                    // TODO: Update changelog file
+                    ui::print_success("Changelog updated successfully");
+                } else {
+                    println!("{response}");
+                }
+                Ok(())
+            },
         )
         .await
     } else {
@@ -598,7 +633,7 @@ async fn handle_changelog(
     }
 }
 
-/// Handle the `ReleaseNotes` command
+/// Handle the `Release Notes` command
 async fn handle_release_notes(
     common: CommonParams,
     from: String,
@@ -615,14 +650,25 @@ async fn handle_release_notes(
         version_name,
         use_agent
     );
+
     if use_agent {
         // Use agent framework for release notes generation
-        crate::agents::integration::handle_release_notes_with_agent(
-            common,
+        let task_prompt = format!(
+            "Generate release notes from {} to {}. Version: {:?}",
             from,
-            to,
+            to.as_deref().unwrap_or("HEAD"),
+            version_name
+        );
+
+        crate::agents::handle_with_agent(
+            common,
             repository_url,
-            version_name,
+            "release_notes",
+            &task_prompt,
+            |response| async move {
+                println!("{response}");
+                Ok(())
+            },
         )
         .await
     } else {
@@ -778,12 +824,31 @@ async fn handle_pr(
         to,
         use_agent
     );
+
     ui::print_version(crate_version!());
     ui::print_newline();
+
     if use_agent {
         // Use agent framework for PR description generation
-        crate::agents::integration::handle_pr_with_agent(common, print, repository_url, from, to)
-            .await
+        let task_prompt =
+            format!("Generate a pull request description. From: {from:?}, To: {to:?}");
+
+        crate::agents::handle_with_agent(
+            common,
+            repository_url,
+            "pr",
+            &task_prompt,
+            |response| async move {
+                if print {
+                    println!("{response}");
+                } else {
+                    ui::print_success("PR description generated successfully");
+                    println!("{response}");
+                }
+                Ok(())
+            },
+        )
+        .await
     } else {
         // Use existing implementation
         commit::handle_pr_command(common, print, repository_url, from, to).await

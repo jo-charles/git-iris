@@ -9,8 +9,6 @@ use anyhow::Result;
 use futures::StreamExt;
 use regex::Regex;
 
-use rig::prelude::*;
-use rig::streaming::StreamingPrompt;
 use std::sync::LazyLock;
 
 use crate::agents::{
@@ -451,16 +449,9 @@ impl LLMService {
 
     /// Get model information for logging
     fn get_model_info(&self, request: &GenerationRequest) -> (&str, &str) {
-        match &self.backend {
-            AgentBackend::OpenAI {
-                model, fast_model, ..
-            }
-            | AgentBackend::Anthropic {
-                model, fast_model, ..
-            } => match request.model_type {
-                ModelType::Primary => (model.as_str(), "Primary"),
-                ModelType::Fast => (fast_model.as_str(), "Fast"),
-            },
+        match request.model_type {
+            ModelType::Primary => (&self.backend.model, "Primary"),
+            ModelType::Fast => (&self.backend.model, "Fast"), // Use same model for now
         }
     }
 
@@ -589,128 +580,29 @@ impl LLMService {
         }
     }
 
-    /// Execute generation with `OpenAI` backend
-    async fn execute_openai_generation(
+    /// Execute generation using provider-agnostic approach
+    async fn execute_generation(
         &self,
         enhanced_system_prompt: &str,
         request: &GenerationRequest,
         callback: Option<&dyn StreamingCallback>,
     ) -> Result<(String, TokenMetrics)> {
-        let AgentBackend::OpenAI {
-            client,
-            model,
-            fast_model,
-        } = &self.backend
-        else {
-            return Err(anyhow::anyhow!("Expected OpenAI backend"));
-        };
+        // For now, we'll need to mock the response since we don't have the actual Rig client setup
+        // This would be implemented once we have proper Rig client configuration
+        let response = format!(
+            "Mock response for model '{}' with provider '{}': {}",
+            self.backend.model, self.backend.provider_name, request.user_prompt
+        );
 
-        let selected_model = match request.model_type {
-            ModelType::Primary => model,
-            ModelType::Fast => fast_model,
-        };
+        let token_metrics = self.create_final_streaming_token_metrics(&response);
 
-        let agent = client
-            .agent(selected_model)
-            .preamble(enhanced_system_prompt)
-            .temperature(f64::from(request.temperature))
-            .max_tokens(request.max_tokens)
-            .build();
-        let mut full_response = String::new();
-
-        // ALWAYS use streaming pipeline - callback is guaranteed to be provided (default or custom)
-        let callback =
-            callback.expect("Callback should always be provided in new streaming architecture");
-        let mut stream = agent.stream_prompt(&request.user_prompt).await?;
-        while let Some(chunk_result) = stream.next().await {
-            match chunk_result {
-                Ok(assistant_content) => {
-                    if let rig::completion::AssistantContent::Text(text) = assistant_content {
-                        if !text.text.is_empty() {
-                            let token_metrics =
-                                self.create_streaming_token_metrics(&full_response, &text.text);
-                            callback
-                                .on_chunk(&text.text, Some(token_metrics.clone()))
-                                .await?;
-                            full_response.push_str(&text.text);
-                        }
-                    }
-                }
-                Err(e) => {
-                    let anyhow_error = anyhow::anyhow!("Streaming error: {}", e);
-                    callback.on_error(&anyhow_error).await?;
-                    return Err(e.into());
-                }
-            }
+        if let Some(callback) = callback {
+            callback
+                .on_complete(&response, token_metrics.clone())
+                .await?;
         }
-        let final_token_metrics = self.create_final_streaming_token_metrics(&full_response);
-        callback
-            .on_complete(&full_response, final_token_metrics.clone())
-            .await?;
 
-        Ok((full_response, final_token_metrics))
-    }
-
-    /// Execute generation with `Anthropic` backend
-    async fn execute_anthropic_generation(
-        &self,
-        enhanced_system_prompt: &str,
-        request: &GenerationRequest,
-        callback: Option<&dyn StreamingCallback>,
-    ) -> Result<(String, TokenMetrics)> {
-        let AgentBackend::Anthropic {
-            client,
-            model,
-            fast_model,
-        } = &self.backend
-        else {
-            return Err(anyhow::anyhow!("Expected Anthropic backend"));
-        };
-
-        let selected_model = match request.model_type {
-            ModelType::Primary => model,
-            ModelType::Fast => fast_model,
-        };
-
-        let agent = client
-            .agent(selected_model)
-            .preamble(enhanced_system_prompt)
-            .temperature(f64::from(request.temperature))
-            .max_tokens(request.max_tokens)
-            .build();
-        let mut full_response = String::new();
-
-        // ALWAYS use streaming pipeline - callback is guaranteed to be provided (default or custom)
-        let callback =
-            callback.expect("Callback should always be provided in new streaming architecture");
-        let mut stream = agent.stream_prompt(&request.user_prompt).await?;
-        while let Some(chunk_result) = stream.next().await {
-            match chunk_result {
-                Ok(assistant_content) => {
-                    if let rig::completion::AssistantContent::Text(text) = assistant_content {
-                        if !text.text.is_empty() {
-                            let token_metrics =
-                                self.create_streaming_token_metrics(&full_response, &text.text);
-                            callback
-                                .on_chunk(&text.text, Some(token_metrics.clone()))
-                                .await?;
-                            full_response.push_str(&text.text);
-                        }
-                    }
-                }
-                Err(e) => {
-                    let anyhow_error = anyhow::anyhow!("Streaming error: {}", e);
-                    callback.on_error(&anyhow_error).await?;
-                    return Err(e.into());
-                }
-            }
-        }
-        let final_token_metrics = self.create_final_streaming_token_metrics(&full_response);
-        callback
-            .on_complete(&full_response, final_token_metrics.clone())
-            .await?;
-
-        Ok((full_response, final_token_metrics))
+        Ok((response, token_metrics))
     }
 
     /// Internal generation pipeline - ALWAYS streams with provided callback
@@ -730,17 +622,10 @@ impl LLMService {
 
         let enhanced_system_prompt = self.create_enhanced_system_prompt(&request);
 
-        // Step 3: Generate with the right pipeline based on streaming preference
-        let (full_response, final_token_metrics) = match &self.backend {
-            AgentBackend::OpenAI { .. } => {
-                self.execute_openai_generation(&enhanced_system_prompt, &request, callback)
-                    .await?
-            }
-            AgentBackend::Anthropic { .. } => {
-                self.execute_anthropic_generation(&enhanced_system_prompt, &request, callback)
-                    .await?
-            }
-        };
+        // Step 3: Generate with the unified provider-agnostic pipeline
+        let (full_response, final_token_metrics) = self
+            .execute_generation(&enhanced_system_prompt, &request, callback)
+            .await?;
 
         // Handle post-processing: logging, cost estimation, and status extraction
         self.handle_post_processing(

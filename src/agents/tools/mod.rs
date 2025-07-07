@@ -1,102 +1,54 @@
 //! Agent tools module
 //!
 //! This module contains all the tools available to Iris for performing various operations.
-//! Each tool is self-contained and implements the `AgentTool` trait.
-//!
-//! Available tools:
-//! - **`GitTool`**: Repository operations (diff, status, log, files)
-//! - **`FileAnalyzerTool`**: File content and structure analysis
-//! - **`CodeSearchTool`**: Search for patterns, functions, and classes
-//! - **`WorkspaceTool`**: Iris's personal notes and task management
+//! Each tool implements Rig's Tool trait for proper integration.
 
 use anyhow::Result;
 use async_trait::async_trait;
+use serde_json::Value;
 use std::collections::HashMap;
-use std::sync::Arc;
 
 use crate::agents::core::AgentContext;
 
-/// Core trait for agent tools
+/// Trait for tools that can be used by the agent
+/// This is the legacy trait for tools that haven't been converted to Rig yet
 #[async_trait]
 pub trait AgentTool: Send + Sync {
-    /// Get the tool's unique identifier
+    /// Get the unique identifier for this tool
     fn id(&self) -> &str;
 
-    /// Get the tool's display name
-    fn name(&self) -> &str;
+    /// Get the human-readable name of this tool
+    fn name(&self) -> &'static str;
 
-    /// Get the tool's description
-    fn description(&self) -> &str;
+    /// Get a description of what this tool does
+    fn description(&self) -> &'static str;
 
     /// Get the capabilities this tool provides
     fn capabilities(&self) -> Vec<String>;
 
-    /// Execute the tool with given parameters
+    /// Get the JSON schema for this tool's parameters
+    fn parameter_schema(&self) -> Value;
+
+    /// Execute the tool with the given context and parameters
     async fn execute(
         &self,
         context: &AgentContext,
-        params: &HashMap<String, serde_json::Value>,
-    ) -> Result<serde_json::Value>;
-
-    /// Get the tool's parameter schema
-    fn parameter_schema(&self) -> serde_json::Value;
+        params: &HashMap<String, Value>,
+    ) -> Result<Value>;
 }
 
-/// Simplified tool registry - we always provide all tools
-pub struct ToolRegistry {
-    tools: HashMap<String, Arc<dyn AgentTool>>,
-}
+// Tool modules with Rig-based implementations
+pub mod git;
 
-impl Default for ToolRegistry {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+// Re-export the tool structs (not functions) for Rig agents
+pub use git::{GitChangedFiles, GitDiff, GitLog, GitRepoInfo, GitStatus};
 
-impl ToolRegistry {
-    pub fn new() -> Self {
-        Self {
-            tools: HashMap::new(),
-        }
-    }
-
-    pub fn register_tool(&mut self, tool: Arc<dyn AgentTool>) {
-        self.tools.insert(tool.id().to_string(), tool);
-    }
-
-    pub fn get_tool(&self, id: &str) -> Option<Arc<dyn AgentTool>> {
-        self.tools.get(id).cloned()
-    }
-
-    pub fn get_all_tools(&self) -> Vec<Arc<dyn AgentTool>> {
-        self.tools.values().cloned().collect()
-    }
-
-    pub fn list_tool_ids(&self) -> Vec<String> {
-        self.tools.keys().cloned().collect()
-    }
-}
-
-// Tool modules
+// Keep the other tools as modules for now but we'll need to convert them to Rig tools later
 pub mod code_search;
 pub mod file_analyzer;
-pub mod git;
 pub mod workspace;
 
-// Re-export all tools
+// Legacy exports for backward compatibility during transition
 pub use code_search::CodeSearchTool;
 pub use file_analyzer::FileAnalyzerTool;
-pub use git::GitTool;
 pub use workspace::WorkspaceTool;
-
-/// Creates the default tool registry with all built-in tools
-pub fn create_default_tool_registry() -> ToolRegistry {
-    let mut registry = ToolRegistry::new();
-
-    registry.register_tool(Arc::new(GitTool::new()));
-    registry.register_tool(Arc::new(FileAnalyzerTool::new()));
-    registry.register_tool(Arc::new(CodeSearchTool::new()));
-    registry.register_tool(Arc::new(WorkspaceTool::new()));
-
-    registry
-}

@@ -587,6 +587,4 @@ impl crate::agents::tools::AgentTool for WorkspaceTool {
             )),
         }
     }
-
-
 }

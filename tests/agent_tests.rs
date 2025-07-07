@@ -1,13 +1,15 @@
 use git_iris::{
     agents::{
-        core::{AgentContext, TaskResult},
-        executor::{TaskPriority, TaskRequest},
-        tools::{AgentTool, GitTool, create_default_tool_registry},
+        core::{AgentBackend, AgentContext, TaskResult},
+        iris::IrisAgentBuilder,
+        setup::{AgentSetupService, create_agent_with_defaults},
+        tools::{GitChangedFiles, GitDiff, GitLog, GitRepoInfo, GitStatus},
     },
     config::{Config, PerformanceConfig},
     git::GitRepo,
 };
-use std::collections::HashMap;
+use rig::client::builder::DynClientBuilder;
+use std::env;
 use tempfile::TempDir;
 
 fn create_test_context() -> (AgentContext, TempDir) {
@@ -28,85 +30,150 @@ fn create_test_context() -> (AgentContext, TempDir) {
     (context, temp_dir)
 }
 
-#[tokio::test]
-async fn test_tool_registry_creation() {
-    let registry = create_default_tool_registry();
-
-    assert!(!registry.list_tools().is_empty());
-    assert!(registry.list_capabilities().contains(&"git".to_string()));
-    assert!(
-        registry
-            .list_capabilities()
-            .contains(&"file_analysis".to_string())
-    );
+#[test]
+fn test_agent_backend_creation() {
+    let backend = AgentBackend::new("openai".to_string(), "gpt-4o".to_string());
+    assert_eq!(backend.provider_name, "openai");
+    assert_eq!(backend.model, "gpt-4o");
 }
 
-#[tokio::test]
-async fn test_git_tool_execution() {
+#[test]
+fn test_agent_backend_from_config() {
+    let config = Config::default();
+    let backend = AgentBackend::from_config(&config);
+    assert!(backend.is_ok());
+
+    let backend = backend.unwrap();
+    assert!(!backend.provider_name.is_empty());
+    assert!(!backend.model.is_empty());
+}
+
+#[test]
+fn test_agent_context_creation() {
     let (context, _temp_dir) = create_test_context();
-    let git_tool = GitTool::new();
 
-    let mut params = HashMap::new();
-    params.insert(
-        "operation".to_string(),
-        serde_json::Value::String("status".to_string()),
-    );
-
-    let result = git_tool.execute(&context, &params).await;
-    assert!(result.is_ok());
+    assert!(!context.config().default_provider.is_empty());
+    assert!(context.repo().repo_path().exists());
 }
 
-#[tokio::test]
-async fn test_task_result_creation() {
+#[test]
+fn test_task_result_creation() {
     let result = TaskResult::success("Test completed".to_string());
     assert!(result.success);
     assert_eq!(result.message, "Test completed");
-    assert!((result.confidence - 1.0).abs() < f32::EPSILON);
+    assert!((result.confidence - 1.0).abs() < f64::EPSILON);
 
     let failure = TaskResult::failure("Test failed".to_string());
     assert!(!failure.success);
     assert_eq!(failure.message, "Test failed");
-    assert!((failure.confidence - 0.0).abs() < f32::EPSILON);
-}
-
-#[tokio::test]
-async fn test_task_request_builder() {
-    let mut params = HashMap::new();
-    params.insert(
-        "test".to_string(),
-        serde_json::Value::String("value".to_string()),
-    );
-
-    let request = TaskRequest::new("test_task".to_string())
-        .with_params(params)
-        .with_priority(TaskPriority::High)
-        .with_timeout(std::time::Duration::from_secs(60))
-        .with_retries(3);
-
-    assert_eq!(request.task_type, "test_task");
-    assert_eq!(request.priority, TaskPriority::High);
-    assert_eq!(request.max_retries, 3);
-    assert!(request.timeout.is_some());
-}
-
-#[tokio::test]
-async fn test_agent_context_session_data() {
-    let (context, _temp_dir) = create_test_context();
-
-    let key = "test_key".to_string();
-    let value = serde_json::json!({"data": "test_value"});
-
-    context.set_session_data(key.clone(), value.clone()).await;
-    let retrieved = context.get_session_data(&key).await;
-
-    assert_eq!(retrieved, Some(value));
+    assert!((failure.confidence - 0.0).abs() < f64::EPSILON);
 }
 
 #[test]
-fn test_task_priority_ordering() {
-    assert!(TaskPriority::Critical > TaskPriority::High);
-    assert!(TaskPriority::High > TaskPriority::Normal);
-    assert!(TaskPriority::Normal > TaskPriority::Low);
+fn test_task_result_with_data() {
+    let data = serde_json::json!({"test": "value"});
+    let result = TaskResult::success_with_data("Test with data".to_string(), data.clone());
+
+    assert!(result.success);
+    assert_eq!(result.data, Some(data));
+    assert!((result.confidence - 1.0).abs() < f64::EPSILON);
+}
+
+#[test]
+fn test_task_result_with_confidence() {
+    let result = TaskResult::success("Test".to_string()).with_confidence(0.8);
+    assert!((result.confidence - 0.8).abs() < f64::EPSILON);
+}
+
+#[test]
+fn test_task_result_with_execution_time() {
+    let duration = std::time::Duration::from_millis(500);
+    let result = TaskResult::success("Test".to_string()).with_execution_time(duration);
+    assert_eq!(result.execution_time, Some(duration));
+}
+
+#[test]
+fn test_iris_agent_builder() {
+    let client_builder = DynClientBuilder::new();
+    let result = IrisAgentBuilder::new()
+        .with_client(client_builder)
+        .with_provider("openai")
+        .with_model("gpt-4o")
+        .with_preamble("Custom preamble")
+        .build();
+
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_iris_agent_builder_missing_client() {
+    let result = IrisAgentBuilder::new()
+        .with_provider("openai")
+        .with_model("gpt-4o")
+        .build();
+
+    assert!(result.is_err());
+    assert!(
+        result
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("Client builder is required")
+    );
+}
+
+#[tokio::test]
+async fn test_create_agent_with_defaults() {
+    // Skip if no API key is available
+    if env::var("OPENAI_API_KEY").is_err() && env::var("ANTHROPIC_API_KEY").is_err() {
+        return;
+    }
+
+    let result = create_agent_with_defaults("openai", "gpt-4o").await;
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn test_agent_setup_service_creation() {
+    let config = Config::default();
+    let setup_service = AgentSetupService::new(config);
+
+    assert!(!setup_service.config().default_provider.is_empty());
+    assert!(setup_service.git_repo().is_none()); // No repo set initially
+}
+
+#[tokio::test]
+async fn test_agent_setup_service_from_temp_dir() {
+    let temp_dir = TempDir::new().expect("Failed to create temporary directory");
+    let repo_path = temp_dir.path().to_path_buf();
+
+    // Initialize a git repo in the temp directory
+    std::process::Command::new("git")
+        .args(["init"])
+        .current_dir(&repo_path)
+        .output()
+        .expect("Failed to initialize git repo");
+
+    // Change to the temp directory
+    let original_dir = env::current_dir().unwrap();
+    env::set_current_dir(&repo_path).unwrap();
+
+    let result = std::panic::catch_unwind(|| {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            let common_params = git_iris::common::CommonParams::default();
+            let setup_service = AgentSetupService::from_common_params(&common_params, None);
+
+            assert!(setup_service.is_ok());
+            let setup_service = setup_service.unwrap();
+            assert!(setup_service.git_repo().is_some());
+        });
+    });
+
+    // Restore original directory
+    env::set_current_dir(original_dir).unwrap();
+
+    assert!(result.is_ok());
 }
 
 #[test]
@@ -115,4 +182,95 @@ fn test_performance_config_default() {
     assert_eq!(config.max_concurrent_tasks, Some(5));
     assert_eq!(config.default_timeout_seconds, Some(300));
     assert!(config.use_agent_framework);
+    assert!(!config.verbose_logging);
+}
+
+#[test]
+fn test_git_tools_exist() {
+    // Test that our Git tools are available and have proper types
+    let _git_status = GitStatus;
+    let _git_diff = GitDiff;
+    let _git_log = GitLog;
+    let _git_repo_info = GitRepoInfo;
+    let _git_changed_files = GitChangedFiles;
+
+    // These should compile without errors if the tools are properly defined
+    assert!(true);
+}
+
+#[test]
+fn test_agent_context_accessors() {
+    let (context, _temp_dir) = create_test_context();
+
+    // Test that we can access the config and repo
+    let config = context.config();
+    let repo = context.repo();
+
+    assert!(!config.default_provider.is_empty());
+    assert!(repo.repo_path().exists());
+}
+
+#[test]
+fn test_config_has_performance_settings() {
+    let config = Config::default();
+
+    // Test that performance config is available
+    assert!(config.performance.use_agent_framework);
+    assert!(config.performance.max_concurrent_tasks.is_some());
+    assert!(config.performance.default_timeout_seconds.is_some());
+}
+
+// Integration test for the complete agent setup workflow
+#[tokio::test]
+async fn test_complete_agent_setup_workflow() {
+    // Skip if no API key is available
+    if env::var("OPENAI_API_KEY").is_err() && env::var("ANTHROPIC_API_KEY").is_err() {
+        return;
+    }
+
+    let temp_dir = TempDir::new().expect("Failed to create temporary directory");
+    let repo_path = temp_dir.path().to_path_buf();
+
+    // Initialize a git repo in the temp directory
+    std::process::Command::new("git")
+        .args(["init"])
+        .current_dir(&repo_path)
+        .output()
+        .expect("Failed to initialize git repo");
+
+    // Test the complete workflow
+    let original_dir = env::current_dir().unwrap();
+    env::set_current_dir(&repo_path).unwrap();
+
+    let result = std::panic::catch_unwind(|| {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            let common_params = git_iris::common::CommonParams::default();
+            let setup_service = AgentSetupService::from_common_params(&common_params, None);
+
+            // This will fail without proper API keys, but tests the pipeline
+            if let Ok(mut setup_service) = setup_service {
+                let agent_result = setup_service.create_iris_agent().await;
+
+                // We expect this to fail in CI/testing without API keys
+                // but the error should be about missing API keys, not code structure
+                if let Err(e) = agent_result {
+                    let error_msg = e.to_string();
+                    assert!(
+                        error_msg.contains("API key")
+                            || error_msg.contains("OPENAI_API_KEY")
+                            || error_msg.contains("ANTHROPIC_API_KEY")
+                            || error_msg.contains("configuration")
+                            || error_msg.contains("provider"),
+                        "Expected API key or configuration error, got: {error_msg}"
+                    );
+                }
+            }
+        });
+    });
+
+    // Restore original directory
+    env::set_current_dir(original_dir).unwrap();
+
+    assert!(result.is_ok());
 }

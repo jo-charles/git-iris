@@ -1,292 +1,308 @@
-//! Git operations tool
+//! Git operations tools for Rig-based agents
 //!
-//! This tool provides Iris with the ability to perform Git operations
-//! like examining commits, branches, file status, and repository information.
+//! This module provides Git operations using Rig's tool system.
 
 use anyhow::Result;
-use async_trait::async_trait;
+use rig::completion::ToolDefinition;
+use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use serde_json::json;
 
-use super::AgentTool;
-use crate::agents::core::AgentContext;
+use crate::git::GitRepo;
 
-/// Git operations tool for repository management and analysis
-pub struct GitTool {
-    id: String,
-}
+#[derive(Debug, thiserror::Error)]
+#[error("Git error: {0}")]
+pub struct GitError(String);
 
-impl Default for GitTool {
-    fn default() -> Self {
-        Self::new()
+impl From<anyhow::Error> for GitError {
+    fn from(err: anyhow::Error) -> Self {
+        GitError(err.to_string())
     }
 }
 
-impl GitTool {
-    pub fn new() -> Self {
-        Self {
-            id: "git".to_string(),
-        }
+impl From<std::io::Error> for GitError {
+    fn from(err: std::io::Error) -> Self {
+        GitError(err.to_string())
     }
+}
 
-    /// Get detailed repository information
-    fn get_repo_info(context: &AgentContext) -> Result<serde_json::Value> {
-        let repo = &context.git_repo;
-        let current_branch = repo.get_current_branch()?;
-        let recent_commits = repo.get_recent_commits(5)?;
+// Git status tool
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitStatus;
 
-        Ok(serde_json::json!({
-            "current_branch": current_branch,
-            "repo_path": repo.repo_path(),
-            "is_remote": repo.is_remote(),
-            "remote_url": repo.get_remote_url(),
-            "recent_commits": recent_commits.iter().map(|c| serde_json::json!({
-                "hash": c.hash,
-                "message": c.message,
-                "author": c.author,
-                "timestamp": c.timestamp
-            })).collect::<Vec<_>>()
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitStatusArgs {
+    pub include_unstaged: Option<bool>,
+}
+
+impl Tool for GitStatus {
+    const NAME: &'static str = "git_status";
+    type Error = GitError;
+    type Args = GitStatusArgs;
+    type Output = String;
+
+    async fn definition(&self, _: String) -> ToolDefinition {
+        serde_json::from_value(json!({
+            "name": "git_status",
+            "description": "Get current Git repository status including staged and unstaged files",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "include_unstaged": {
+                        "type": "boolean",
+                        "description": "Whether to include unstaged files in the output"
+                    }
+                },
+                "required": []
+            }
         }))
+        .unwrap()
     }
 
-    /// Get commit information for a specific commit
-    fn get_commit_info(context: &AgentContext, commit_id: &str) -> Result<serde_json::Value> {
-        let repo = &context.git_repo;
-        let files = repo.get_commit_files(commit_id)?;
-        let date = repo.get_commit_date(commit_id)?;
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let current_dir = std::env::current_dir().map_err(GitError::from)?;
+        let repo = GitRepo::new(&current_dir).map_err(GitError::from)?;
 
-        Ok(serde_json::json!({
-            "commit_id": commit_id,
-            "date": date,
-            "files": files.iter().map(|f| serde_json::json!({
-                "path": f.path,
-                "change_type": f.change_type,
-                "analysis": f.analysis
-            })).collect::<Vec<_>>()
-        }))
-    }
+        let files_info = repo
+            .extract_files_info(args.include_unstaged.unwrap_or(false))
+            .map_err(GitError::from)?;
 
-    /// Get file changes between commits or branches
-    fn get_diff_info(context: &AgentContext, from: &str, to: &str) -> Result<serde_json::Value> {
-        let repo = &context.git_repo;
+        let mut output = String::new();
+        output.push_str(&format!("Branch: {}\n", files_info.branch));
+        output.push_str(&format!(
+            "Files changed: {}\n",
+            files_info.staged_files.len()
+        ));
 
-        // Special case: if to_ref is "staged", we want to compare against staged changes
-        if to == "staged" {
-            log::debug!("📋 Git Operations: Handling 'staged' reference - from: {from}, to: {to}");
-            let files_info = repo.extract_files_info(false)?;
-            let staged_files = files_info.staged_files;
-
-            // Handle any from_ref when to_ref is "staged"
-            log::debug!(
-                "📋 Git Operations: Returning {} staged files for {from}->staged diff",
-                staged_files.len()
-            );
-            return Ok(serde_json::json!({
-                "from": from,
-                "to": "staged (current index)",
-                "commits": [],
-                "changed_files": staged_files.iter().map(|f| serde_json::json!({
-                    "path": f.path,
-                    "change_type": f.change_type,
-                    "diff": f.diff,
-                    "analysis": f.analysis
-                })).collect::<Vec<_>>(),
-                "total_changes": staged_files.len(),
-                "note": format!("Shows staged changes ready for commit (compared to {})", from)
-            }));
+        for file in &files_info.staged_files {
+            output.push_str(&format!("  {}: {:?}\n", file.path, file.change_type));
         }
 
-        // Normal case: both from and to are valid Git references
-        log::debug!("📋 Git Operations: Using normal diff - from: {from}, to: {to}");
-        let files = repo.get_commit_range_files(from, to)?;
-        let commits = repo.get_commits_for_pr(from, to)?;
+        Ok(output)
+    }
+}
 
-        Ok(serde_json::json!({
-            "from": from,
-            "to": to,
-            "commits": commits,
-            "changed_files": files.iter().map(|f| serde_json::json!({
-                "path": f.path,
-                "change_type": f.change_type,
-                "diff": f.diff,
-                "analysis": f.analysis
-            })).collect::<Vec<_>>(),
-            "total_changes": files.len()
+// Git diff tool
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitDiff;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitDiffArgs {
+    pub from: Option<String>,
+    pub to: Option<String>,
+}
+
+impl Tool for GitDiff {
+    const NAME: &'static str = "git_diff";
+    type Error = GitError;
+    type Args = GitDiffArgs;
+    type Output = String;
+
+    async fn definition(&self, _: String) -> ToolDefinition {
+        serde_json::from_value(json!({
+            "name": "git_diff",
+            "description": "Get Git diff for changes between commits or branches",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "from": {
+                        "type": "string",
+                        "description": "Starting commit, branch, or reference"
+                    },
+                    "to": {
+                        "type": "string",
+                        "description": "Ending commit, branch, or reference"
+                    }
+                },
+                "required": []
+            }
         }))
+        .unwrap()
     }
 
-    /// Get current repository status
-    fn get_status(context: &AgentContext, include_unstaged: bool) -> Result<serde_json::Value> {
-        let repo = &context.git_repo;
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let current_dir = std::env::current_dir().map_err(GitError::from)?;
+        let repo = GitRepo::new(&current_dir).map_err(GitError::from)?;
 
-        let files_info = repo.extract_files_info(include_unstaged)?;
-        let current_branch = repo.get_current_branch()?;
-
-        let mut status = serde_json::json!({
-            "current_branch": current_branch,
-            "staged_files": files_info.staged_files.iter().map(|f| serde_json::json!({
-                "path": f.path,
-                "change_type": f.change_type,
-                "content_excluded": f.content_excluded
-            })).collect::<Vec<_>>()
-        });
-
-        if include_unstaged {
-            let unstaged_files = repo.get_unstaged_files()?;
-            status["unstaged_files"] = serde_json::json!(
-                unstaged_files
-                    .iter()
-                    .map(|f| serde_json::json!({
-                        "path": f.path,
-                        "change_type": f.change_type
-                    }))
-                    .collect::<Vec<_>>()
-            );
-        }
-
-        Ok(status)
-    }
-
-    /// Get project metadata based on changed files
-    async fn get_project_metadata(
-        context: &AgentContext,
-        file_paths: Option<Vec<String>>,
-    ) -> Result<serde_json::Value> {
-        let repo = &context.git_repo;
-
-        let files = if let Some(paths) = file_paths {
-            paths
+        let files = if let (Some(from), Some(to)) = (args.from, args.to) {
+            repo.get_commit_range_files(&from, &to)
+                .map_err(GitError::from)?
         } else {
-            // Use currently staged files
-            let files_info = repo.extract_files_info(false)?;
-            files_info
-                .staged_files
-                .iter()
-                .map(|f| f.path.clone())
-                .collect()
+            let files_info = repo.extract_files_info(false).map_err(GitError::from)?;
+            files_info.staged_files
         };
 
-        let metadata = repo.get_project_metadata(&files).await?;
+        let mut output = String::new();
+        output.push_str("File changes:\n");
 
-        Ok(serde_json::json!({
-            "language": metadata.language,
-            "framework": metadata.framework,
-            "dependencies": metadata.dependencies,
-            "version": metadata.version,
-            "build_system": metadata.build_system,
-            "test_framework": metadata.test_framework,
-            "plugins": metadata.plugins
-        }))
-    }
-}
-
-#[derive(Deserialize, Serialize)]
-pub struct GitArgs {
-    pub operation: String, // "info", "commit_info", "diff", "status", "metadata"
-    pub commit_id: Option<String>,
-    pub from_ref: Option<String>,
-    pub to_ref: Option<String>,
-    pub include_unstaged: Option<bool>,
-    pub file_paths: Option<Vec<String>>,
-}
-
-#[async_trait]
-impl AgentTool for GitTool {
-    fn id(&self) -> &str {
-        &self.id
-    }
-
-    fn name(&self) -> &'static str {
-        "Git Operations"
-    }
-
-    fn description(&self) -> &'static str {
-        "Perform Git operations like examining commits, branches, file status, and repository information. Use 'staged' as to_ref to see staged changes ready for commit."
-    }
-
-    fn capabilities(&self) -> Vec<String> {
-        vec![
-            "git".to_string(),
-            "version_control".to_string(),
-            "commit_analysis".to_string(),
-            "diff_analysis".to_string(),
-            "repository_info".to_string(),
-            "project_metadata".to_string(),
-        ]
-    }
-
-    async fn execute(
-        &self,
-        context: &AgentContext,
-        params: &HashMap<String, serde_json::Value>,
-    ) -> Result<serde_json::Value> {
-        let args: GitArgs = serde_json::from_value(serde_json::Value::Object(
-            params.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
-        ))?;
-
-        match args.operation.as_str() {
-            "info" => Self::get_repo_info(context),
-            "commit_info" => {
-                let commit_id = args.commit_id.ok_or_else(|| {
-                    anyhow::anyhow!("commit_id required for commit_info operation")
-                })?;
-                Self::get_commit_info(context, &commit_id)
-            }
-            "diff" => {
-                let from = args
-                    .from_ref
-                    .ok_or_else(|| anyhow::anyhow!("from_ref required for diff operation"))?;
-                let to = args
-                    .to_ref
-                    .ok_or_else(|| anyhow::anyhow!("to_ref required for diff operation"))?;
-                Self::get_diff_info(context, &from, &to)
-            }
-            "status" => {
-                let include_unstaged = args.include_unstaged.unwrap_or(false);
-                Self::get_status(context, include_unstaged)
-            }
-            "metadata" => Self::get_project_metadata(context, args.file_paths).await,
-            _ => Err(anyhow::anyhow!("Unknown git operation: {}", args.operation)),
+        for file in &files {
+            output.push_str(&format!("--- {}\n", file.path));
+            output.push_str(&file.diff);
+            output.push('\n');
         }
+
+        Ok(output)
+    }
+}
+
+// Git log tool
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitLog;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitLogArgs {
+    pub count: Option<usize>,
+}
+
+impl Tool for GitLog {
+    const NAME: &'static str = "git_log";
+    type Error = GitError;
+    type Args = GitLogArgs;
+    type Output = String;
+
+    async fn definition(&self, _: String) -> ToolDefinition {
+        serde_json::from_value(json!({
+            "name": "git_log",
+            "description": "Get Git commit history",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "count": {
+                        "type": "integer",
+                        "description": "Number of commits to retrieve (default: 10)"
+                    }
+                },
+                "required": []
+            }
+        }))
+        .unwrap()
     }
 
-    fn parameter_schema(&self) -> serde_json::Value {
-        serde_json::json!({
-            "type": "object",
-            "properties": {
-                "operation": {
-                    "type": "string",
-                    "enum": ["info", "commit_info", "diff", "status", "metadata"],
-                    "description": "Git operation to perform: 'info' for repo info, 'commit_info' for specific commit details, 'diff' for changes between refs, 'status' for current repo status, 'metadata' for project metadata"
-                },
-                "commit_id": {
-                    "type": "string",
-                    "description": "Commit hash for commit_info operation"
-                },
-                "from_ref": {
-                    "type": "string",
-                    "description": "Source reference for diff operation (commit hash, branch name, tag, or 'HEAD')"
-                },
-                "to_ref": {
-                    "type": "string",
-                    "description": "Target reference for diff operation (commit hash, branch name, tag, or 'staged' for current staged changes)"
-                },
-                "include_unstaged": {
-                    "type": "boolean",
-                    "description": "Include unstaged files in status operation",
-                    "default": false
-                },
-                "file_paths": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let current_dir = std::env::current_dir().map_err(GitError::from)?;
+        let repo = GitRepo::new(&current_dir).map_err(GitError::from)?;
+
+        let commits = repo
+            .get_recent_commits(args.count.unwrap_or(10))
+            .map_err(GitError::from)?;
+
+        let mut output = String::new();
+        output.push_str("Recent commits:\n");
+
+        for commit in commits {
+            output.push_str(&format!(
+                "{}: {} ({})\n",
+                commit.hash, commit.message, commit.author
+            ));
+        }
+
+        Ok(output)
+    }
+}
+
+// Git repository info tool
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitRepoInfo;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitRepoInfoArgs {}
+
+impl Tool for GitRepoInfo {
+    const NAME: &'static str = "git_repo_info";
+    type Error = GitError;
+    type Args = GitRepoInfoArgs;
+    type Output = String;
+
+    async fn definition(&self, _: String) -> ToolDefinition {
+        serde_json::from_value(json!({
+            "name": "git_repo_info",
+            "description": "Get general information about the Git repository",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }))
+        .unwrap()
+    }
+
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let current_dir = std::env::current_dir().map_err(GitError::from)?;
+        let repo = GitRepo::new(&current_dir).map_err(GitError::from)?;
+
+        let branch = repo.get_current_branch().map_err(GitError::from)?;
+        let remote_url = repo.get_remote_url().unwrap_or("None").to_string();
+
+        let mut output = String::new();
+        output.push_str("Repository Information:\n");
+        output.push_str(&format!("Current Branch: {branch}\n"));
+        output.push_str(&format!("Remote URL: {remote_url}\n"));
+        output.push_str(&format!(
+            "Repository Path: {}\n",
+            repo.repo_path().display()
+        ));
+
+        Ok(output)
+    }
+}
+
+// Git changed files tool
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitChangedFiles;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitChangedFilesArgs {
+    pub from: Option<String>,
+    pub to: Option<String>,
+}
+
+impl Tool for GitChangedFiles {
+    const NAME: &'static str = "git_changed_files";
+    type Error = GitError;
+    type Args = GitChangedFilesArgs;
+    type Output = String;
+
+    async fn definition(&self, _: String) -> ToolDefinition {
+        serde_json::from_value(json!({
+            "name": "git_changed_files",
+            "description": "Get list of files that have changed between commits or branches",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "from": {
+                        "type": "string",
+                        "description": "Starting commit or branch"
                     },
-                    "description": "Optional list of file paths for metadata operation"
-                }
-            },
-            "required": ["operation"]
-        })
+                    "to": {
+                        "type": "string",
+                        "description": "Ending commit or branch"
+                    }
+                },
+                "required": []
+            }
+        }))
+        .unwrap()
     }
 
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let current_dir = std::env::current_dir().map_err(GitError::from)?;
+        let repo = GitRepo::new(&current_dir).map_err(GitError::from)?;
 
+        let files = if let (Some(_from), Some(to)) = (args.from, args.to) {
+            repo.get_file_paths_for_commit(&to)
+                .map_err(GitError::from)?
+        } else {
+            let files_info = repo.extract_files_info(false).map_err(GitError::from)?;
+            files_info.file_paths
+        };
+
+        let mut output = String::new();
+        output.push_str("Changed files:\n");
+
+        for file in files {
+            output.push_str(&format!("  {file}\n"));
+        }
+
+        Ok(output)
+    }
 }
