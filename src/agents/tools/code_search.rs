@@ -4,31 +4,42 @@
 //! functions, classes, and related files in the repository.
 
 use anyhow::Result;
-use async_trait::async_trait;
+use rig::completion::ToolDefinition;
+use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use serde_json::json;
 use std::path::Path;
 use std::process::Command;
 
-use super::AgentTool;
-use crate::agents::core::AgentContext;
+#[derive(Debug, thiserror::Error)]
+#[error("Code search error: {0}")]
+pub struct CodeSearchError(String);
 
-/// Code search tool for finding related files and functions
-pub struct CodeSearchTool {
-    id: String,
-}
-
-impl Default for CodeSearchTool {
-    fn default() -> Self {
-        Self::new()
+impl From<anyhow::Error> for CodeSearchError {
+    fn from(err: anyhow::Error) -> Self {
+        CodeSearchError(err.to_string())
     }
 }
 
-impl CodeSearchTool {
+impl From<std::io::Error> for CodeSearchError {
+    fn from(err: std::io::Error) -> Self {
+        CodeSearchError(err.to_string())
+    }
+}
+
+/// Code search tool for finding related files and functions
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CodeSearch;
+
+impl Default for CodeSearch {
+    fn default() -> Self {
+        Self
+    }
+}
+
+impl CodeSearch {
     pub fn new() -> Self {
-        Self {
-            id: "code_search".to_string(),
-        }
+        Self
     }
 
     /// Execute a ripgrep search for patterns
@@ -151,85 +162,64 @@ pub struct CodeSearchArgs {
     pub max_results: Option<usize>,
 }
 
-#[async_trait]
-impl AgentTool for CodeSearchTool {
-    fn id(&self) -> &str {
-        &self.id
+impl Tool for CodeSearch {
+    const NAME: &'static str = "code_search";
+    type Error = CodeSearchError;
+    type Args = CodeSearchArgs;
+    type Output = String;
+
+    async fn definition(&self, _: String) -> ToolDefinition {
+        serde_json::from_value(json!({
+            "name": "code_search",
+            "description": "Search for code patterns, functions, classes, and related files in the repository using ripgrep. Supports multiple search types and file filtering.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Search query - can be function name, class name, variable, or text pattern"
+                    },
+                    "search_type": {
+                        "type": "string",
+                        "enum": ["function", "class", "variable", "text", "pattern"],
+                        "description": "Type of search to perform (default: text)"
+                    },
+                    "file_pattern": {
+                        "type": "string",
+                        "description": "Optional file glob pattern to limit search scope (e.g., '*.rs', '*.js')"
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "description": "Maximum number of results to return (default: 20, max: 100)"
+                    }
+                },
+                "required": ["query", "search_type"]
+            }
+        }))
+        .unwrap()
     }
 
-    fn name(&self) -> &'static str {
-        "Code Search"
-    }
-
-    fn description(&self) -> &'static str {
-        "Search for code patterns, functions, classes, and related files in the repository using ripgrep"
-    }
-
-    fn capabilities(&self) -> Vec<String> {
-        vec![
-            "search".to_string(),
-            "code_analysis".to_string(),
-            "review".to_string(),
-            "pattern_matching".to_string(),
-        ]
-    }
-
-    async fn execute(
-        &self,
-        context: &AgentContext,
-        params: &HashMap<String, serde_json::Value>,
-    ) -> Result<serde_json::Value> {
-        let args: CodeSearchArgs = serde_json::from_value(serde_json::Value::Object(
-            params.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
-        ))?;
-
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let current_dir = std::env::current_dir().map_err(CodeSearchError::from)?;
         let max_results = args.max_results.unwrap_or(20);
-        let repo_path = context.git_repo.repo_path();
 
         let results = Self::execute_ripgrep_search(
             &args.query,
-            repo_path,
+            &current_dir,
             args.file_pattern.as_deref(),
             &args.search_type,
             max_results,
-        )?;
+        )
+        .map_err(CodeSearchError::from)?;
 
-        Ok(serde_json::json!({
+        let result = serde_json::json!({
             "query": args.query,
             "search_type": args.search_type,
             "results": results,
             "total_found": results.len(),
             "max_results": max_results,
-        }))
-    }
+        });
 
-    fn parameter_schema(&self) -> serde_json::Value {
-        serde_json::json!({
-            "type": "object",
-            "properties": {
-                "query": {
-                    "type": "string",
-                    "description": "Search query - can be function name, class name, variable, or text pattern"
-                },
-                "search_type": {
-                    "type": "string",
-                    "enum": ["function", "class", "variable", "text", "pattern"],
-                    "description": "Type of search to perform",
-                    "default": "text"
-                },
-                "file_pattern": {
-                    "type": "string",
-                    "description": "Optional file glob pattern to limit search scope (e.g., '*.rs', '*.js')"
-                },
-                "max_results": {
-                    "type": "integer",
-                    "description": "Maximum number of results to return",
-                    "default": 20,
-                    "minimum": 1,
-                    "maximum": 100
-                }
-            },
-            "required": ["query", "search_type"]
-        })
+        Ok(serde_json::to_string_pretty(&result).map_err(|e| CodeSearchError(e.to_string()))?)
     }
 }

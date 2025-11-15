@@ -1,91 +1,51 @@
 name = "pr"
-description = "Generate pull request descriptions and documentation"
+description = "Generate pull request descriptions from commits and changes"
+output_type = "GeneratedPullRequest"
 
 task_prompt = """
-Your task is to generate a comprehensive pull request description for the changes.
+Your task is to generate a pull request description for the given commits and changes.
 
 ## Workflow Steps:
-1. Use git tools to examine the diff and understand scope of changes
-2. Use file_analyzer to understand the purpose and context of modified files
-3. Use code_search to understand how changes integrate with existing codebase
-4. Generate a clear PR description with summary, changes, and testing notes
+1. Use git tools to examine commits and get diffs
+2. Use file_analyzer to understand the context and purpose of modified files
+3. Use code_search to find related patterns or similar recent PRs
+4. Analyze the changes and generate an appropriate PR description
 
 ## Sample Workflows:
 
-### Standard PR Description:
-1. `git_diff(from, to)` - Get the actual changes
-2. `list_changed_files(from, to)` - See all modified files
-3. `analyze_file(path)` for key changed files - Understand purpose and impact
-4. `workspace_structure()` - Understand how changes fit in the project
-5. Generate description with: summary, detailed changes, testing, breaking changes
+### Standard PR:
+1. `git_log(from, to)` - Get commits in the PR
+2. `git_diff(from, to)` - Get overall changes
+3. `file_analyzer(file_paths=[path)` for key modified files - Understand what each file does
+4. `git_log(count=10)pattern)` - Find similar recent PRs for style consistency
+5. Generate PR description following project patterns
 
-### Feature Addition PR:
-1. `git_diff(from, to)` - See what was added
-2. `analyze_file()` for new files - Understand the new feature
-3. `analyze_file()` for modified files - See integration points
-4. `search_code()` for related functionality - Check consistency
-5. Focus on: what the feature does, how to use it, examples
+### Feature PR:
+1. `git_log(from, to)` - See feature commits
+2. `git_changed_files()` - Get all affected files
+3. `file_analyzer(file_paths=[)` for new feature files - Understand the feature scope
+4. `code_search(query=""feat|add")` - Check feature PR patterns
+5. Generate description emphasizing the new capability and its benefits
 
 ### Bug Fix PR:
-1. `git_diff(from, to)` - See what was changed to fix the issue
-2. `analyze_file()` for fixed files - Understand the component
-3. `search_code()` for related code - Check for similar patterns
-4. Focus on: what was broken, how it's fixed, impact
+1. `git_log(from, to)` - Examine fix commits
+2. `git_diff(from, to)` - See what was actually fixed
+3. `file_analyzer(file_paths=[)` for the fixed file - Understand the component
+4. `code_search(query=""fix|bug")` - Check fix PR patterns
+5. Generate description clearly describing what was broken and how it's fixed
 
-### Refactoring PR:
-1. `git_diff(from, to)` - See the scope of refactoring
-2. `analyze_file()` for refactored files - Understand the improvements
-3. `workspace_structure()` - See architectural impact
-4. Focus on: why refactoring was needed, what improved, no behavior changes
-
-### Breaking Change PR:
-1. `git_diff(from, to)` - Identify API/interface changes
-2. `analyze_file()` for changed interfaces - Understand impact
-3. `search_code()` for affected usage - Find integration points
-4. Focus on: what breaks, migration guide, benefits of change
-
-## PR Description Format:
-```markdown
-## Summary
-Brief overview of what this PR accomplishes
-
-## Changes
-### Added
-- New features, files, or capabilities
-
-### Changed
-- Modified behavior or updated functionality
-
-### Fixed
-- Bug fixes and resolved issues
-
-### Removed
-- Deleted features or deprecated functionality
-
-## Technical Details
-- Architecture decisions
-- Implementation approach
-- Key technical considerations
-
-## Testing
-- How the changes were tested
-- Test cases added or modified
-- Manual testing performed
-
-## Breaking Changes
-- Any API or behavior changes
-- Migration guidance
-- Deprecation notices
-
-## Screenshots/Examples
-(If applicable - UI changes, CLI output, etc.)
-```
+### Refactor PR:
+1. `git_log(from, to)` - See refactor commits
+2. `git_diff(from, to)` - See the scope of changes
+3. `file_analyzer(file_paths=[)` for key architectural files - Understand the refactor scope
+4. `code_search(query=""refactor")` - Check how refactors are typically described
+5. Generate description emphasizing the refactor purpose and benefits
 
 ## Guidelines:
-- Start with a clear, concise summary
-- Explain the "why" behind the changes
-- Highlight any breaking changes prominently
-- Include testing information
-- Make it easy for reviewers to understand the changes
+- Focus on what was changed and why it matters to users/reviewers
 - Use clear, descriptive language
+- Follow the project's existing PR description patterns
+- Consider the scope and impact of changes
+- Include testing notes when relevant
+- Highlight breaking changes prominently
 """ 

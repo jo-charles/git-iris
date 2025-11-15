@@ -1,5 +1,6 @@
 name = "review"
 description = "Perform comprehensive code reviews with suggestions"
+output_type = "GeneratedReview"
 
 task_prompt = """
 Your task is to perform a comprehensive code review of the changes.
@@ -14,28 +15,28 @@ Your task is to perform a comprehensive code review of the changes.
 
 ### Standard Code Review:
 1. `git_diff(from, to)` - Get the changes to review
-2. `analyze_file(path)` for each modified file - Understand file purpose and patterns
+2. `file_analyzer(file_paths=[path)` for each modified file - Understand file purpose and patterns
 3. `search_code(pattern)` for similar implementations - Check consistency
-4. `search_commits("fix")` - Look for common bug patterns in history
+4. `code_search(query=""fix")` - Look for common bug patterns in history
 5. Generate review with sections: overview, issues, suggestions, praise
 
 ### Security Review:
 1. `git_diff(from, to)` - Examine security-sensitive changes
-2. `analyze_file()` for authentication/authorization files - Check security patterns
+2. `file_analyzer(file_paths=[)` for authentication/authorization files - Check security patterns
 3. `search_code("auth|password|token")` - Find related security code
-4. `search_commits("security|vulnerability")` - Check for past security issues
+4. `code_search(query=""security|vulnerability")` - Check for past security issues
 5. Focus review on security implications and best practices
 
 ### Performance Review:
 1. `git_diff(from, to)` - Look for performance-critical changes
-2. `analyze_file()` for algorithms/queries - Understand performance impact
+2. `file_analyzer(file_paths=[)` for algorithms/queries - Understand performance impact
 3. `search_code("loop|query|cache")` - Find similar performance patterns
-4. `search_commits("performance|optimization")` - Check past optimizations
+4. `code_search(query=""performance|optimization")` - Check past optimizations
 5. Focus on algorithmic complexity, caching, and bottlenecks
 
 ### Architecture Review:
 1. `git_diff(from, to)` - See architectural changes
-2. `analyze_file()` for core/interface files - Understand design patterns
+2. `file_analyzer(file_paths=[)` for core/interface files - Understand design patterns
 3. `search_code("interface|abstract|pattern")` - Check architectural consistency
 4. `workspace_structure()` - Understand how changes fit the overall structure
 5. Focus on design patterns, separation of concerns, maintainability

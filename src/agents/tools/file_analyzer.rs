@@ -4,32 +4,45 @@
 //! extract metadata, identify patterns, and understand code structure.
 
 use anyhow::Result;
-use async_trait::async_trait;
+use rig::completion::ToolDefinition;
+use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::collections::HashMap;
 use std::path::Path;
 
-use super::AgentTool;
-use crate::agents::core::AgentContext;
 use crate::context::{ProjectMetadata, StagedFile};
 use crate::file_analyzers::get_analyzer;
 
-/// File analyzer tool for understanding code structure and content
-pub struct FileAnalyzerTool {
-    id: String,
-}
+#[derive(Debug, thiserror::Error)]
+#[error("File analyzer error: {0}")]
+pub struct FileAnalyzerError(String);
 
-impl Default for FileAnalyzerTool {
-    fn default() -> Self {
-        Self::new()
+impl From<anyhow::Error> for FileAnalyzerError {
+    fn from(err: anyhow::Error) -> Self {
+        FileAnalyzerError(err.to_string())
     }
 }
 
-impl FileAnalyzerTool {
+impl From<std::io::Error> for FileAnalyzerError {
+    fn from(err: std::io::Error) -> Self {
+        FileAnalyzerError(err.to_string())
+    }
+}
+
+/// File analyzer tool for understanding code structure and content
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileAnalyzer;
+
+impl Default for FileAnalyzer {
+    fn default() -> Self {
+        Self
+    }
+}
+
+impl FileAnalyzer {
     pub fn new() -> Self {
-        Self {
-            id: "file_analyzer".to_string(),
-        }
+        Self
     }
 
     /// Analyze a single file using the appropriate analyzer
@@ -329,45 +342,55 @@ pub struct FileAnalyzerArgs {
     pub include_dependencies: Option<bool>,
 }
 
-#[async_trait]
-impl AgentTool for FileAnalyzerTool {
-    fn id(&self) -> &str {
-        &self.id
+impl Tool for FileAnalyzer {
+    const NAME: &'static str = "file_analyzer";
+    type Error = FileAnalyzerError;
+    type Args = FileAnalyzerArgs;
+    type Output = String;
+
+    async fn definition(&self, _: String) -> ToolDefinition {
+        serde_json::from_value(json!({
+            "name": "file_analyzer",
+            "description": "Analyze file contents, extract metadata, identify patterns, and understand code structure. Provides complexity metrics, security issues, and architectural insights.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "file_paths": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "description": "List of file paths to analyze (relative to repository root)",
+                        "minItems": 1,
+                        "maxItems": 50
+                    },
+                    "analysis_depth": {
+                        "type": "string",
+                        "enum": ["basic", "detailed", "comprehensive"],
+                        "description": "Depth of analysis to perform (default: detailed)"
+                    },
+                    "include_metrics": {
+                        "type": "boolean",
+                        "description": "Include complexity and performance metrics (default: true)"
+                    },
+                    "include_dependencies": {
+                        "type": "boolean",
+                        "description": "Include dependency analysis (default: true)"
+                    }
+                },
+                "required": ["file_paths"]
+            }
+        }))
+        .unwrap()
     }
 
-    fn name(&self) -> &'static str {
-        "File Analyzer"
-    }
-
-    fn description(&self) -> &'static str {
-        "Analyze file contents, extract metadata, identify patterns, and understand code structure"
-    }
-
-    fn capabilities(&self) -> Vec<String> {
-        vec![
-            "file_analysis".to_string(),
-            "code_understanding".to_string(),
-            "dependency_analysis".to_string(),
-            "security_scanning".to_string(),
-            "performance_analysis".to_string(),
-            "architecture_insights".to_string(),
-        ]
-    }
-
-    async fn execute(
-        &self,
-        context: &AgentContext,
-        params: &HashMap<String, serde_json::Value>,
-    ) -> Result<serde_json::Value> {
-        let args: FileAnalyzerArgs = serde_json::from_value(serde_json::Value::Object(
-            params.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
-        ))?;
-
-        let repo_path = context.git_repo.repo_path();
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let current_dir = std::env::current_dir().map_err(FileAnalyzerError::from)?;
 
         let analyses = self
-            .analyze_files_batch(&args.file_paths, repo_path)
-            .await?;
+            .analyze_files_batch(&args.file_paths, &current_dir)
+            .await
+            .map_err(FileAnalyzerError::from)?;
 
         // Calculate aggregate metrics
         let total_loc: usize = analyses.iter().map(|a| a.lines_of_code).sum();
@@ -380,7 +403,7 @@ impl AgentTool for FileAnalyzerTool {
         };
         let total_security_issues: usize = analyses.iter().map(|a| a.security_issues.len()).sum();
 
-        Ok(serde_json::json!({
+        let result = serde_json::json!({
             "file_analyses": analyses,
             "summary": {
                 "total_files": analyses.len(),
@@ -392,40 +415,8 @@ impl AgentTool for FileAnalyzerTool {
             "analysis_depth": args.analysis_depth.unwrap_or_else(|| "detailed".to_string()),
             "include_metrics": args.include_metrics.unwrap_or(true),
             "include_dependencies": args.include_dependencies.unwrap_or(true),
-        }))
-    }
+        });
 
-    fn parameter_schema(&self) -> serde_json::Value {
-        serde_json::json!({
-            "type": "object",
-            "properties": {
-                "file_paths": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    },
-                    "description": "List of file paths to analyze (relative to repository root)",
-                    "minItems": 1,
-                    "maxItems": 50
-                },
-                "analysis_depth": {
-                    "type": "string",
-                    "enum": ["basic", "detailed", "comprehensive"],
-                    "description": "Depth of analysis to perform",
-                    "default": "detailed"
-                },
-                "include_metrics": {
-                    "type": "boolean",
-                    "description": "Include complexity and performance metrics",
-                    "default": true
-                },
-                "include_dependencies": {
-                    "type": "boolean",
-                    "description": "Include dependency analysis",
-                    "default": true
-                }
-            },
-            "required": ["file_paths"]
-        })
+        Ok(serde_json::to_string_pretty(&result).map_err(|e| FileAnalyzerError(e.to_string()))?)
     }
 }

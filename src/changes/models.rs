@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// Represents the structured response for a changelog
-#[derive(Serialize, Deserialize, JsonSchema, Debug)]
+#[derive(Clone, Serialize, Deserialize, JsonSchema, Debug)]
 pub struct ChangelogResponse {
     /// The version number of the release
     pub version: Option<String>,
@@ -30,7 +30,7 @@ pub enum ChangelogType {
 }
 
 /// Represents a single change entry in the changelog
-#[derive(Serialize, Deserialize, JsonSchema, Debug)]
+#[derive(Clone, Serialize, Deserialize, JsonSchema, Debug)]
 pub struct ChangeEntry {
     /// Description of the change
     pub description: String,
@@ -43,7 +43,7 @@ pub struct ChangeEntry {
 }
 
 /// Represents a breaking change in the release
-#[derive(Serialize, Deserialize, JsonSchema, Debug)]
+#[derive(Clone, Serialize, Deserialize, JsonSchema, Debug)]
 pub struct BreakingChange {
     /// Description of the breaking change
     pub description: String,
@@ -67,7 +67,7 @@ pub struct ChangeMetrics {
 }
 
 /// Represents the structured response for release notes
-#[derive(Serialize, Deserialize, JsonSchema, Debug)]
+#[derive(Clone, Serialize, Deserialize, JsonSchema, Debug)]
 pub struct ReleaseNotesResponse {
     /// The version number of the release
     pub version: Option<String>,
@@ -88,7 +88,7 @@ pub struct ReleaseNotesResponse {
 }
 
 /// Represents a highlight in the release notes
-#[derive(Serialize, Deserialize, JsonSchema, Debug)]
+#[derive(Clone, Serialize, Deserialize, JsonSchema, Debug)]
 pub struct Highlight {
     /// Title of the highlight
     pub title: String,
@@ -97,7 +97,7 @@ pub struct Highlight {
 }
 
 /// Represents a section in the release notes
-#[derive(Serialize, Deserialize, JsonSchema, Debug)]
+#[derive(Clone, Serialize, Deserialize, JsonSchema, Debug)]
 pub struct Section {
     /// Title of the section
     pub title: String,
@@ -106,7 +106,7 @@ pub struct Section {
 }
 
 /// Represents an item in a section of the release notes
-#[derive(Serialize, Deserialize, JsonSchema, Debug)]
+#[derive(Clone, Serialize, Deserialize, JsonSchema, Debug)]
 pub struct SectionItem {
     /// Description of the change
     pub description: String,
@@ -114,6 +114,99 @@ pub struct SectionItem {
     pub associated_issues: Vec<String>,
     /// Pull request number associated with this change, if any
     pub pull_request: Option<String>,
+}
+
+impl ChangelogResponse {
+    /// Generate the content string for display
+    pub fn content(&self) -> String {
+        let mut output = String::new();
+
+        if let Some(version) = &self.version {
+            output.push_str(&format!("# Changelog - {version}\n\n"));
+        } else {
+            output.push_str("# Changelog\n\n");
+        }
+
+        if let Some(date) = &self.release_date {
+            output.push_str(&format!("Released: {date}\n\n"));
+        }
+
+        for (change_type, entries) in &self.sections {
+            if !entries.is_empty() {
+                output.push_str(&format!("## {change_type:?}\n\n"));
+                for entry in entries {
+                    output.push_str(&format!("- {}\n", entry.description));
+                }
+                output.push('\n');
+            }
+        }
+
+        if !self.breaking_changes.is_empty() {
+            output.push_str("## Breaking Changes\n\n");
+            for change in &self.breaking_changes {
+                output.push_str(&format!("- {}\n", change.description));
+            }
+            output.push('\n');
+        }
+
+        output
+    }
+}
+
+impl ReleaseNotesResponse {
+    /// Generate the content string for display  
+    pub fn content(&self) -> String {
+        let mut output = String::new();
+
+        if let Some(version) = &self.version {
+            output.push_str(&format!("# Release Notes - {version}\n\n"));
+        } else {
+            output.push_str("# Release Notes\n\n");
+        }
+
+        if let Some(date) = &self.release_date {
+            output.push_str(&format!("Released: {date}\n\n"));
+        }
+
+        if !self.summary.is_empty() {
+            output.push_str(&format!("{}\n\n", self.summary));
+        }
+
+        if !self.highlights.is_empty() {
+            output.push_str("## Highlights\n\n");
+            for highlight in &self.highlights {
+                output.push_str(&format!(
+                    "### {}\n\n{}\n\n",
+                    highlight.title, highlight.description
+                ));
+            }
+        }
+
+        for section in &self.sections {
+            output.push_str(&format!("## {}\n\n", section.title));
+            for item in &section.items {
+                output.push_str(&format!("- {}\n", item.description));
+            }
+            output.push('\n');
+        }
+
+        if !self.breaking_changes.is_empty() {
+            output.push_str("## Breaking Changes\n\n");
+            for change in &self.breaking_changes {
+                output.push_str(&format!("- {}\n", change.description));
+            }
+            output.push('\n');
+        }
+
+        if !self.upgrade_notes.is_empty() {
+            output.push_str("## Upgrade Notes\n\n");
+            for note in &self.upgrade_notes {
+                output.push_str(&format!("- {note}\n"));
+            }
+        }
+
+        output
+    }
 }
 
 impl From<String> for ChangelogResponse {

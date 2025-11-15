@@ -1,5 +1,6 @@
 name = "changelog"
 description = "Generate changelogs from Git commits and changes"
+output_type = "ChangelogResponse"
 
 task_prompt = """
 Your task is to generate a changelog from Git commits and changes between two references.
@@ -15,27 +16,27 @@ Your task is to generate a changelog from Git commits and changes between two re
 ### Standard Changelog Generation:
 1. `git_log(from, to)` - Get all commits in the range
 2. `git_diff(from, to)` - Get overall diff summary
-3. `analyze_file(path)` for significant changed files - Understand impact
+3. `file_analyzer(file_paths=[path)` for significant changed files - Understand impact
 4. Categorize changes: Features, Bug Fixes, Breaking Changes, Improvements
 5. Generate structured changelog with clear sections and descriptions
 
 ### Feature-Focused Changelog:
 1. `git_log(from, to)` - Get commits
 2. `list_changed_files(from, to)` - See all modified files
-3. `analyze_file()` for new feature files - Understand new capabilities
+3. `file_analyzer(file_paths=[)` for new feature files - Understand new capabilities
 4. `git_diff()` for API/interface changes - Identify breaking changes
 5. Focus on user-facing features and API changes
 
 ### Bug Fix Release:
 1. `git_log(from, to)` - Get fix commits
 2. `git_diff(from, to)` - See what was actually fixed
-3. `analyze_file()` for fixed components - Understand fix scope
+3. `file_analyzer(file_paths=[)` for fixed components - Understand fix scope
 4. Focus on what issues were resolved and their impact
 
 ### Major Release:
 1. `git_log(from, to)` - Get full commit history
 2. `workspace_structure()` - Understand architectural changes
-3. `analyze_file()` for core/breaking changes - Identify major changes
+3. `file_analyzer(file_paths=[)` for core/breaking changes - Identify major changes
 4. `git_diff()` for API surfaces - Document breaking changes
 5. Structure by impact: Breaking Changes, Major Features, Minor Features, Fixes
 

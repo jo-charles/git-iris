@@ -132,7 +132,8 @@ impl AgentSetupService {
     }
 }
 
-/// Handler function for using agents in CLI commands (following existing patterns)
+/// High-level function to handle tasks with agents using a common pattern
+/// This is a convenience function that sets up an agent and executes a task
 pub async fn handle_with_agent<F, Fut, T>(
     common_params: CommonParams,
     repository_url: Option<String>,
@@ -141,7 +142,7 @@ pub async fn handle_with_agent<F, Fut, T>(
     handler: F,
 ) -> Result<T>
 where
-    F: FnOnce(String) -> Fut,
+    F: FnOnce(crate::agents::iris::StructuredResponse) -> Fut,
     Fut: std::future::Future<Output = Result<T>>,
 {
     // Create setup service
@@ -150,7 +151,7 @@ where
     // Create agent
     let mut agent = setup_service.create_iris_agent().await?;
 
-    // Execute task with capability
+    // Execute task with capability - now returns StructuredResponse
     let result = agent.execute_task(capability, task_prompt).await?;
 
     // Call the handler with the result

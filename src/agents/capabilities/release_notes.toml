@@ -1,93 +1,78 @@
 name = "release_notes"
-description = "Generate release notes for versions and releases"
+description = "Generate release notes from Git commits and changes"
+output_type = "ReleaseNotesResponse"
 
 task_prompt = """
-Your task is to generate comprehensive release notes for a software release.
+Your task is to generate release notes from Git commits and changes between two references.
 
 ## Workflow Steps:
-1. Use git tools to get commits and changes for the release
-2. Use file_analyzer to understand the impact and scope of changes
-3. Categorize changes by user impact and type
-4. Generate polished release notes with clear user benefits
+1. Use git tools to get commits and diffs between the specified range
+2. Use file_analyzer to understand the impact of key changes
+3. Identify highlights and key features
+4. Generate structured release notes with clear sections
 
 ## Sample Workflows:
 
 ### Standard Release Notes:
-1. `git_log(from, to)` - Get all commits for this release
-2. `git_diff(from, to)` - Get overall change summary
-3. `analyze_file()` for significant changes - Understand user impact
-4. `workspace_structure()` - Check for architectural changes
-5. Generate notes with: highlights, features, fixes, improvements, breaking changes
+1. `git_log(from, to)` - Get all commits in the range
+2. `git_diff(from, to)` - Get overall diff summary
+3. `file_analyzer(file_paths=[path)` for significant changed files - Understand impact
+4. Identify key highlights and features
+5. Generate structured release notes with clear sections
 
-### Major Version Release:
-1. `git_log(from, to)` - Get extensive change history
-2. `list_changed_files()` - See scope of changes
-3. `analyze_file()` for core changes - Understand major improvements
-4. `git_diff()` for API changes - Identify breaking changes
-5. Focus on: major new capabilities, breaking changes, migration guide
+### Feature Release:
+1. `git_log(from, to)` - Get commits
+2. `list_changed_files(from, to)` - See all modified files
+3. `file_analyzer(file_paths=[)` for new feature files - Understand new capabilities
+4. `git_diff()` for API/interface changes - Identify breaking changes
+5. Focus on user-facing features and their benefits
 
-### Minor Version Release:
-1. `git_log(from, to)` - Get incremental changes
-2. `analyze_file()` for new features - Understand additions
-3. Focus on: new features, improvements, bug fixes, backward compatibility
-
-### Patch Release:
-1. `git_log(from, to)` - Get bug fixes and small improvements
+### Bug Fix Release:
+1. `git_log(from, to)` - Get fix commits
 2. `git_diff(from, to)` - See what was actually fixed
-3. `analyze_file()` for fixed components - Understand fix impact
-4. Focus on: what bugs were fixed, security updates, small improvements
+3. `file_analyzer(file_paths=[)` for fixed components - Understand fix scope
+4. Focus on what issues were resolved and their impact
 
-### Pre-release (Alpha/Beta):
-1. `git_log(from, to)` - Get experimental changes
-2. `analyze_file()` for new/experimental features - Understand scope
-3. Focus on: experimental features, known issues, feedback requests
+### Major Release:
+1. `git_log(from, to)` - Get full commit history
+2. `workspace_structure()` - Understand architectural changes
+3. `file_analyzer(file_paths=[)` for core/breaking changes - Identify major changes
+4. `git_diff()` for API surfaces - Document breaking changes
+5. Structure by impact: Breaking Changes, Major Features, Minor Features, Fixes
 
 ## Release Notes Format:
 ```markdown
-# Release Notes - Version X.Y.Z
+# Release Notes
 
-## 🌟 Highlights
-The most exciting and important changes in this release
+## Version X.Y.Z - YYYY-MM-DD
 
-## 🚀 New Features
-- **Feature Name**: Clear description of what users can now do
-- **Another Feature**: User benefits and how to use it
+### 🌟 Highlights
+- Key features and improvements in this release
 
-## ⚡ Improvements
-- **Performance**: Specific performance improvements
-- **Usability**: UX/UI improvements
-- **Developer Experience**: API or tooling improvements
+### 🚀 New Features
+- New capabilities and enhancements
 
-## 🐛 Bug Fixes
-- **Fixed Issue**: What was broken and how it affects users
-- **Another Fix**: Impact and resolution
+### 🐛 Bug Fixes
+- Issues resolved in this release
 
-## 💥 Breaking Changes
-- **API Change**: What breaks and how to migrate
-- **Behavior Change**: What changed and required user action
+### 💥 Breaking Changes
+- API changes that require user action
+- Migration guidance when needed
 
-## 🔒 Security
-- Security fixes and improvements (without revealing vulnerabilities)
+### ⚡ Improvements
+- Performance, usability, or quality improvements
 
-## 📚 Documentation
-- New guides, improved docs, examples
+### 📚 Documentation
+- Documentation updates and additions
 
-## 🛠️ Technical Details
-- Dependencies updated
-- Internal improvements
-- Build/deployment changes
-
-## 🙏 Acknowledgments
-- Contributors and community members
+### 🔧 Technical
+- Infrastructure, build, or development improvements
 ```
 
 ## Guidelines:
-- Lead with the most impactful changes for users
-- Use clear, benefit-focused language
-- Avoid technical jargon when possible
-- Highlight security and breaking changes prominently
-- Include upgrade/migration guidance for breaking changes
-- Group related changes together
-- Use emojis and formatting for visual appeal
-- Focus on "what this means for users" rather than "what code changed"
+- Focus on user-facing changes and their impact
+- Highlight the most important features prominently
+- Use clear, engaging language
+- Include upgrade notes for breaking changes
+- Structure content for easy scanning
 """ 

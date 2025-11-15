@@ -101,17 +101,17 @@ impl Tool for GitDiff {
     async fn definition(&self, _: String) -> ToolDefinition {
         serde_json::from_value(json!({
             "name": "git_diff",
-            "description": "Get Git diff for changes between commits or branches",
+            "description": "Get Git diff for file changes. Use with no args or from='staged' to get staged changes. Otherwise provide from/to commits or branches.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "from": {
                         "type": "string",
-                        "description": "Starting commit, branch, or reference"
+                        "description": "Starting commit, branch, or 'staged' for staged changes. If only from is provided (and not 'staged'), compares from to HEAD."
                     },
                     "to": {
                         "type": "string",
-                        "description": "Ending commit, branch, or reference"
+                        "description": "Ending commit, branch, or reference. Optional if from is provided."
                     }
                 },
                 "required": []
@@ -124,12 +124,32 @@ impl Tool for GitDiff {
         let current_dir = std::env::current_dir().map_err(GitError::from)?;
         let repo = GitRepo::new(&current_dir).map_err(GitError::from)?;
 
-        let files = if let (Some(from), Some(to)) = (args.from, args.to) {
-            repo.get_commit_range_files(&from, &to)
-                .map_err(GitError::from)?
-        } else {
-            let files_info = repo.extract_files_info(false).map_err(GitError::from)?;
-            files_info.staged_files
+        // Handle the case where we want staged changes
+        // - No args: get staged changes
+        // - from="staged": get staged changes
+        // - Otherwise: get commit range
+        let files = match (args.from.as_deref(), args.to.as_deref()) {
+            (None, None) | (Some("staged"), None) | (Some("staged"), Some("HEAD")) => {
+                // Get staged changes
+                let files_info = repo.extract_files_info(false).map_err(GitError::from)?;
+                files_info.staged_files
+            }
+            (Some(from), Some(to)) => {
+                // Get changes between two commits/branches
+                repo.get_commit_range_files(from, to)
+                    .map_err(GitError::from)?
+            }
+            (None, Some(_)) => {
+                // Invalid: to without from
+                return Err(GitError(
+                    "Cannot specify 'to' without 'from'. Use both or neither.".to_string(),
+                ));
+            }
+            (Some(from), None) => {
+                // Get changes from a specific commit to HEAD (already handled "staged" above)
+                repo.get_commit_range_files(from, "HEAD")
+                    .map_err(GitError::from)?
+            }
         };
 
         let mut output = String::new();
@@ -291,7 +311,8 @@ impl Tool for GitChangedFiles {
         let files = match (args.from, args.to) {
             (Some(from), Some(to)) => {
                 // When both from and to are provided, get files changed between commits/branches
-                let range_files = repo.get_commit_range_files(&from, &to)
+                let range_files = repo
+                    .get_commit_range_files(&from, &to)
                     .map_err(GitError::from)?;
                 range_files.iter().map(|f| f.path.clone()).collect()
             }
@@ -302,7 +323,9 @@ impl Tool for GitChangedFiles {
             }
             (Some(_from), None) => {
                 // Invalid: from without to doesn't make sense for file listing
-                return Err(GitError("Cannot specify 'from' without 'to' for file listing".to_string()));
+                return Err(GitError(
+                    "Cannot specify 'from' without 'to' for file listing".to_string(),
+                ));
             }
             (None, None) => {
                 // When neither are provided, get staged files

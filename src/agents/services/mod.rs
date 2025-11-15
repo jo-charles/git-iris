@@ -1,3 +1,5 @@
-pub mod llm;
+//! Agent services module
+//!
+//! This module contains service layers for agent operations
 
-pub use llm::{GenerationRequest, LLMService};
+// No services currently - agents use Rig directly

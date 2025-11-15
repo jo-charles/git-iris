@@ -43,12 +43,15 @@ pub mod git;
 // Re-export the tool structs (not functions) for Rig agents
 pub use git::{GitChangedFiles, GitDiff, GitLog, GitRepoInfo, GitStatus};
 
-// Keep the other tools as modules for now but we'll need to convert them to Rig tools later
-pub mod code_search;
+// Migrated Rig tools
 pub mod file_analyzer;
-pub mod workspace;
+pub use file_analyzer::FileAnalyzer;
 
-// Legacy exports for backward compatibility during transition
-pub use code_search::CodeSearchTool;
-pub use file_analyzer::FileAnalyzerTool;
-pub use workspace::WorkspaceTool;
+pub mod code_search;
+pub use code_search::CodeSearch;
+
+pub mod workspace_new;
+pub use workspace_new::Workspace;
+
+// Legacy workspace (unused, kept for reference)
+pub mod workspace;
