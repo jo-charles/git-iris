@@ -427,6 +427,156 @@ struct GenConfig {
     verify: bool,
 }
 
+/// Handle the `Gen` command with agent framework and TUI integration
+async fn handle_gen_with_agent(
+    common: CommonParams,
+    config: GenConfig,
+    repository_url: Option<String>,
+) -> anyhow::Result<()> {
+    use crate::commit::types::format_commit_message;
+    use crate::commit::{IrisCommitService, format_commit_result};
+    use crate::tui::run_tui_commit;
+    use crate::config::Config;
+    use crate::instruction_presets::PresetType;
+    use crate::git::GitRepo;
+    use anyhow::Context;
+    use std::sync::Arc;
+
+    // Enable agent mode for enhanced status display
+    crate::agents::status::enable_agent_mode();
+
+    // Check if the preset is appropriate for commit messages
+    if !common.is_valid_preset_for_type(PresetType::Commit) {
+        ui::print_warning(
+            "The specified preset may not be suitable for commit messages. Consider using a commit or general preset instead.",
+        );
+        ui::print_info("Run 'git-iris list-presets' to see available presets for commits.");
+    }
+
+    let mut cfg = Config::load()?;
+    common.apply_to_config(&mut cfg)?;
+
+    // Create the service
+    let repo_url = repository_url.clone().or(common.repository_url.clone());
+    let git_repo = GitRepo::new_from_url(repo_url).context("Failed to create GitRepo")?;
+    let repo_path = git_repo.repo_path().clone();
+
+    let service = Arc::new(IrisCommitService::new(
+        cfg.clone(),
+        &repo_path,
+        &cfg.default_provider,
+        config.use_gitmoji && cfg.use_gitmoji,
+        config.verify,
+        git_repo,
+    ).map_err(|e| {
+        ui::print_error(&format!("Error: {e}"));
+        ui::print_info("\nPlease ensure the following:");
+        ui::print_info("1. Git is installed and accessible from the command line.");
+        ui::print_info(
+            "2. You are running this command from within a Git repository or provide a repository URL with --repo.",
+        );
+        ui::print_info("3. You have set up your configuration using 'git-iris config'.");
+        e
+    })?);
+
+    let git_info = service.get_git_info().await?;
+
+    if git_info.staged_files.is_empty() {
+        ui::print_warning(
+            "No staged changes. Please stage your changes before generating a commit message.",
+        );
+        ui::print_info("You can stage changes using 'git add <file>' or 'git add .'");
+        return Ok(());
+    }
+
+    // Run pre-commit hook before we do anything else
+    if let Err(e) = service.pre_commit() {
+        ui::print_error(&format!("Pre-commit failed: {e}"));
+        return Err(e);
+    }
+
+    // Extract values we need from common before passing it to agent
+    let effective_instructions = common
+        .instructions
+        .as_ref()
+        .cloned()
+        .unwrap_or_else(|| cfg.instructions.clone());
+    let preset_str = common.preset.clone().unwrap_or_default();
+
+    // Use agent framework for commit message generation
+    let task_prompt = if config.use_gitmoji {
+        "Generate a commit message using gitmoji and following best practices"
+    } else {
+        "Generate a commit message following best practices"
+    };
+
+    let generated_message = crate::agents::handle_with_agent(
+        common,
+        repository_url,
+        "commit",
+        task_prompt,
+        |response| async move {
+            match response {
+                crate::agents::iris::StructuredResponse::CommitMessage(msg) => Ok(msg),
+                _ => Err(anyhow::anyhow!("Expected commit message response")),
+            }
+        },
+    )
+    .await?;
+
+    if config.print_only {
+        println!("{}", format_commit_message(&generated_message));
+        return Ok(());
+    }
+
+    if config.auto_commit {
+        // Only allow auto-commit for local repositories
+        if service.is_remote_repository() {
+            ui::print_error(
+                "Cannot automatically commit to a remote repository. Use --print instead.",
+            );
+            return Err(anyhow::anyhow!(
+                "Auto-commit not supported for remote repositories"
+            ));
+        }
+
+        match service.perform_commit(&format_commit_message(&generated_message)) {
+            Ok(result) => {
+                let output =
+                    format_commit_result(&result, &format_commit_message(&generated_message));
+                println!("{output}");
+            }
+            Err(e) => {
+                eprintln!("Failed to commit: {e}");
+                return Err(e);
+            }
+        }
+        return Ok(());
+    }
+
+    // Only allow interactive commit for local repositories
+    if service.is_remote_repository() {
+        ui::print_warning(
+            "Interactive commit not available for remote repositories. Using print mode instead.",
+        );
+        println!("{}", format_commit_message(&generated_message));
+        return Ok(());
+    }
+
+    run_tui_commit(
+        vec![generated_message],
+        effective_instructions,
+        preset_str,
+        git_info.user_name,
+        git_info.user_email,
+        service,
+        cfg.use_gitmoji,
+    )
+    .await?;
+
+    Ok(())
+}
+
 /// Handle the `Gen` command
 async fn handle_gen(
     common: CommonParams,
@@ -448,31 +598,11 @@ async fn handle_gen(
     ui::print_newline();
 
     if use_agent {
-        // Enable agent mode for enhanced status display
-        crate::agents::status::enable_agent_mode();
-
-        // Use agent framework for commit message generation
-        let task_prompt = if config.use_gitmoji {
-            "Generate a commit message using gitmoji and following best practices"
-        } else {
-            "Generate a commit message following best practices"
-        };
-
-        crate::agents::handle_with_agent(
+        // Use agent-based generation with TUI integration
+        handle_gen_with_agent(
             common,
+            config,
             repository_url,
-            "commit",
-            task_prompt,
-            |response| async move {
-                // For now, always print the generated message
-                println!("\n{response}\n");
-
-                if !config.print_only {
-                    // TODO: Handle commit logic here (TUI integration)
-                    ui::print_success("Commit message generated successfully");
-                }
-                Ok(())
-            },
         )
         .await
     } else {
