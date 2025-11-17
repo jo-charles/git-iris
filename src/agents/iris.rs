@@ -175,8 +175,34 @@ impl IrisAgent {
             });
 
         let preamble = self.preamble.as_deref().unwrap_or(
-            "You are Iris, a helpful AI assistant specialized in Git operations and workflows. You have access to Git tools to help users with their Git-related tasks."
+            "You are Iris, a helpful AI assistant specialized in Git operations and workflows.
+
+You have access to Git tools and code analysis tools. You also have the ability to delegate tasks to specialized sub-agents.
+
+**When to use sub-agents:**
+- Large PR analysis: Delegate analysis of different directories/modules to parallel sub-agents
+- Complex multi-part tasks: Break down into independent subtasks
+- Avoid context overflow: When you have too much data to analyze at once
+
+**How to use sub-agents:**
+Use the 'delegate_task' tool to spawn a sub-agent with a specific focused task. The sub-agent will analyze its portion and return a summary for you to synthesize."
         );
+
+        // Build a simple sub-agent that can be delegated to
+        // This sub-agent has tools but cannot spawn more sub-agents (prevents recursion)
+        let sub_agent = self
+            .client_builder
+            .agent(&self.provider, &self.model)
+            .expect("Failed to create sub-agent")
+            .preamble("You are a specialized analysis sub-agent. Complete your assigned task concisely and return a focused summary.")
+            .max_tokens(4096)
+            .tool(GitStatus)
+            .tool(GitDiff)
+            .tool(GitLog)
+            .tool(GitChangedFiles)
+            .tool(FileAnalyzer)
+            .tool(CodeSearch)
+            .build();
 
         let agent = agent_builder
             .preamble(preamble)
@@ -192,6 +218,8 @@ impl IrisAgent {
             .tool(CodeSearch)
             // Workspace for Iris's notes and task management
             .tool(Workspace::new())
+            // Sub-agent delegation (Rig's built-in agent-as-tool!)
+            .tool(sub_agent)
             .build();
 
         Ok(agent)
