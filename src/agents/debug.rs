@@ -229,6 +229,17 @@ pub fn debug_llm_response(response: &str, duration: Duration, tokens_used: Optio
         );
     }
 
+    // Save full response to file for deep debugging
+    if let Err(e) = std::fs::write("/tmp/iris_last_response.txt", response) {
+        eprintln!("Failed to write debug response: {}", e);
+    } else {
+        println!(
+            "  {} {}",
+            "Full response saved to:".truecolor(NEON_CYAN.0, NEON_CYAN.1, NEON_CYAN.2),
+            "/tmp/iris_last_response.txt".truecolor(CORAL.0, CORAL.1, CORAL.2)
+        );
+    }
+
     // Show response (truncated if too long)
     let truncated = if response.len() > 1000 {
         format!("{}...\n\n... ({} more characters)", &response[..1000], response.len() - 1000)

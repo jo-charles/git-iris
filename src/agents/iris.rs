@@ -110,16 +110,32 @@ fn extract_json_from_response(response: &str) -> Result<String> {
 
     // Try to find JSON within markdown code blocks
     if let Some(start) = response.find("```json") {
-        if let Some(json_end) = response[start + 7..].find("```") {
-            let json_content = &response[start + 7..start + 7 + json_end];
-            let trimmed = json_content.trim().to_string();
-            debug::debug_context_management(
-                "Found JSON in markdown code block",
-                &format!("{} characters", trimmed.len())
-            );
-            debug::debug_json_parse_attempt(&trimmed);
-            return Ok(trimmed);
+        let content_start = start + "```json".len();
+        // Find the closing ``` on its own line (to avoid matching ``` inside JSON strings)
+        // First try with newline prefix to find standalone closing marker
+        let json_end = if let Some(end) = response[content_start..].find("\n```") {
+            // Found it with newline - the JSON ends before the newline
+            end
+        } else {
+            // Fallback: try to find ``` at start of response section or end of string
+            response[content_start..].find("```").unwrap_or(response.len() - content_start)
+        };
+
+        let json_content = &response[content_start..content_start + json_end];
+        let trimmed = json_content.trim().to_string();
+
+        debug::debug_context_management(
+            "Found JSON in markdown code block",
+            &format!("{} characters", trimmed.len())
+        );
+
+        // Save extracted JSON for debugging
+        if let Err(e) = std::fs::write("/tmp/iris_extracted.json", &trimmed) {
+            debug::debug_warning(&format!("Failed to write extracted JSON: {}", e));
         }
+
+        debug::debug_json_parse_attempt(&trimmed);
+        return Ok(trimmed);
     }
 
     // Look for JSON objects by finding { and matching }
