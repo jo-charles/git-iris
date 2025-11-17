@@ -464,10 +464,11 @@ async fn handle_gen(
             "commit",
             task_prompt,
             |response| async move {
-                if config.print_only {
-                    println!("{response}");
-                } else {
-                    // Handle commit logic here
+                // For now, always print the generated message
+                println!("\n{response}\n");
+
+                if !config.print_only {
+                    // TODO: Handle commit logic here (TUI integration)
                     ui::print_success("Commit message generated successfully");
                 }
                 Ok(())

@@ -417,6 +417,6 @@ impl Tool for FileAnalyzer {
             "include_dependencies": args.include_dependencies.unwrap_or(true),
         });
 
-        Ok(serde_json::to_string_pretty(&result).map_err(|e| FileAnalyzerError(e.to_string()))?)
+        serde_json::to_string_pretty(&result).map_err(|e| FileAnalyzerError(e.to_string()))
     }
 }

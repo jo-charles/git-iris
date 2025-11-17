@@ -30,8 +30,9 @@ impl From<std::io::Error> for GitError {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GitStatus;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct GitStatusArgs {
+    #[serde(default)]
     pub include_unstaged: Option<bool>,
 }
 
@@ -86,9 +87,11 @@ impl Tool for GitStatus {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GitDiff;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct GitDiffArgs {
+    #[serde(default)]
     pub from: Option<String>,
+    #[serde(default)]
     pub to: Option<String>,
 }
 
@@ -99,25 +102,14 @@ impl Tool for GitDiff {
     type Output = String;
 
     async fn definition(&self, _: String) -> ToolDefinition {
-        serde_json::from_value(json!({
-            "name": "git_diff",
-            "description": "Get Git diff for file changes. Use with no args or from='staged' to get staged changes. Otherwise provide from/to commits or branches.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "from": {
-                        "type": "string",
-                        "description": "Starting commit, branch, or 'staged' for staged changes. If only from is provided (and not 'staged'), compares from to HEAD."
-                    },
-                    "to": {
-                        "type": "string",
-                        "description": "Ending commit, branch, or reference. Optional if from is provided."
-                    }
-                },
-                "required": []
-            }
-        }))
-        .unwrap()
+        use schemars::schema_for;
+        let schema = schema_for!(GitDiffArgs);
+
+        ToolDefinition {
+            name: "git_diff".to_string(),
+            description: "Get Git diff for file changes. Use with no args or from='staged' to get staged changes. Otherwise provide from/to commits or branches.".to_string(),
+            parameters: serde_json::to_value(schema).unwrap(),
+        }
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -129,7 +121,7 @@ impl Tool for GitDiff {
         // - from="staged": get staged changes
         // - Otherwise: get commit range
         let files = match (args.from.as_deref(), args.to.as_deref()) {
-            (None, None) | (Some("staged"), None) | (Some("staged"), Some("HEAD")) => {
+            (None | Some("staged"), None) | (Some("staged"), Some("HEAD")) => {
                 // Get staged changes
                 let files_info = repo.extract_files_info(false).map_err(GitError::from)?;
                 files_info.staged_files
@@ -169,8 +161,9 @@ impl Tool for GitDiff {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GitLog;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct GitLogArgs {
+    #[serde(default)]
     pub count: Option<usize>,
 }
 
@@ -181,21 +174,14 @@ impl Tool for GitLog {
     type Output = String;
 
     async fn definition(&self, _: String) -> ToolDefinition {
-        serde_json::from_value(json!({
-            "name": "git_log",
-            "description": "Get Git commit history",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "count": {
-                        "type": "integer",
-                        "description": "Number of commits to retrieve (default: 10)"
-                    }
-                },
-                "required": []
-            }
-        }))
-        .unwrap()
+        use schemars::schema_for;
+        let schema = schema_for!(GitLogArgs);
+
+        ToolDefinition {
+            name: "git_log".to_string(),
+            description: "Get Git commit history".to_string(),
+            parameters: serde_json::to_value(schema).unwrap(),
+        }
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -224,7 +210,7 @@ impl Tool for GitLog {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GitRepoInfo;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct GitRepoInfoArgs {}
 
 impl Tool for GitRepoInfo {
@@ -234,16 +220,14 @@ impl Tool for GitRepoInfo {
     type Output = String;
 
     async fn definition(&self, _: String) -> ToolDefinition {
-        serde_json::from_value(json!({
-            "name": "git_repo_info",
-            "description": "Get general information about the Git repository",
-            "parameters": {
-                "type": "object",
-                "properties": {},
-                "required": []
-            }
-        }))
-        .unwrap()
+        use schemars::schema_for;
+        let schema = schema_for!(GitRepoInfoArgs);
+
+        ToolDefinition {
+            name: "git_repo_info".to_string(),
+            description: "Get general information about the Git repository".to_string(),
+            parameters: serde_json::to_value(schema).unwrap(),
+        }
     }
 
     async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -270,9 +254,11 @@ impl Tool for GitRepoInfo {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GitChangedFiles;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct GitChangedFilesArgs {
+    #[serde(default)]
     pub from: Option<String>,
+    #[serde(default)]
     pub to: Option<String>,
 }
 
@@ -283,25 +269,14 @@ impl Tool for GitChangedFiles {
     type Output = String;
 
     async fn definition(&self, _: String) -> ToolDefinition {
-        serde_json::from_value(json!({
-            "name": "git_changed_files",
-            "description": "Get list of files that have changed between commits or branches",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "from": {
-                        "type": "string",
-                        "description": "Starting commit or branch"
-                    },
-                    "to": {
-                        "type": "string",
-                        "description": "Ending commit or branch"
-                    }
-                },
-                "required": []
-            }
-        }))
-        .unwrap()
+        use schemars::schema_for;
+        let schema = schema_for!(GitChangedFilesArgs);
+
+        ToolDefinition {
+            name: "git_changed_files".to_string(),
+            description: "Get list of files that have changed between commits or branches".to_string(),
+            parameters: serde_json::to_value(schema).unwrap(),
+        }
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {

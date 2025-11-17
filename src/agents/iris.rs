@@ -5,9 +5,9 @@
 
 use anyhow::Result;
 use rig::agent::Agent;
-use rig::client::CompletionClient;
 use rig::client::builder::DynClientBuilder;
 use rig::completion::{CompletionModel, Prompt};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
@@ -197,6 +197,46 @@ impl IrisAgent {
         Ok(agent)
     }
 
+    /// Execute task using agent with tools and parse structured JSON response
+    /// This is the core method that enables Iris to use tools and generate structured outputs
+    async fn execute_with_agent<T>(&self, system_prompt: &str, user_prompt: &str) -> Result<T>
+    where
+        T: JsonSchema
+            + for<'a> serde::Deserialize<'a>
+            + serde::Serialize
+            + Send
+            + Sync
+            + 'static,
+    {
+        use schemars::schema_for;
+
+        // Build agent with all tools attached
+        let agent = self.build_agent()?;
+
+        // Create JSON schema for the response type
+        let schema = schema_for!(T);
+        let schema_json = serde_json::to_string_pretty(&schema)?;
+
+        // Enhanced prompt that instructs Iris to use tools and respond with JSON
+        let full_prompt = format!(
+            "{system_prompt}\n\n{user_prompt}\n\n\
+            === RESPONSE FORMAT ===\n\
+            After using the available tools to gather necessary information, respond with ONLY a valid JSON object that matches this schema:\n\n\
+            {schema_json}\n\n\
+            Return ONLY the raw JSON object. No explanations, no additional text, no markdown formatting - just the pure JSON response."
+        );
+
+        // Prompt the agent - it will use tools as needed
+        // Set multi_turn to allow the agent to call multiple tools (default is 0 = only 1 tool call)
+        // Iris typically needs 3-5 tool calls to analyze changes properly
+        let response = agent.prompt(&full_prompt).multi_turn(5).await?;
+
+        // Extract and parse JSON from the response
+        let json_str = extract_json_from_response(&response)?;
+        serde_json::from_str(&json_str)
+            .map_err(|e| anyhow::anyhow!("Failed to parse JSON response: {}", e))
+    }
+
     /// Execute a task with the given capability and user prompt
     ///
     /// This now automatically uses structured output based on the capability type
@@ -211,12 +251,12 @@ impl IrisAgent {
         // Set the current capability
         self.current_capability = Some(capability.to_string());
 
-        // For structured outputs, we need to use provider-specific clients
-        // since DynClientBuilder doesn't support extractors
+        // Use agent with tools for all structured outputs
+        // The agent will use tools as needed and respond with JSON
         match output_type.as_str() {
             "GeneratedMessage" => {
                 let response = self
-                    .extract_structured::<crate::commit::types::GeneratedMessage>(
+                    .execute_with_agent::<crate::commit::types::GeneratedMessage>(
                         &system_prompt,
                         user_prompt,
                     )
@@ -225,7 +265,7 @@ impl IrisAgent {
             }
             "GeneratedPullRequest" => {
                 let response = self
-                    .extract_structured::<crate::commit::types::GeneratedPullRequest>(
+                    .execute_with_agent::<crate::commit::types::GeneratedPullRequest>(
                         &system_prompt,
                         user_prompt,
                     )
@@ -234,7 +274,7 @@ impl IrisAgent {
             }
             "ChangelogResponse" => {
                 let response = self
-                    .extract_structured::<crate::changes::models::ChangelogResponse>(
+                    .execute_with_agent::<crate::changes::models::ChangelogResponse>(
                         &system_prompt,
                         user_prompt,
                     )
@@ -243,7 +283,7 @@ impl IrisAgent {
             }
             "ReleaseNotesResponse" => {
                 let response = self
-                    .extract_structured::<crate::changes::models::ReleaseNotesResponse>(
+                    .execute_with_agent::<crate::changes::models::ReleaseNotesResponse>(
                         &system_prompt,
                         user_prompt,
                     )
@@ -252,7 +292,7 @@ impl IrisAgent {
             }
             "GeneratedReview" => {
                 let response = self
-                    .extract_structured::<crate::commit::review::GeneratedReview>(
+                    .execute_with_agent::<crate::commit::review::GeneratedReview>(
                         &system_prompt,
                         user_prompt,
                     )
@@ -266,78 +306,6 @@ impl IrisAgent {
                 let response = agent.prompt(&full_prompt).await?;
                 Ok(StructuredResponse::PlainText(response))
             }
-        }
-    }
-
-    /// Extract structured data using provider-specific clients
-    async fn extract_structured<T>(&self, system_prompt: &str, user_prompt: &str) -> Result<T>
-    where
-        T: schemars::JsonSchema
-            + for<'a> serde::Deserialize<'a>
-            + serde::Serialize
-            + Send
-            + Sync
-            + 'static,
-    {
-        use rig::providers;
-
-        // Create provider-specific client based on the provider
-        match self.provider.as_str() {
-            "openai" => {
-                let api_key = std::env::var("OPENAI_API_KEY")
-                    .map_err(|_| anyhow::anyhow!("OPENAI_API_KEY environment variable not set"))?;
-                let client = providers::openai::Client::new(&api_key);
-                let extractor = client
-                    .extractor::<T>(&self.model)
-                    .preamble(system_prompt)
-                    .additional_params(serde_json::json!({"max_tokens": 8192u64}))
-                    .build();
-                extractor
-                    .extract(user_prompt)
-                    .await
-                    .map_err(|e| anyhow::anyhow!("Extraction failed: {}", e))
-            }
-            "anthropic" => {
-                let api_key = std::env::var("ANTHROPIC_API_KEY").map_err(|_| {
-                    anyhow::anyhow!("ANTHROPIC_API_KEY environment variable not set")
-                })?;
-                let client = providers::anthropic::Client::new(
-                    &api_key,
-                    "https://api.anthropic.com",
-                    None,
-                    "2023-06-01",
-                );
-                
-                // For now, fallback to the OpenAI extractor approach since Anthropic extractor
-                // might not have the max_tokens method in this version of rig-core
-                // TODO: Update once rig-core supports max_tokens on extractors
-                use schemars::schema_for;
-                let schema = schema_for!(T);
-                let schema_json = serde_json::to_string_pretty(&schema)?;
-                
-                let enhanced_system = format!(
-                    "{system_prompt}\n\n=== CRITICAL INSTRUCTION ===\nYou are a JSON-only API. You must respond with ONLY valid JSON that matches this exact schema:\n\n{schema_json}\n\n=== OUTPUT FORMAT ===\nReturn ONLY the raw JSON object. No explanations, no additional text, no markdown formatting, no function calls, no analysis - just the pure JSON response.\n\nIf you include ANY text other than the JSON object, the system will fail.\n\n=== EXAMPLE ===\n{{\n  \"title\": \"example title\",\n  \"message\": \"example message\",\n  \"emoji\": \"✨\"\n}}\n\n=== BEGIN JSON OUTPUT ==="
-                );
-                
-                let agent = client
-                    .agent(&self.model)
-                    .preamble(&enhanced_system)
-                    .max_tokens(8192)
-                    .build();
-                
-                let response = agent.prompt(user_prompt).await?;
-                
-                // Extract JSON from the response - it might be at the end after explanations
-                let cleaned = extract_json_from_response(&response)?;
-                
-                let parsed: T = serde_json::from_str(&cleaned)
-                    .map_err(|e| anyhow::anyhow!("Failed to parse JSON: {}\nResponse was: {}", e, cleaned))?;
-                Ok(parsed)
-            }
-            _ => Err(anyhow::anyhow!(
-                "Structured output not supported for provider: {}",
-                self.provider
-            )),
         }
     }
 

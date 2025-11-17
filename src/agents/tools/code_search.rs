@@ -220,6 +220,6 @@ impl Tool for CodeSearch {
             "max_results": max_results,
         });
 
-        Ok(serde_json::to_string_pretty(&result).map_err(|e| CodeSearchError(e.to_string()))?)
+        serde_json::to_string_pretty(&result).map_err(|e| CodeSearchError(e.to_string()))
     }
 }

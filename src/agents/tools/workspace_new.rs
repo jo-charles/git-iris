@@ -140,7 +140,7 @@ impl Tool for Workspace {
                 let status = args.status.ok_or_else(|| WorkspaceError("status required for update_task".to_string()))?;
 
                 if task_index >= data.tasks.len() {
-                    return Err(WorkspaceError(format!("Task index {} out of range", task_index)));
+                    return Err(WorkspaceError(format!("Task index {task_index} out of range")));
                 }
 
                 data.tasks[task_index].status = status.clone();
@@ -179,6 +179,6 @@ impl Tool for Workspace {
             }
         };
 
-        Ok(serde_json::to_string_pretty(&result).map_err(|e| WorkspaceError(e.to_string()))?)
+        serde_json::to_string_pretty(&result).map_err(|e| WorkspaceError(e.to_string()))
     }
 }

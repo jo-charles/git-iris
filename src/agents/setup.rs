@@ -172,7 +172,10 @@ pub async fn create_agent_with_defaults(provider: &str, model: &str) -> Result<I
 /// Create an agent from environment variables
 pub async fn create_agent_from_env() -> Result<IrisAgent> {
     let provider = std::env::var("IRIS_PROVIDER").unwrap_or_else(|_| "openai".to_string());
-    let model = std::env::var("IRIS_MODEL").unwrap_or_else(|_| "gpt-4o".to_string());
+    let model = std::env::var("IRIS_MODEL").unwrap_or_else(|_| {
+        use crate::llm::get_default_model_for_provider;
+        get_default_model_for_provider(&provider).to_string()
+    });
 
     create_agent_with_defaults(&provider, &model).await
 }

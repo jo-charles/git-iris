@@ -242,28 +242,28 @@ pub fn get_available_provider_names() -> Vec<String> {
 /// Returns the default model for a given provider
 pub fn get_default_model_for_provider(provider_type: &str) -> &'static str {
     match provider_type.to_lowercase().as_str() {
-        "anthropic" => "claude-sonnet-4-20250514",
+        "anthropic" => "claude-sonnet-4-5-20250929",
         "ollama" => "llama3",
         "google" => "gemini-2.5-pro-preview-06-05",
         "groq" => "llama-3.1-70b-versatile",
         "xai" => "grok-2-beta",
         "deepseek" => "deepseek-chat",
         "phind" => "phind-v2",
-        _ => "gpt-4.1", // Default to OpenAI's model
+        _ => "gpt-5.1", // Latest OpenAI model
     }
 }
 
 /// Returns the default fast model for a given provider (optimized for speed over quality)
 pub fn get_default_fast_model_for_provider(provider_type: &str) -> &'static str {
     match provider_type.to_lowercase().as_str() {
-        "anthropic" => "claude-3-5-haiku-latest",
+        "anthropic" => "claude-haiku-4-5-20251001",
         "google" => "gemini-1.5-flash",
         "groq" => "llama-3.1-8b-instant",
         "xai" => "grok-2-beta",        // No fast variant available
         "deepseek" => "deepseek-chat", // No fast variant available
         "ollama" => "llama3:8b",       // Smaller variant
         "phind" => "phind-v2",         // No fast variant available
-        _ => "gpt-4o-mini",            // Default to OpenAI's fast model
+        _ => "gpt-5-mini", // Latest OpenAI fast model
     }
 }
 
