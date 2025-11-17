@@ -938,6 +938,92 @@ pub async fn handle_command(
     }
 }
 
+/// Handle the `Pr` command with agent framework
+async fn handle_pr_with_agent(
+    common: CommonParams,
+    print: bool,
+    from: Option<String>,
+    to: Option<String>,
+    repository_url: Option<String>,
+) -> anyhow::Result<()> {
+    use crate::commit::types::format_pull_request;
+    use crate::commit::IrisCommitService;
+    use crate::config::Config;
+    use crate::instruction_presets::PresetType;
+    use crate::git::GitRepo;
+    use anyhow::Context;
+    use std::sync::Arc;
+
+    // Enable agent mode for enhanced status display
+    crate::agents::status::enable_agent_mode();
+
+    // Check if the preset is appropriate for PR descriptions
+    if !common.is_valid_preset_for_type(PresetType::Review)
+        && !common.is_valid_preset_for_type(PresetType::Both)
+    {
+        ui::print_warning(
+            "The specified preset may not be suitable for PR descriptions. Consider using a review or general preset instead.",
+        );
+        ui::print_info("Run 'git-iris list-presets' to see available presets for PRs.");
+    }
+
+    let mut cfg = Config::load()?;
+    common.apply_to_config(&mut cfg)?;
+
+    // Create the service
+    let repo_url = repository_url.clone().or(common.repository_url.clone());
+    let git_repo = GitRepo::new_from_url(repo_url).context("Failed to create GitRepo")?;
+    let repo_path = git_repo.repo_path().clone();
+
+    let _service = Arc::new(IrisCommitService::new(
+        cfg.clone(),
+        &repo_path,
+        &cfg.default_provider,
+        cfg.use_gitmoji,
+        false, // verification not needed for PR descriptions
+        git_repo,
+    ).map_err(|e| {
+        ui::print_error(&format!("Error: {e}"));
+        ui::print_info("\nPlease ensure the following:");
+        ui::print_info("1. Git is installed and accessible from the command line.");
+        ui::print_info(
+            "2. You are running this command from within a Git repository or provide a repository URL with --repo.",
+        );
+        ui::print_info("3. You have set up your configuration using 'git-iris config'.");
+        e
+    })?);
+
+    // Use agent framework for PR description generation
+    let task_prompt = format!(
+        "Generate a pull request description comparing changes. From: {:?}, To: {:?}",
+        from.as_deref().unwrap_or("main"),
+        to.as_deref().unwrap_or("HEAD")
+    );
+
+    let generated_pr = crate::agents::handle_with_agent(
+        common,
+        repository_url,
+        "pr",
+        &task_prompt,
+        |response| async move {
+            match response {
+                crate::agents::iris::StructuredResponse::PullRequest(pr) => Ok(pr),
+                _ => Err(anyhow::anyhow!("Expected pull request response")),
+            }
+        },
+    )
+    .await?;
+
+    if print {
+        println!("{}", format_pull_request(&generated_pr));
+    } else {
+        ui::print_success("PR description generated successfully");
+        println!("{}", format_pull_request(&generated_pr));
+    }
+
+    Ok(())
+}
+
 /// Handle the `Pr` command
 async fn handle_pr(
     common: CommonParams,
@@ -960,24 +1046,13 @@ async fn handle_pr(
     ui::print_newline();
 
     if use_agent {
-        // Use agent framework for PR description generation
-        let task_prompt =
-            format!("Generate a pull request description. From: {from:?}, To: {to:?}");
-
-        crate::agents::handle_with_agent(
+        // Use agent-based generation with structured output
+        handle_pr_with_agent(
             common,
+            print,
+            from,
+            to,
             repository_url,
-            "pr",
-            &task_prompt,
-            |response| async move {
-                if print {
-                    println!("{response}");
-                } else {
-                    ui::print_success("PR description generated successfully");
-                    println!("{response}");
-                }
-                Ok(())
-            },
         )
         .await
     } else {

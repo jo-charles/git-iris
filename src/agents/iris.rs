@@ -228,8 +228,9 @@ impl IrisAgent {
 
         // Prompt the agent - it will use tools as needed
         // Set multi_turn to allow the agent to call multiple tools (default is 0 = only 1 tool call)
-        // Iris typically needs 3-5 tool calls to analyze changes properly
-        let response = agent.prompt(&full_prompt).multi_turn(5).await?;
+        // For complex tasks like PRs and release notes, Iris may need many tool calls to analyze all changes
+        // The agent knows when to stop, so we give it plenty of room (50 rounds)
+        let response = agent.prompt(&full_prompt).multi_turn(50).await?;
 
         // Extract and parse JSON from the response
         let json_str = extract_json_from_response(&response)?;
