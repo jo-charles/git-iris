@@ -334,7 +334,7 @@ pub struct FileAnalysis {
     pub extracted_metadata: HashMap<String, serde_json::Value>,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct FileAnalyzerArgs {
     pub file_paths: Vec<String>,
     pub analysis_depth: Option<String>, // "basic", "detailed", "comprehensive"

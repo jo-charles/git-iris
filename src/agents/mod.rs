@@ -20,6 +20,10 @@ pub mod setup;
 // Status and reporting
 pub mod status;
 
+// Debug observability
+pub mod debug;
+pub mod debug_tool;
+
 // Re-exports for public API
 pub use core::{AgentBackend, AgentContext, TaskResult};
 pub use iris::{IrisAgent, IrisAgentBuilder, StreamingCallback};

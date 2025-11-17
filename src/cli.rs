@@ -79,6 +79,14 @@ pub struct Cli {
         help = "Use agent framework for enhanced AI-powered operations"
     )]
     pub agent: bool,
+
+    /// Enable debug mode for detailed agent observability
+    #[arg(
+        long = "debug",
+        global = true,
+        help = "Enable debug mode with gorgeous color-coded output showing agent execution details"
+    )]
+    pub debug: bool,
 }
 
 /// Enumeration of available subcommands
@@ -407,6 +415,12 @@ pub async fn main() -> anyhow::Result<()> {
     // Set quiet mode in the UI module
     if cli.quiet {
         crate::ui::set_quiet_mode(true);
+    }
+
+    // Enable debug mode if requested
+    if cli.debug {
+        crate::agents::debug::enable_debug_mode();
+        crate::agents::debug::debug_header("🔮 IRIS DEBUG MODE ACTIVATED 🔮");
     }
 
     if let Some(command) = cli.command {

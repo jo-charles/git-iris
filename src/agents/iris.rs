@@ -91,19 +91,42 @@ impl fmt::Display for StructuredResponse {
 
 /// Extract JSON from a potentially verbose response that might contain explanations
 fn extract_json_from_response(response: &str) -> Result<String> {
-    // First try to find JSON within markdown code blocks
+    use crate::agents::debug;
+
+    debug::debug_section("JSON Extraction");
+
+    let trimmed_response = response.trim();
+
+    // First, try parsing the entire response as JSON (for well-behaved responses)
+    if trimmed_response.starts_with('{') {
+        if let Ok(_) = serde_json::from_str::<serde_json::Value>(trimmed_response) {
+            debug::debug_context_management(
+                "Response is pure JSON",
+                &format!("{} characters", trimmed_response.len())
+            );
+            return Ok(trimmed_response.to_string());
+        }
+    }
+
+    // Try to find JSON within markdown code blocks
     if let Some(start) = response.find("```json") {
         if let Some(json_end) = response[start + 7..].find("```") {
             let json_content = &response[start + 7..start + 7 + json_end];
-            return Ok(json_content.trim().to_string());
+            let trimmed = json_content.trim().to_string();
+            debug::debug_context_management(
+                "Found JSON in markdown code block",
+                &format!("{} characters", trimmed.len())
+            );
+            debug::debug_json_parse_attempt(&trimmed);
+            return Ok(trimmed);
         }
     }
-    
+
     // Look for JSON objects by finding { and matching }
     let mut brace_count = 0;
     let mut json_start = None;
     let mut json_end = None;
-    
+
     for (i, ch) in response.char_indices() {
         match ch {
             '{' => {
@@ -122,16 +145,24 @@ fn extract_json_from_response(response: &str) -> Result<String> {
             _ => {}
         }
     }
-    
+
     if let (Some(start), Some(end)) = (json_start, json_end) {
         let json_content = &response[start..end];
+        debug::debug_json_parse_attempt(json_content);
+
         // Validate it's actually JSON by attempting to parse it
         let _: serde_json::Value = serde_json::from_str(json_content)
-            .map_err(|_| anyhow::anyhow!("Found JSON-like content but it's not valid JSON"))?;
+            .map_err(|e| {
+                debug::debug_json_parse_error(&format!("Found JSON-like content but it's not valid JSON: {}", e));
+                anyhow::anyhow!("Found JSON-like content but it's not valid JSON")
+            })?;
+
+        debug::debug_context_management("Found valid JSON object", &format!("{} characters", json_content.len()));
         return Ok(json_content.to_string());
     }
-    
+
     // If no JSON found, return error
+    debug::debug_json_parse_error("No valid JSON found in response");
     Err(anyhow::anyhow!("No valid JSON found in response"))
 }
 
@@ -164,6 +195,8 @@ impl IrisAgent {
 
     /// Build the actual agent for execution
     fn build_agent(&self) -> Result<Agent<impl CompletionModel + 'static>> {
+        use crate::agents::debug_tool::DebugTool;
+
         let agent_builder = self
             .client_builder
             .agent(&self.provider, &self.model)
@@ -196,28 +229,28 @@ Use the 'delegate_task' tool to spawn a sub-agent with a specific focused task. 
             .expect("Failed to create sub-agent")
             .preamble("You are a specialized analysis sub-agent. Complete your assigned task concisely and return a focused summary.")
             .max_tokens(4096)
-            .tool(GitStatus)
-            .tool(GitDiff)
-            .tool(GitLog)
-            .tool(GitChangedFiles)
-            .tool(FileAnalyzer)
-            .tool(CodeSearch)
+            .tool(DebugTool::new(GitStatus))
+            .tool(DebugTool::new(GitDiff))
+            .tool(DebugTool::new(GitLog))
+            .tool(DebugTool::new(GitChangedFiles))
+            .tool(DebugTool::new(FileAnalyzer))
+            .tool(DebugTool::new(CodeSearch))
             .build();
 
         let agent = agent_builder
             .preamble(preamble)
-            .max_tokens(8192) // Required for Anthropic and good default for other providers
-            // Git tools
-            .tool(GitStatus)
-            .tool(GitDiff)
-            .tool(GitLog)
-            .tool(GitRepoInfo)
-            .tool(GitChangedFiles)
+            .max_tokens(16384) // Increased for complex structured outputs like PRs and release notes
+            // Git tools - wrapped with debug observability
+            .tool(DebugTool::new(GitStatus))
+            .tool(DebugTool::new(GitDiff))
+            .tool(DebugTool::new(GitLog))
+            .tool(DebugTool::new(GitRepoInfo))
+            .tool(DebugTool::new(GitChangedFiles))
             // Analysis and search tools
-            .tool(FileAnalyzer)
-            .tool(CodeSearch)
+            .tool(DebugTool::new(FileAnalyzer))
+            .tool(DebugTool::new(CodeSearch))
             // Workspace for Iris's notes and task management
-            .tool(Workspace::new())
+            .tool(DebugTool::new(Workspace::new()))
             // Sub-agent delegation (Rig's built-in agent-as-tool!)
             .tool(sub_agent)
             .build();
@@ -237,33 +270,62 @@ Use the 'delegate_task' tool to spawn a sub-agent with a specific focused task. 
             + 'static,
     {
         use schemars::schema_for;
+        use crate::agents::debug;
+
+        debug::debug_phase_change(&format!("AGENT EXECUTION: {}", std::any::type_name::<T>()));
 
         // Build agent with all tools attached
         let agent = self.build_agent()?;
+        debug::debug_context_management("Agent built with tools", &format!("Provider: {}, Model: {}", self.provider, self.model));
 
         // Create JSON schema for the response type
         let schema = schema_for!(T);
         let schema_json = serde_json::to_string_pretty(&schema)?;
+        debug::debug_context_management("JSON schema created", &format!("Type: {}", std::any::type_name::<T>()));
 
         // Enhanced prompt that instructs Iris to use tools and respond with JSON
         let full_prompt = format!(
             "{system_prompt}\n\n{user_prompt}\n\n\
-            === RESPONSE FORMAT ===\n\
-            After using the available tools to gather necessary information, respond with ONLY a valid JSON object that matches this schema:\n\n\
+            === CRITICAL: RESPONSE FORMAT ===\n\
+            After using the available tools to gather necessary information, you MUST respond with ONLY a valid JSON object.\n\n\
+            REQUIRED JSON SCHEMA:\n\
             {schema_json}\n\n\
-            Return ONLY the raw JSON object. No explanations, no additional text, no markdown formatting - just the pure JSON response."
+            CRITICAL INSTRUCTIONS:\n\
+            - Return ONLY the raw JSON object - nothing else\n\
+            - NO explanations before the JSON\n\
+            - NO explanations after the JSON\n\
+            - NO markdown code blocks (just raw JSON)\n\
+            - NO preamble text like 'Here is the JSON:' or 'Let me generate:'\n\
+            - Start your response with {{ and end with }}\n\
+            - The JSON must be complete and valid\n\n\
+            Your entire response should be ONLY the JSON object."
         );
+
+        debug::debug_llm_request(&full_prompt, Some(16384));
 
         // Prompt the agent - it will use tools as needed
         // Set multi_turn to allow the agent to call multiple tools (default is 0 = only 1 tool call)
         // For complex tasks like PRs and release notes, Iris may need many tool calls to analyze all changes
         // The agent knows when to stop, so we give it plenty of room (50 rounds)
+        let timer = debug::DebugTimer::start("Agent prompt execution");
         let response = agent.prompt(&full_prompt).multi_turn(50).await?;
+        timer.finish();
+
+        debug::debug_llm_response(&response, std::time::Duration::from_secs(0), None);
 
         // Extract and parse JSON from the response
         let json_str = extract_json_from_response(&response)?;
-        serde_json::from_str(&json_str)
-            .map_err(|e| anyhow::anyhow!("Failed to parse JSON response: {}", e))
+
+        // Try to parse the JSON
+        let result: T = serde_json::from_str(&json_str)
+            .map_err(|e| {
+                debug::debug_json_parse_error(&format!("Failed to parse JSON response: {}", e));
+                anyhow::anyhow!("Failed to parse JSON response: {}", e)
+            })?;
+
+        debug::debug_json_parse_success(std::any::type_name::<T>());
+
+        Ok(result)
     }
 
     /// Execute a task with the given capability and user prompt

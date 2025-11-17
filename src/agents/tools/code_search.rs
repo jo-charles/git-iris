@@ -154,7 +154,7 @@ pub struct SearchResult {
     pub context_lines: usize,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct CodeSearchArgs {
     pub query: String,
     pub search_type: String, // "function", "class", "variable", "text", "pattern"
