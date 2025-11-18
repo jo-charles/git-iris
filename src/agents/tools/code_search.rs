@@ -196,7 +196,7 @@ impl Tool for CodeSearch {
                 "required": ["query", "search_type"]
             }
         }))
-        .unwrap()
+        .expect("code_search tool definition should be valid JSON")
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {

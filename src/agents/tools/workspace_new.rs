@@ -103,15 +103,20 @@ impl Tool for Workspace {
                 "required": ["action"]
             }
         }))
-        .unwrap()
+        .expect("workspace tool definition should be valid JSON")
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        let mut data = self.data.lock().map_err(|e| WorkspaceError(e.to_string()))?;
+        let mut data = self
+            .data
+            .lock()
+            .map_err(|e| WorkspaceError(e.to_string()))?;
 
         let result = match args.action.as_str() {
             "add_note" => {
-                let content = args.content.ok_or_else(|| WorkspaceError("Content required for add_note".to_string()))?;
+                let content = args
+                    .content
+                    .ok_or_else(|| WorkspaceError("Content required for add_note".to_string()))?;
                 data.notes.push(content.clone());
                 json!({
                     "success": true,
@@ -120,7 +125,9 @@ impl Tool for Workspace {
                 })
             }
             "add_task" => {
-                let content = args.content.ok_or_else(|| WorkspaceError("Content required for add_task".to_string()))?;
+                let content = args
+                    .content
+                    .ok_or_else(|| WorkspaceError("Content required for add_task".to_string()))?;
                 let priority = args.priority.unwrap_or_else(|| "medium".to_string());
 
                 data.tasks.push(WorkspaceTask {
@@ -136,14 +143,20 @@ impl Tool for Workspace {
                 })
             }
             "update_task" => {
-                let task_index = args.task_index.ok_or_else(|| WorkspaceError("task_index required for update_task".to_string()))?;
-                let status = args.status.ok_or_else(|| WorkspaceError("status required for update_task".to_string()))?;
+                let task_index = args.task_index.ok_or_else(|| {
+                    WorkspaceError("task_index required for update_task".to_string())
+                })?;
+                let status = args
+                    .status
+                    .ok_or_else(|| WorkspaceError("status required for update_task".to_string()))?;
 
                 if task_index >= data.tasks.len() {
-                    return Err(WorkspaceError(format!("Task index {task_index} out of range")));
+                    return Err(WorkspaceError(format!(
+                        "Task index {task_index} out of range"
+                    )));
                 }
 
-                data.tasks[task_index].status = status.clone();
+                data.tasks[task_index].status.clone_from(&status);
 
                 json!({
                     "success": true,
@@ -152,8 +165,16 @@ impl Tool for Workspace {
             }
             "get_summary" => {
                 let pending = data.tasks.iter().filter(|t| t.status == "pending").count();
-                let in_progress = data.tasks.iter().filter(|t| t.status == "in_progress").count();
-                let completed = data.tasks.iter().filter(|t| t.status == "completed").count();
+                let in_progress = data
+                    .tasks
+                    .iter()
+                    .filter(|t| t.status == "in_progress")
+                    .count();
+                let completed = data
+                    .tasks
+                    .iter()
+                    .filter(|t| t.status == "completed")
+                    .count();
 
                 json!({
                     "notes_count": data.notes.len(),

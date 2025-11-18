@@ -1,3 +1,6 @@
+#![allow(clippy::unwrap_used)]
+#![allow(clippy::no_effect_underscore_binding)]
+
 use git_iris::{
     agents::{
         core::{AgentBackend, AgentContext, TaskResult},
@@ -129,7 +132,7 @@ async fn test_create_agent_with_defaults() {
         return;
     }
 
-    let result = create_agent_with_defaults("openai", "gpt-4o").await;
+    let result = create_agent_with_defaults("openai", "gpt-4o");
     assert!(result.is_ok());
 }
 
@@ -250,7 +253,7 @@ async fn test_complete_agent_setup_workflow() {
 
             // This will fail without proper API keys, but tests the pipeline
             if let Ok(mut setup_service) = setup_service {
-                let agent_result = setup_service.create_iris_agent().await;
+                let agent_result = setup_service.create_iris_agent();
 
                 // We expect this to fail in CI/testing without API keys
                 // but the error should be about missing API keys, not code structure

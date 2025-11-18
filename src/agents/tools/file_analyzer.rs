@@ -381,7 +381,7 @@ impl Tool for FileAnalyzer {
                 "required": ["file_paths"]
             }
         }))
-        .unwrap()
+        .expect("file_analyzer tool definition should be valid JSON")
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {

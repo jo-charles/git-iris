@@ -12,6 +12,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
 use tokio::fs;
+use tokio_retry::Retry;
+use tokio_retry::strategy::ExponentialBackoff;
 
 use crate::agents::tools::{
     CodeSearch, FileAnalyzer, GitChangedFiles, GitDiff, GitLog, GitRepoInfo, GitStatus, Workspace,
@@ -52,7 +54,7 @@ pub enum StructuredResponse {
     PullRequest(crate::commit::types::GeneratedPullRequest),
     Changelog(crate::changes::models::ChangelogResponse),
     ReleaseNotes(crate::changes::models::ReleaseNotesResponse),
-    Review(crate::commit::review::GeneratedReview),
+    Review(Box<crate::commit::review::GeneratedReview>),
     PlainText(String),
 }
 
@@ -98,14 +100,14 @@ fn extract_json_from_response(response: &str) -> Result<String> {
     let trimmed_response = response.trim();
 
     // First, try parsing the entire response as JSON (for well-behaved responses)
-    if trimmed_response.starts_with('{') {
-        if let Ok(_) = serde_json::from_str::<serde_json::Value>(trimmed_response) {
-            debug::debug_context_management(
-                "Response is pure JSON",
-                &format!("{} characters", trimmed_response.len())
-            );
-            return Ok(trimmed_response.to_string());
-        }
+    if trimmed_response.starts_with('{')
+        && serde_json::from_str::<serde_json::Value>(trimmed_response).is_ok()
+    {
+        debug::debug_context_management(
+            "Response is pure JSON",
+            &format!("{} characters", trimmed_response.len()),
+        );
+        return Ok(trimmed_response.to_string());
     }
 
     // Try to find JSON within markdown code blocks
@@ -118,7 +120,9 @@ fn extract_json_from_response(response: &str) -> Result<String> {
             end
         } else {
             // Fallback: try to find ``` at start of response section or end of string
-            response[content_start..].find("```").unwrap_or(response.len() - content_start)
+            response[content_start..]
+                .find("```")
+                .unwrap_or(response.len() - content_start)
         };
 
         let json_content = &response[content_start..content_start + json_end];
@@ -126,7 +130,7 @@ fn extract_json_from_response(response: &str) -> Result<String> {
 
         debug::debug_context_management(
             "Found JSON in markdown code block",
-            &format!("{} characters", trimmed.len())
+            &format!("{} characters", trimmed.len()),
         );
 
         // Save extracted JSON for debugging
@@ -167,13 +171,18 @@ fn extract_json_from_response(response: &str) -> Result<String> {
         debug::debug_json_parse_attempt(json_content);
 
         // Validate it's actually JSON by attempting to parse it
-        let _: serde_json::Value = serde_json::from_str(json_content)
-            .map_err(|e| {
-                debug::debug_json_parse_error(&format!("Found JSON-like content but it's not valid JSON: {}", e));
-                anyhow::anyhow!("Found JSON-like content but it's not valid JSON")
-            })?;
+        let _: serde_json::Value = serde_json::from_str(json_content).map_err(|e| {
+            debug::debug_json_parse_error(&format!(
+                "Found JSON-like content but it's not valid JSON: {}",
+                e
+            ));
+            anyhow::anyhow!("Found JSON-like content but it's not valid JSON")
+        })?;
 
-        debug::debug_context_management("Found valid JSON object", &format!("{} characters", json_content.len()));
+        debug::debug_context_management(
+            "Found valid JSON object",
+            &format!("{} characters", json_content.len()),
+        );
         return Ok(json_content.to_string());
     }
 
@@ -194,6 +203,8 @@ pub struct IrisAgent {
     provider_config: HashMap<String, String>,
     /// Custom preamble
     preamble: Option<String>,
+    /// Configuration for features like gitmoji, presets, etc.
+    config: Option<crate::config::Config>,
 }
 
 impl IrisAgent {
@@ -206,11 +217,12 @@ impl IrisAgent {
             current_capability: None,
             provider_config: HashMap::new(),
             preamble: None,
+            config: None,
         })
     }
 
     /// Build the actual agent for execution
-    fn build_agent(&self) -> Result<Agent<impl CompletionModel + 'static>> {
+    fn build_agent(&self) -> Agent<impl CompletionModel + 'static> {
         use crate::agents::debug_tool::DebugTool;
 
         let agent_builder = self
@@ -253,7 +265,7 @@ Use the 'delegate_task' tool to spawn a sub-agent with a specific focused task. 
             .tool(DebugTool::new(CodeSearch))
             .build();
 
-        let agent = agent_builder
+        agent_builder
             .preamble(preamble)
             .max_tokens(16384) // Increased for complex structured outputs like PRs and release notes
             // Git tools - wrapped with debug observability
@@ -269,35 +281,34 @@ Use the 'delegate_task' tool to spawn a sub-agent with a specific focused task. 
             .tool(DebugTool::new(Workspace::new()))
             // Sub-agent delegation (Rig's built-in agent-as-tool!)
             .tool(sub_agent)
-            .build();
-
-        Ok(agent)
+            .build()
     }
 
     /// Execute task using agent with tools and parse structured JSON response
     /// This is the core method that enables Iris to use tools and generate structured outputs
     async fn execute_with_agent<T>(&self, system_prompt: &str, user_prompt: &str) -> Result<T>
     where
-        T: JsonSchema
-            + for<'a> serde::Deserialize<'a>
-            + serde::Serialize
-            + Send
-            + Sync
-            + 'static,
+        T: JsonSchema + for<'a> serde::Deserialize<'a> + serde::Serialize + Send + Sync + 'static,
     {
-        use schemars::schema_for;
         use crate::agents::debug;
+        use schemars::schema_for;
 
         debug::debug_phase_change(&format!("AGENT EXECUTION: {}", std::any::type_name::<T>()));
 
         // Build agent with all tools attached
-        let agent = self.build_agent()?;
-        debug::debug_context_management("Agent built with tools", &format!("Provider: {}, Model: {}", self.provider, self.model));
+        let agent = self.build_agent();
+        debug::debug_context_management(
+            "Agent built with tools",
+            &format!("Provider: {}, Model: {}", self.provider, self.model),
+        );
 
         // Create JSON schema for the response type
         let schema = schema_for!(T);
         let schema_json = serde_json::to_string_pretty(&schema)?;
-        debug::debug_context_management("JSON schema created", &format!("Type: {}", std::any::type_name::<T>()));
+        debug::debug_context_management(
+            "JSON schema created",
+            &format!("Type: {}", std::any::type_name::<T>()),
+        );
 
         // Enhanced prompt that instructs Iris to use tools and respond with JSON
         let full_prompt = format!(
@@ -319,12 +330,20 @@ Use the 'delegate_task' tool to spawn a sub-agent with a specific focused task. 
 
         debug::debug_llm_request(&full_prompt, Some(16384));
 
-        // Prompt the agent - it will use tools as needed
+        // Prompt the agent with retry logic for transient failures
         // Set multi_turn to allow the agent to call multiple tools (default is 0 = only 1 tool call)
         // For complex tasks like PRs and release notes, Iris may need many tool calls to analyze all changes
         // The agent knows when to stop, so we give it plenty of room (50 rounds)
         let timer = debug::DebugTimer::start("Agent prompt execution");
-        let response = agent.prompt(&full_prompt).multi_turn(50).await?;
+
+        let retry_strategy = ExponentialBackoff::from_millis(10).factor(2).take(2); // 2 attempts total: initial + 1 retry
+
+        let response = Retry::spawn(retry_strategy, || async {
+            debug::debug_context_management("LLM attempt", "Sending prompt to agent");
+            agent.prompt(&full_prompt).multi_turn(50).await
+        })
+        .await?;
+
         timer.finish();
 
         debug::debug_llm_response(&response, std::time::Duration::from_secs(0), None);
@@ -333,11 +352,10 @@ Use the 'delegate_task' tool to spawn a sub-agent with a specific focused task. 
         let json_str = extract_json_from_response(&response)?;
 
         // Try to parse the JSON
-        let result: T = serde_json::from_str(&json_str)
-            .map_err(|e| {
-                debug::debug_json_parse_error(&format!("Failed to parse JSON response: {}", e));
-                anyhow::anyhow!("Failed to parse JSON response: {}", e)
-            })?;
+        let result: T = serde_json::from_str(&json_str).map_err(|e| {
+            debug::debug_json_parse_error(&format!("Failed to parse JSON response: {}", e));
+            anyhow::anyhow!("Failed to parse JSON response: {}", e)
+        })?;
 
         debug::debug_json_parse_success(std::any::type_name::<T>());
 
@@ -353,7 +371,31 @@ Use the 'delegate_task' tool to spawn a sub-agent with a specific focused task. 
         user_prompt: &str,
     ) -> Result<StructuredResponse> {
         // Load the capability config to get both prompt and output type
-        let (system_prompt, output_type) = self.load_capability_config(capability).await?;
+        let (mut system_prompt, output_type) = self.load_capability_config(capability).await?;
+
+        // Inject gitmoji instructions if applicable
+        if let Some(config) = &self.config {
+            let is_conventional = config.instruction_preset == "conventional";
+
+            // Add gitmoji for commit and PR capabilities if enabled
+            if (capability == "commit" || capability == "pr")
+                && config.use_gitmoji
+                && !is_conventional
+            {
+                system_prompt.push_str("\n\n=== GITMOJI INSTRUCTIONS ===\n");
+                system_prompt.push_str("Set the 'emoji' field to a single relevant gitmoji. ");
+                system_prompt.push_str("DO NOT include the emoji in the 'message' or 'title' text - only set the 'emoji' field. ");
+                system_prompt.push_str("Choose the most relevant emoji from this list:\n\n");
+                system_prompt.push_str(&crate::gitmoji::get_gitmoji_list());
+                system_prompt.push_str("\n\nThe emoji should match the primary type of change.");
+            } else if is_conventional && (capability == "commit" || capability == "pr") {
+                system_prompt.push_str("\n\n=== CONVENTIONAL COMMITS FORMAT ===\n");
+                system_prompt.push_str("IMPORTANT: This uses Conventional Commits format. ");
+                system_prompt
+                    .push_str("DO NOT include any emojis in the commit message or PR title. ");
+                system_prompt.push_str("The 'emoji' field should be null.");
+            }
+        }
 
         // Set the current capability
         self.current_capability = Some(capability.to_string());
@@ -404,11 +446,11 @@ Use the 'delegate_task' tool to spawn a sub-agent with a specific focused task. 
                         user_prompt,
                     )
                     .await?;
-                Ok(StructuredResponse::Review(response))
+                Ok(StructuredResponse::Review(Box::new(response)))
             }
             _ => {
                 // Fallback to regular agent for unknown types
-                let agent = self.build_agent()?;
+                let agent = self.build_agent();
                 let full_prompt = format!("{system_prompt}\n\n{user_prompt}");
                 let response = agent.prompt(&full_prompt).await?;
                 Ok(StructuredResponse::PlainText(response))
@@ -457,7 +499,7 @@ Use the 'delegate_task' tool to spawn a sub-agent with a specific focused task. 
 
     /// Simple single-turn execution for basic queries
     pub async fn chat(&self, message: &str) -> Result<String> {
-        let agent = self.build_agent()?;
+        let agent = self.build_agent();
         let response = agent.prompt(message).await?;
         Ok(response)
     }
@@ -480,6 +522,11 @@ Use the 'delegate_task' tool to spawn a sub-agent with a specific focused task. 
     /// Set custom preamble
     pub fn set_preamble(&mut self, preamble: String) {
         self.preamble = Some(preamble);
+    }
+
+    /// Set configuration
+    pub fn set_config(&mut self, config: crate::config::Config) {
+        self.config = Some(config);
     }
 }
 

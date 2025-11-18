@@ -57,7 +57,7 @@ impl Tool for GitStatus {
                 "required": []
             }
         }))
-        .unwrap()
+        .expect("git_status tool definition should be valid JSON")
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -108,7 +108,7 @@ impl Tool for GitDiff {
         ToolDefinition {
             name: "git_diff".to_string(),
             description: "Get Git diff for file changes. Use with no args or from='staged' to get staged changes. Otherwise provide from/to commits or branches.".to_string(),
-            parameters: serde_json::to_value(schema).unwrap(),
+            parameters: serde_json::to_value(schema).expect("git_diff schema should serialize"),
         }
     }
 
@@ -180,7 +180,7 @@ impl Tool for GitLog {
         ToolDefinition {
             name: "git_log".to_string(),
             description: "Get Git commit history".to_string(),
-            parameters: serde_json::to_value(schema).unwrap(),
+            parameters: serde_json::to_value(schema).expect("git_log schema should serialize"),
         }
     }
 
@@ -226,7 +226,8 @@ impl Tool for GitRepoInfo {
         ToolDefinition {
             name: "git_repo_info".to_string(),
             description: "Get general information about the Git repository".to_string(),
-            parameters: serde_json::to_value(schema).unwrap(),
+            parameters: serde_json::to_value(schema)
+                .expect("git_repo_info schema should serialize"),
         }
     }
 
@@ -274,8 +275,10 @@ impl Tool for GitChangedFiles {
 
         ToolDefinition {
             name: "git_changed_files".to_string(),
-            description: "Get list of files that have changed between commits or branches".to_string(),
-            parameters: serde_json::to_value(schema).unwrap(),
+            description: "Get list of files that have changed between commits or branches"
+                .to_string(),
+            parameters: serde_json::to_value(schema)
+                .expect("git_changed_files schema should serialize"),
         }
     }
 

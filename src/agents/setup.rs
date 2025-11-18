@@ -55,15 +55,20 @@ impl AgentSetupService {
     }
 
     /// Create a configured Iris agent
-    pub async fn create_iris_agent(&mut self) -> Result<IrisAgent> {
+    pub fn create_iris_agent(&mut self) -> Result<IrisAgent> {
         let backend = AgentBackend::from_config(&self.config)?;
         let client_builder = self.create_client_builder(&backend)?;
 
-        IrisAgentBuilder::new()
+        let mut agent = IrisAgentBuilder::new()
             .with_client(client_builder)
             .with_provider(&backend.provider_name)
             .with_model(&backend.model)
-            .build()
+            .build()?;
+
+        // Pass config to agent for gitmoji and other features
+        agent.set_config(self.config.clone());
+
+        Ok(agent)
     }
 
     /// Create a Rig client builder based on the backend configuration
@@ -76,7 +81,7 @@ impl AgentSetupService {
             get_combined_config(&self.config, &backend.provider_name, &HashMap::new());
 
         // Validate API key exists
-        self.validate_provider_config(&backend.provider_name, &combined_config)?;
+        Self::validate_provider_config(&backend.provider_name, &combined_config)?;
 
         // Create client builder - Rig will read from environment variables
         let client_builder = DynClientBuilder::new();
@@ -89,11 +94,7 @@ impl AgentSetupService {
     }
 
     /// Validate provider configuration has required fields
-    fn validate_provider_config(
-        &self,
-        provider: &str,
-        config: &HashMap<String, String>,
-    ) -> Result<()> {
+    fn validate_provider_config(provider: &str, config: &HashMap<String, String>) -> Result<()> {
         match provider {
             "openai" => {
                 if config.get("api_key").is_none() {
@@ -149,7 +150,7 @@ where
     let mut setup_service = AgentSetupService::from_common_params(&common_params, repository_url)?;
 
     // Create agent
-    let mut agent = setup_service.create_iris_agent().await?;
+    let mut agent = setup_service.create_iris_agent()?;
 
     // Execute task with capability - now returns StructuredResponse
     let result = agent.execute_task(capability, task_prompt).await?;
@@ -159,7 +160,7 @@ where
 }
 
 /// Simple factory function for creating agents with minimal configuration
-pub async fn create_agent_with_defaults(provider: &str, model: &str) -> Result<IrisAgent> {
+pub fn create_agent_with_defaults(provider: &str, model: &str) -> Result<IrisAgent> {
     let client_builder = DynClientBuilder::new();
 
     IrisAgentBuilder::new()
@@ -170,12 +171,12 @@ pub async fn create_agent_with_defaults(provider: &str, model: &str) -> Result<I
 }
 
 /// Create an agent from environment variables
-pub async fn create_agent_from_env() -> Result<IrisAgent> {
+pub fn create_agent_from_env() -> Result<IrisAgent> {
     let provider = std::env::var("IRIS_PROVIDER").unwrap_or_else(|_| "openai".to_string());
     let model = std::env::var("IRIS_MODEL").unwrap_or_else(|_| {
         use crate::llm::get_default_model_for_provider;
         get_default_model_for_provider(&provider).to_string()
     });
 
-    create_agent_with_defaults(&provider, &model).await
+    create_agent_with_defaults(&provider, &model)
 }

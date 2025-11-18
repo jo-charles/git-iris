@@ -449,10 +449,10 @@ async fn handle_gen_with_agent(
 ) -> anyhow::Result<()> {
     use crate::commit::types::format_commit_message;
     use crate::commit::{IrisCommitService, format_commit_result};
-    use crate::tui::run_tui_commit;
     use crate::config::Config;
-    use crate::instruction_presets::PresetType;
     use crate::git::GitRepo;
+    use crate::instruction_presets::PresetType;
+    use crate::tui::run_tui_commit;
     use anyhow::Context;
     use std::sync::Arc;
 
@@ -613,12 +613,7 @@ async fn handle_gen(
 
     if use_agent {
         // Use agent-based generation with TUI integration
-        handle_gen_with_agent(
-            common,
-            config,
-            repository_url,
-        )
-        .await
+        handle_gen_with_agent(common, config, repository_url).await
     } else {
         // Use existing implementation
         commit::handle_gen_command(
@@ -960,11 +955,11 @@ async fn handle_pr_with_agent(
     to: Option<String>,
     repository_url: Option<String>,
 ) -> anyhow::Result<()> {
-    use crate::commit::types::format_pull_request;
     use crate::commit::IrisCommitService;
+    use crate::commit::types::format_pull_request;
     use crate::config::Config;
-    use crate::instruction_presets::PresetType;
     use crate::git::GitRepo;
+    use crate::instruction_presets::PresetType;
     use anyhow::Context;
     use std::sync::Arc;
 
@@ -1061,14 +1056,7 @@ async fn handle_pr(
 
     if use_agent {
         // Use agent-based generation with structured output
-        handle_pr_with_agent(
-            common,
-            print,
-            from,
-            to,
-            repository_url,
-        )
-        .await
+        handle_pr_with_agent(common, print, from, to, repository_url).await
     } else {
         // Use existing implementation
         commit::handle_pr_command(common, print, repository_url, from, to).await

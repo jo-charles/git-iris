@@ -7,7 +7,7 @@
 //! - JSON parsing and validation
 //! - Error states and recovery
 
-use colored::*;
+use colored::Colorize;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
@@ -39,7 +39,10 @@ pub fn is_debug_enabled() -> bool {
 
 /// Create a section divider
 fn divider(symbol: &str, color: (u8, u8, u8)) -> String {
-    symbol.repeat(80).truecolor(color.0, color.1, color.2).to_string()
+    symbol
+        .repeat(80)
+        .truecolor(color.0, color.1, color.2)
+        .to_string()
 }
 
 /// Create a timestamp string
@@ -71,7 +74,9 @@ pub fn debug_header(title: &str) {
     println!(
         "{} {} {}",
         "◆".truecolor(ELECTRIC_PURPLE.0, ELECTRIC_PURPLE.1, ELECTRIC_PURPLE.2),
-        title.truecolor(ELECTRIC_PURPLE.0, ELECTRIC_PURPLE.1, ELECTRIC_PURPLE.2).bold(),
+        title
+            .truecolor(ELECTRIC_PURPLE.0, ELECTRIC_PURPLE.1, ELECTRIC_PURPLE.2)
+            .bold(),
         "◆".truecolor(ELECTRIC_PURPLE.0, ELECTRIC_PURPLE.1, ELECTRIC_PURPLE.2)
     );
     println!("{}", divider("═", ELECTRIC_PURPLE));
@@ -88,7 +93,9 @@ pub fn debug_section(title: &str) {
     println!(
         "{} {} {}",
         "▸".truecolor(NEON_CYAN.0, NEON_CYAN.1, NEON_CYAN.2).bold(),
-        title.truecolor(NEON_CYAN.0, NEON_CYAN.1, NEON_CYAN.2).bold(),
+        title
+            .truecolor(NEON_CYAN.0, NEON_CYAN.1, NEON_CYAN.2)
+            .bold(),
         timestamp()
     );
     println!("{}", divider("─", NEON_CYAN));
@@ -104,7 +111,9 @@ pub fn debug_tool_call(tool_name: &str, args: &str) {
         "{} {} {} {}",
         timestamp(),
         "🔧".truecolor(NEON_CYAN.0, NEON_CYAN.1, NEON_CYAN.2),
-        "Tool Call:".truecolor(NEON_CYAN.0, NEON_CYAN.1, NEON_CYAN.2).bold(),
+        "Tool Call:"
+            .truecolor(NEON_CYAN.0, NEON_CYAN.1, NEON_CYAN.2)
+            .bold(),
         tool_name.truecolor(CORAL.0, CORAL.1, CORAL.2).bold()
     );
 
@@ -137,15 +146,20 @@ pub fn debug_tool_response(tool_name: &str, response: &str, duration: Duration) 
     println!(
         "{} {} {} {} {}",
         timestamp(),
-        "✓".truecolor(SUCCESS_GREEN.0, SUCCESS_GREEN.1, SUCCESS_GREEN.2).bold(),
-        "Tool Response:".truecolor(SUCCESS_GREEN.0, SUCCESS_GREEN.1, SUCCESS_GREEN.2).bold(),
+        "✓"
+            .truecolor(SUCCESS_GREEN.0, SUCCESS_GREEN.1, SUCCESS_GREEN.2)
+            .bold(),
+        "Tool Response:"
+            .truecolor(SUCCESS_GREEN.0, SUCCESS_GREEN.1, SUCCESS_GREEN.2)
+            .bold(),
         tool_name.truecolor(CORAL.0, CORAL.1, CORAL.2).bold(),
-        format!("({})", format_duration(duration)).truecolor(ELECTRIC_YELLOW.0, ELECTRIC_YELLOW.1, ELECTRIC_YELLOW.2)
+        format!("({})", format_duration(duration)).truecolor(
+            ELECTRIC_YELLOW.0,
+            ELECTRIC_YELLOW.1,
+            ELECTRIC_YELLOW.2
+        )
     );
-    println!(
-        "  {}",
-        truncated.truecolor(255, 255, 255)
-    );
+    println!("  {}", truncated.truecolor(255, 255, 255));
 }
 
 /// Print LLM request information
@@ -161,9 +175,18 @@ pub fn debug_llm_request(prompt: &str, max_tokens: Option<usize>) {
         "{} {} {} {} {}",
         timestamp(),
         "🧠".truecolor(ELECTRIC_PURPLE.0, ELECTRIC_PURPLE.1, ELECTRIC_PURPLE.2),
-        "LLM Request:".truecolor(ELECTRIC_PURPLE.0, ELECTRIC_PURPLE.1, ELECTRIC_PURPLE.2).bold(),
-        format!("{} chars, {} words", char_count, word_count).truecolor(ELECTRIC_YELLOW.0, ELECTRIC_YELLOW.1, ELECTRIC_YELLOW.2),
-        max_tokens.map(|t| format!("(max {} tokens)", t)).unwrap_or_default().truecolor(ELECTRIC_YELLOW.0, ELECTRIC_YELLOW.1, ELECTRIC_YELLOW.2)
+        "LLM Request:"
+            .truecolor(ELECTRIC_PURPLE.0, ELECTRIC_PURPLE.1, ELECTRIC_PURPLE.2)
+            .bold(),
+        format!("{} chars, {} words", char_count, word_count).truecolor(
+            ELECTRIC_YELLOW.0,
+            ELECTRIC_YELLOW.1,
+            ELECTRIC_YELLOW.2
+        ),
+        max_tokens
+            .map(|t| format!("(max {} tokens)", t))
+            .unwrap_or_default()
+            .truecolor(ELECTRIC_YELLOW.0, ELECTRIC_YELLOW.1, ELECTRIC_YELLOW.2)
     );
 
     // Show first few lines of prompt
@@ -180,7 +203,8 @@ pub fn debug_llm_request(prompt: &str, max_tokens: Option<usize>) {
         println!(
             "  {}",
             format!("... ({} more lines)", prompt.lines().count() - 5)
-                .truecolor(ELECTRIC_YELLOW.0, ELECTRIC_YELLOW.1, ELECTRIC_YELLOW.2).italic()
+                .truecolor(ELECTRIC_YELLOW.0, ELECTRIC_YELLOW.1, ELECTRIC_YELLOW.2)
+                .italic()
         );
     }
 }
@@ -197,7 +221,9 @@ pub fn debug_stream_chunk(_chunk: &str, chunk_number: usize) {
             "{} {} #{}",
             timestamp(),
             "▹".truecolor(NEON_CYAN.0, NEON_CYAN.1, NEON_CYAN.2),
-            chunk_number.to_string().truecolor(CORAL.0, CORAL.1, CORAL.2)
+            chunk_number
+                .to_string()
+                .truecolor(CORAL.0, CORAL.1, CORAL.2)
         );
     }
 }
@@ -216,16 +242,29 @@ pub fn debug_llm_response(response: &str, duration: Duration, tokens_used: Optio
         "{} {} {} {} {}",
         timestamp(),
         "✨".truecolor(SUCCESS_GREEN.0, SUCCESS_GREEN.1, SUCCESS_GREEN.2),
-        "LLM Response:".truecolor(SUCCESS_GREEN.0, SUCCESS_GREEN.1, SUCCESS_GREEN.2).bold(),
-        format!("{} chars, {} words", char_count, word_count).truecolor(ELECTRIC_YELLOW.0, ELECTRIC_YELLOW.1, ELECTRIC_YELLOW.2),
-        format!("({})", format_duration(duration)).truecolor(ELECTRIC_YELLOW.0, ELECTRIC_YELLOW.1, ELECTRIC_YELLOW.2)
+        "LLM Response:"
+            .truecolor(SUCCESS_GREEN.0, SUCCESS_GREEN.1, SUCCESS_GREEN.2)
+            .bold(),
+        format!("{} chars, {} words", char_count, word_count).truecolor(
+            ELECTRIC_YELLOW.0,
+            ELECTRIC_YELLOW.1,
+            ELECTRIC_YELLOW.2
+        ),
+        format!("({})", format_duration(duration)).truecolor(
+            ELECTRIC_YELLOW.0,
+            ELECTRIC_YELLOW.1,
+            ELECTRIC_YELLOW.2
+        )
     );
 
     if let Some(tokens) = tokens_used {
         println!(
             "  {} {}",
             "Tokens:".truecolor(ELECTRIC_YELLOW.0, ELECTRIC_YELLOW.1, ELECTRIC_YELLOW.2),
-            tokens.to_string().truecolor(CORAL.0, CORAL.1, CORAL.2).bold()
+            tokens
+                .to_string()
+                .truecolor(CORAL.0, CORAL.1, CORAL.2)
+                .bold()
         );
     }
 
@@ -242,7 +281,11 @@ pub fn debug_llm_response(response: &str, duration: Duration, tokens_used: Optio
 
     // Show response (truncated if too long)
     let truncated = if response.len() > 1000 {
-        format!("{}...\n\n... ({} more characters)", &response[..1000], response.len() - 1000)
+        format!(
+            "{}...\n\n... ({} more characters)",
+            &response[..1000],
+            response.len() - 1000
+        )
     } else {
         response.to_string()
     };
@@ -259,8 +302,14 @@ pub fn debug_json_parse_attempt(json_str: &str) {
         "{} {} {} {} chars",
         timestamp(),
         "📝".truecolor(ELECTRIC_YELLOW.0, ELECTRIC_YELLOW.1, ELECTRIC_YELLOW.2),
-        "JSON Parse Attempt:".truecolor(ELECTRIC_YELLOW.0, ELECTRIC_YELLOW.1, ELECTRIC_YELLOW.2).bold(),
-        json_str.len().to_string().truecolor(CORAL.0, CORAL.1, CORAL.2).bold()
+        "JSON Parse Attempt:"
+            .truecolor(ELECTRIC_YELLOW.0, ELECTRIC_YELLOW.1, ELECTRIC_YELLOW.2)
+            .bold(),
+        json_str
+            .len()
+            .to_string()
+            .truecolor(CORAL.0, CORAL.1, CORAL.2)
+            .bold()
     );
 
     // Show first 500 chars
@@ -288,8 +337,12 @@ pub fn debug_json_parse_success(type_name: &str) {
     println!(
         "{} {} {} {}",
         timestamp(),
-        "✓".truecolor(SUCCESS_GREEN.0, SUCCESS_GREEN.1, SUCCESS_GREEN.2).bold(),
-        "JSON Parsed:".truecolor(SUCCESS_GREEN.0, SUCCESS_GREEN.1, SUCCESS_GREEN.2).bold(),
+        "✓"
+            .truecolor(SUCCESS_GREEN.0, SUCCESS_GREEN.1, SUCCESS_GREEN.2)
+            .bold(),
+        "JSON Parsed:"
+            .truecolor(SUCCESS_GREEN.0, SUCCESS_GREEN.1, SUCCESS_GREEN.2)
+            .bold(),
         type_name.truecolor(CORAL.0, CORAL.1, CORAL.2).bold()
     );
 }
@@ -304,7 +357,9 @@ pub fn debug_json_parse_error(error: &str) {
         "{} {} {}",
         timestamp(),
         "✗".truecolor(ERROR_RED.0, ERROR_RED.1, ERROR_RED.2).bold(),
-        "JSON Parse Error:".truecolor(ERROR_RED.0, ERROR_RED.1, ERROR_RED.2).bold()
+        "JSON Parse Error:"
+            .truecolor(ERROR_RED.0, ERROR_RED.1, ERROR_RED.2)
+            .bold()
     );
     println!(
         "  {}",
@@ -322,7 +377,9 @@ pub fn debug_context_management(action: &str, details: &str) {
         "{} {} {} {}",
         timestamp(),
         "🔍".truecolor(ELECTRIC_PURPLE.0, ELECTRIC_PURPLE.1, ELECTRIC_PURPLE.2),
-        action.truecolor(ELECTRIC_PURPLE.0, ELECTRIC_PURPLE.1, ELECTRIC_PURPLE.2).bold(),
+        action
+            .truecolor(ELECTRIC_PURPLE.0, ELECTRIC_PURPLE.1, ELECTRIC_PURPLE.2)
+            .bold(),
         details.truecolor(ELECTRIC_YELLOW.0, ELECTRIC_YELLOW.1, ELECTRIC_YELLOW.2)
     );
 }
@@ -339,7 +396,9 @@ pub fn debug_error(error: &str) {
         "{} {} {}",
         timestamp(),
         "✗".truecolor(ERROR_RED.0, ERROR_RED.1, ERROR_RED.2).bold(),
-        "Error:".truecolor(ERROR_RED.0, ERROR_RED.1, ERROR_RED.2).bold()
+        "Error:"
+            .truecolor(ERROR_RED.0, ERROR_RED.1, ERROR_RED.2)
+            .bold()
     );
     println!(
         "  {}",
@@ -357,7 +416,9 @@ pub fn debug_warning(warning: &str) {
     println!(
         "{} {} {}",
         timestamp(),
-        "⚠".truecolor(ELECTRIC_YELLOW.0, ELECTRIC_YELLOW.1, ELECTRIC_YELLOW.2).bold(),
+        "⚠"
+            .truecolor(ELECTRIC_YELLOW.0, ELECTRIC_YELLOW.1, ELECTRIC_YELLOW.2)
+            .bold(),
         warning.truecolor(ELECTRIC_YELLOW.0, ELECTRIC_YELLOW.1, ELECTRIC_YELLOW.2)
     );
 }
@@ -372,8 +433,12 @@ pub fn debug_phase_change(phase: &str) {
     println!(
         "{} {} {}",
         timestamp(),
-        "◆".truecolor(ELECTRIC_PURPLE.0, ELECTRIC_PURPLE.1, ELECTRIC_PURPLE.2).bold(),
-        phase.truecolor(ELECTRIC_PURPLE.0, ELECTRIC_PURPLE.1, ELECTRIC_PURPLE.2).bold()
+        "◆"
+            .truecolor(ELECTRIC_PURPLE.0, ELECTRIC_PURPLE.1, ELECTRIC_PURPLE.2)
+            .bold(),
+        phase
+            .truecolor(ELECTRIC_PURPLE.0, ELECTRIC_PURPLE.1, ELECTRIC_PURPLE.2)
+            .bold()
     );
     println!("{}", divider("─", ELECTRIC_PURPLE));
 }
@@ -407,9 +472,19 @@ impl DebugTimer {
             println!(
                 "{} {} {} {}",
                 timestamp(),
-                "✓".truecolor(SUCCESS_GREEN.0, SUCCESS_GREEN.1, SUCCESS_GREEN.2).bold(),
-                format!("Completed: {}", self.operation).truecolor(SUCCESS_GREEN.0, SUCCESS_GREEN.1, SUCCESS_GREEN.2),
-                format!("({})", format_duration(duration)).truecolor(ELECTRIC_YELLOW.0, ELECTRIC_YELLOW.1, ELECTRIC_YELLOW.2)
+                "✓"
+                    .truecolor(SUCCESS_GREEN.0, SUCCESS_GREEN.1, SUCCESS_GREEN.2)
+                    .bold(),
+                format!("Completed: {}", self.operation).truecolor(
+                    SUCCESS_GREEN.0,
+                    SUCCESS_GREEN.1,
+                    SUCCESS_GREEN.2
+                ),
+                format!("({})", format_duration(duration)).truecolor(
+                    ELECTRIC_YELLOW.0,
+                    ELECTRIC_YELLOW.1,
+                    ELECTRIC_YELLOW.2
+                )
             );
         }
     }

@@ -263,7 +263,7 @@ pub fn get_default_fast_model_for_provider(provider_type: &str) -> &'static str 
         "deepseek" => "deepseek-chat", // No fast variant available
         "ollama" => "llama3:8b",       // Smaller variant
         "phind" => "phind-v2",         // No fast variant available
-        _ => "gpt-5-mini", // Latest OpenAI fast model
+        _ => "gpt-5-mini",             // Latest OpenAI fast model
     }
 }
 
