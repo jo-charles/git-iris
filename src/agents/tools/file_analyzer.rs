@@ -365,20 +365,23 @@ impl Tool for FileAnalyzer {
                         "maxItems": 50
                     },
                     "analysis_depth": {
-                        "type": "string",
-                        "enum": ["basic", "detailed", "comprehensive"],
-                        "description": "Depth of analysis to perform (default: detailed)"
+                        "type": ["string", "null"],
+                        "enum": ["basic", "detailed", "comprehensive", null],
+                        "description": "Depth of analysis to perform (default: detailed)",
+                        "default": "detailed"
                     },
                     "include_metrics": {
-                        "type": "boolean",
-                        "description": "Include complexity and performance metrics (default: true)"
+                        "type": ["boolean", "null"],
+                        "description": "Include complexity and performance metrics (default: true)",
+                        "default": true
                     },
                     "include_dependencies": {
-                        "type": "boolean",
-                        "description": "Include dependency analysis (default: true)"
+                        "type": ["boolean", "null"],
+                        "description": "Include dependency analysis (default: true)",
+                        "default": true
                     }
                 },
-                "required": ["file_paths"]
+                "required": ["file_paths", "analysis_depth", "include_metrics", "include_dependencies"]
             }
         }))
         .expect("file_analyzer tool definition should be valid JSON")

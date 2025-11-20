@@ -6,7 +6,7 @@ use anyhow::Result;
 use rig::completion::ToolDefinition;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{Map, Value};
 
 use crate::git::GitRepo;
 
@@ -26,6 +26,31 @@ impl From<std::io::Error> for GitError {
     }
 }
 
+/// `OpenAI` tool schemas require the `required` array to list every property.
+fn parameters_schema<T: schemars::JsonSchema>() -> Value {
+    use schemars::schema_for;
+
+    let schema = schema_for!(T);
+    let mut value = serde_json::to_value(schema).expect("tool schema should serialize");
+    enforce_required_properties(&mut value);
+    value
+}
+
+fn enforce_required_properties(value: &mut Value) {
+    let obj = match value.as_object_mut() {
+        Some(obj) => obj,
+        None => return,
+    };
+
+    let props_entry = obj
+        .entry("properties")
+        .or_insert_with(|| Value::Object(Map::new()));
+    let props_obj = props_entry.as_object().expect("properties must be object");
+    let required_keys: Vec<Value> = props_obj.keys().cloned().map(Value::String).collect();
+
+    obj.insert("required".to_string(), Value::Array(required_keys));
+}
+
 // Git status tool
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GitStatus;
@@ -33,7 +58,7 @@ pub struct GitStatus;
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct GitStatusArgs {
     #[serde(default)]
-    pub include_unstaged: Option<bool>,
+    pub include_unstaged: bool,
 }
 
 impl Tool for GitStatus {
@@ -43,21 +68,12 @@ impl Tool for GitStatus {
     type Output = String;
 
     async fn definition(&self, _: String) -> ToolDefinition {
-        serde_json::from_value(json!({
-            "name": "git_status",
-            "description": "Get current Git repository status including staged and unstaged files",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "include_unstaged": {
-                        "type": "boolean",
-                        "description": "Whether to include unstaged files in the output"
-                    }
-                },
-                "required": []
-            }
-        }))
-        .expect("git_status tool definition should be valid JSON")
+        ToolDefinition {
+            name: "git_status".to_string(),
+            description: "Get current Git repository status including staged and unstaged files"
+                .to_string(),
+            parameters: parameters_schema::<GitStatusArgs>(),
+        }
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -65,7 +81,7 @@ impl Tool for GitStatus {
         let repo = GitRepo::new(&current_dir).map_err(GitError::from)?;
 
         let files_info = repo
-            .extract_files_info(args.include_unstaged.unwrap_or(false))
+            .extract_files_info(args.include_unstaged)
             .map_err(GitError::from)?;
 
         let mut output = String::new();
@@ -102,13 +118,10 @@ impl Tool for GitDiff {
     type Output = String;
 
     async fn definition(&self, _: String) -> ToolDefinition {
-        use schemars::schema_for;
-        let schema = schema_for!(GitDiffArgs);
-
         ToolDefinition {
             name: "git_diff".to_string(),
             description: "Get Git diff for file changes. Use with no args or from='staged' to get staged changes. Otherwise provide from/to commits or branches.".to_string(),
-            parameters: serde_json::to_value(schema).expect("git_diff schema should serialize"),
+            parameters: parameters_schema::<GitDiffArgs>(),
         }
     }
 
@@ -174,13 +187,10 @@ impl Tool for GitLog {
     type Output = String;
 
     async fn definition(&self, _: String) -> ToolDefinition {
-        use schemars::schema_for;
-        let schema = schema_for!(GitLogArgs);
-
         ToolDefinition {
             name: "git_log".to_string(),
             description: "Get Git commit history".to_string(),
-            parameters: serde_json::to_value(schema).expect("git_log schema should serialize"),
+            parameters: parameters_schema::<GitLogArgs>(),
         }
     }
 
@@ -220,14 +230,10 @@ impl Tool for GitRepoInfo {
     type Output = String;
 
     async fn definition(&self, _: String) -> ToolDefinition {
-        use schemars::schema_for;
-        let schema = schema_for!(GitRepoInfoArgs);
-
         ToolDefinition {
             name: "git_repo_info".to_string(),
             description: "Get general information about the Git repository".to_string(),
-            parameters: serde_json::to_value(schema)
-                .expect("git_repo_info schema should serialize"),
+            parameters: parameters_schema::<GitRepoInfoArgs>(),
         }
     }
 
@@ -270,15 +276,11 @@ impl Tool for GitChangedFiles {
     type Output = String;
 
     async fn definition(&self, _: String) -> ToolDefinition {
-        use schemars::schema_for;
-        let schema = schema_for!(GitChangedFilesArgs);
-
         ToolDefinition {
             name: "git_changed_files".to_string(),
             description: "Get list of files that have changed between commits or branches"
                 .to_string(),
-            parameters: serde_json::to_value(schema)
-                .expect("git_changed_files schema should serialize"),
+            parameters: parameters_schema::<GitChangedFilesArgs>(),
         }
     }
 

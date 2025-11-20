@@ -82,25 +82,25 @@ impl Tool for Workspace {
                         "description": "Action to perform: add_note, add_task, update_task, or get_summary"
                     },
                     "content": {
-                        "type": "string",
+                        "type": ["string", "null"],
                         "description": "Content for note or task description"
                     },
                     "priority": {
-                        "type": "string",
+                        "type": ["string", "null"],
                         "enum": ["low", "medium", "high", "critical"],
                         "description": "Priority level for tasks"
                     },
                     "task_index": {
-                        "type": "integer",
+                        "type": ["integer", "null"],
                         "description": "Index of task to update (0-based)"
                     },
                     "status": {
-                        "type": "string",
+                        "type": ["string", "null"],
                         "enum": ["pending", "in_progress", "completed", "blocked"],
                         "description": "New status for task updates"
                     }
                 },
-                "required": ["action"]
+                "required": ["action", "content", "priority", "task_index", "status"]
             }
         }))
         .expect("workspace tool definition should be valid JSON")

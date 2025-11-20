@@ -4,11 +4,13 @@
 //! and multi-turn execution using Rig. One agent to rule them all! ✨
 
 use anyhow::Result;
-use rig::agent::Agent;
+use rig::agent::{Agent, AgentBuilder as RigAgentBuilder};
 use rig::client::builder::DynClientBuilder;
 use rig::completion::{CompletionModel, Prompt};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt;
 use tokio::fs;
@@ -191,6 +193,88 @@ fn extract_json_from_response(response: &str) -> Result<String> {
     Err(anyhow::anyhow!("No valid JSON found in response"))
 }
 
+/// Some providers (Anthropic) occasionally send literal control characters like newlines
+/// inside JSON strings, which violates strict JSON parsing rules. This helper sanitizes
+/// those responses by escaping control characters only within string literals while
+/// leaving the rest of the payload untouched.
+fn sanitize_json_response(raw: &str) -> Cow<'_, str> {
+    let mut needs_sanitization = false;
+    let mut in_string = false;
+    let mut escaped = false;
+
+    for ch in raw.chars() {
+        if in_string {
+            if escaped {
+                escaped = false;
+                continue;
+            }
+
+            match ch {
+                '\\' => escaped = true,
+                '"' => in_string = false,
+                '\n' | '\r' | '\t' => {
+                    needs_sanitization = true;
+                    break;
+                }
+                c if c.is_control() => {
+                    needs_sanitization = true;
+                    break;
+                }
+                _ => {}
+            }
+        } else if ch == '"' {
+            in_string = true;
+        }
+    }
+
+    if !needs_sanitization {
+        return Cow::Borrowed(raw);
+    }
+
+    let mut sanitized = String::with_capacity(raw.len());
+    in_string = false;
+    escaped = false;
+
+    for ch in raw.chars() {
+        if in_string {
+            if escaped {
+                sanitized.push(ch);
+                escaped = false;
+                continue;
+            }
+
+            match ch {
+                '\\' => {
+                    sanitized.push('\\');
+                    escaped = true;
+                }
+                '"' => {
+                    sanitized.push('"');
+                    in_string = false;
+                }
+                '\n' => sanitized.push_str("\\n"),
+                '\r' => sanitized.push_str("\\r"),
+                '\t' => sanitized.push_str("\\t"),
+                c if c.is_control() => {
+                    use std::fmt::Write as _;
+                    let _ = write!(&mut sanitized, "\\u{:04X}", c as u32);
+                }
+                _ => sanitized.push(ch),
+            }
+        } else {
+            sanitized.push(ch);
+            if ch == '"' {
+                in_string = true;
+                escaped = false;
+            }
+        }
+    }
+
+    Cow::Owned(sanitized)
+}
+
+/// Deduplicate duplicate top-level keys (`OpenAI` occasionally emits them when mixing tool and response streams).
+
 /// The unified Iris agent that can handle any Git-Iris task
 pub struct IrisAgent {
     /// The underlying Rig client builder - we'll store the builder components instead
@@ -234,6 +318,7 @@ impl IrisAgent {
                     self.provider
                 )
             });
+        let agent_builder = self.apply_reasoning_defaults(agent_builder);
 
         let preamble = self.preamble.as_deref().unwrap_or(
             "You are Iris, a helpful AI assistant specialized in Git operations and workflows.
@@ -251,12 +336,14 @@ Use the 'delegate_task' tool to spawn a sub-agent with a specific focused task. 
 
         // Build a simple sub-agent that can be delegated to
         // This sub-agent has tools but cannot spawn more sub-agents (prevents recursion)
-        let sub_agent = self
+        let sub_agent_builder = self
             .client_builder
             .agent(&self.provider, &self.model)
             .expect("Failed to create sub-agent")
             .preamble("You are a specialized analysis sub-agent. Complete your assigned task concisely and return a focused summary.")
-            .max_tokens(4096)
+            .max_tokens(4096);
+        let sub_agent_builder = self.apply_reasoning_defaults(sub_agent_builder);
+        let sub_agent = sub_agent_builder
             .tool(DebugTool::new(GitStatus))
             .tool(DebugTool::new(GitDiff))
             .tool(DebugTool::new(GitLog))
@@ -282,6 +369,26 @@ Use the 'delegate_task' tool to spawn a sub-agent with a specific focused task. 
             // Sub-agent delegation (Rig's built-in agent-as-tool!)
             .tool(sub_agent)
             .build()
+    }
+
+    fn apply_reasoning_defaults<M>(&self, builder: RigAgentBuilder<M>) -> RigAgentBuilder<M>
+    where
+        M: CompletionModel,
+    {
+        if self.provider == "openai" && Self::requires_reasoning_effort(&self.model) {
+            builder.additional_params(json!({
+                "reasoning": {
+                    "effort": "low"
+                }
+            }))
+        } else {
+            builder
+        }
+    }
+
+    fn requires_reasoning_effort(model: &str) -> bool {
+        let model = model.to_lowercase();
+        model.starts_with("gpt-5") || model.starts_with("gpt-4.1") || model.starts_with("o1")
     }
 
     /// Execute task using agent with tools and parse structured JSON response
@@ -350,11 +457,31 @@ Use the 'delegate_task' tool to spawn a sub-agent with a specific focused task. 
 
         // Extract and parse JSON from the response
         let json_str = extract_json_from_response(&response)?;
+        let sanitized_json = sanitize_json_response(&json_str);
+        let sanitized_ref = sanitized_json.as_ref();
 
-        // Try to parse the JSON
-        let result: T = serde_json::from_str(&json_str).map_err(|e| {
+        if matches!(sanitized_json, Cow::Borrowed(_)) {
+            debug::debug_json_parse_attempt(sanitized_ref);
+        } else {
+            debug::debug_context_management(
+                "Sanitized JSON response",
+                &format!("{} → {} characters", json_str.len(), sanitized_ref.len()),
+            );
+            debug::debug_json_parse_attempt(sanitized_ref);
+        }
+
+        // Parse via serde_json::Value first so duplicate keys collapse to the last occurrence
+        let canonical_value: serde_json::Value = serde_json::from_str(sanitized_ref).map_err(|e| {
             debug::debug_json_parse_error(&format!("Failed to parse JSON response: {}", e));
             anyhow::anyhow!("Failed to parse JSON response: {}", e)
+        })?;
+
+        let result: T = serde_json::from_value(canonical_value).map_err(|e| {
+            debug::debug_json_parse_error(&format!(
+                "Failed to deserialize structured response: {}",
+                e
+            ));
+            anyhow::anyhow!("Failed to deserialize structured response: {}", e)
         })?;
 
         debug::debug_json_parse_success(std::any::type_name::<T>());
@@ -593,5 +720,29 @@ impl IrisAgentBuilder {
 impl Default for IrisAgentBuilder {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::sanitize_json_response;
+    use serde_json::Value;
+    use std::borrow::Cow;
+
+    #[test]
+    fn sanitize_json_response_is_noop_for_valid_payloads() {
+        let raw = r#"{"title":"Test","description":"All good"}"#;
+        let sanitized = sanitize_json_response(raw);
+        assert!(matches!(sanitized, Cow::Borrowed(_)));
+        serde_json::from_str::<Value>(sanitized.as_ref()).expect("valid JSON");
+    }
+
+    #[test]
+    fn sanitize_json_response_escapes_literal_newlines() {
+        let raw = "{\"description\": \"Line1
+Line2\"}";
+        let sanitized = sanitize_json_response(raw);
+        assert_eq!(sanitized.as_ref(), "{\"description\": \"Line1\\nLine2\"}");
+        serde_json::from_str::<Value>(sanitized.as_ref()).expect("json sanitized");
     }
 }

@@ -185,15 +185,18 @@ impl Tool for CodeSearch {
                         "description": "Type of search to perform (default: text)"
                     },
                     "file_pattern": {
-                        "type": "string",
+                        "type": ["string", "null"],
                         "description": "Optional file glob pattern to limit search scope (e.g., '*.rs', '*.js')"
                     },
                     "max_results": {
-                        "type": "integer",
-                        "description": "Maximum number of results to return (default: 20, max: 100)"
+                        "type": ["integer", "null"],
+                        "description": "Maximum number of results to return (default: 20, max: 100)",
+                        "default": 20,
+                        "minimum": 1,
+                        "maximum": 100
                     }
                 },
-                "required": ["query", "search_type"]
+                "required": ["query", "search_type", "file_pattern", "max_results"]
             }
         }))
         .expect("code_search tool definition should be valid JSON")
