@@ -136,7 +136,7 @@ fn extract_json_from_response(response: &str) -> Result<String> {
         );
 
         // Save extracted JSON for debugging
-        if let Err(e) = std::fs::write("/tmp/iris_extracted.json", &trimmed) {
+        if let Err(e) = debug::write_debug_artifact("iris_extracted.json", &trimmed) {
             debug::debug_warning(&format!("Failed to write extracted JSON: {}", e));
         }
 
@@ -471,10 +471,11 @@ Use the 'delegate_task' tool to spawn a sub-agent with a specific focused task. 
         }
 
         // Parse via serde_json::Value first so duplicate keys collapse to the last occurrence
-        let canonical_value: serde_json::Value = serde_json::from_str(sanitized_ref).map_err(|e| {
-            debug::debug_json_parse_error(&format!("Failed to parse JSON response: {}", e));
-            anyhow::anyhow!("Failed to parse JSON response: {}", e)
-        })?;
+        let canonical_value: serde_json::Value =
+            serde_json::from_str(sanitized_ref).map_err(|e| {
+                debug::debug_json_parse_error(&format!("Failed to parse JSON response: {}", e));
+                anyhow::anyhow!("Failed to parse JSON response: {}", e)
+            })?;
 
         let result: T = serde_json::from_value(canonical_value).map_err(|e| {
             debug::debug_json_parse_error(&format!(

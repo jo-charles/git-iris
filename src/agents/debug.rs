@@ -8,8 +8,14 @@
 //! - Error states and recovery
 
 use colored::Colorize;
+use std::fs::{self, OpenOptions};
+use std::io::{self, Write};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
+
+#[cfg(unix)]
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 
 // SilkCircuit Neon Color Palette
 const ELECTRIC_PURPLE: (u8, u8, u8) = (225, 53, 255);
@@ -18,6 +24,7 @@ const CORAL: (u8, u8, u8) = (255, 106, 193);
 const ELECTRIC_YELLOW: (u8, u8, u8) = (241, 250, 140);
 const SUCCESS_GREEN: (u8, u8, u8) = (80, 250, 123);
 const ERROR_RED: (u8, u8, u8) = (255, 99, 99);
+const DEBUG_DIR_ENV: &str = "GIT_IRIS_DEBUG_DIR";
 
 /// Global debug mode flag
 static DEBUG_MODE: AtomicBool = AtomicBool::new(false);
@@ -50,6 +57,65 @@ fn timestamp() -> String {
     format!("[{}]", chrono::Local::now().format("%H:%M:%S%.3f"))
         .truecolor(ELECTRIC_YELLOW.0, ELECTRIC_YELLOW.1, ELECTRIC_YELLOW.2)
         .to_string()
+}
+
+/// Resolve the directory used for storing debug artifacts (LLM dumps, extracted JSON)
+fn debug_artifacts_dir() -> io::Result<PathBuf> {
+    let base = std::env::var_os(DEBUG_DIR_ENV)
+        .map(PathBuf::from)
+        .or_else(|| {
+            dirs::cache_dir().map(|mut dir| {
+                dir.push("git-iris");
+                dir.push("debug-artifacts");
+                dir
+            })
+        })
+        .unwrap_or_else(|| {
+            std::env::temp_dir()
+                .join("git-iris")
+                .join("debug-artifacts")
+        });
+
+    if !base.exists() {
+        fs::create_dir_all(&base)?;
+    }
+
+    #[cfg(unix)]
+    {
+        let _ = fs::set_permissions(&base, fs::Permissions::from_mode(0o700));
+    }
+
+    Ok(base)
+}
+
+/// Write debug artifact with restrictive permissions and return the file path.
+pub fn write_debug_artifact(filename: &str, contents: &str) -> io::Result<PathBuf> {
+    let mut path = debug_artifacts_dir()?;
+    path.push(filename);
+
+    write_secure_file(&path, contents)?;
+    Ok(path)
+}
+
+fn write_secure_file(path: &PathBuf, contents: &str) -> io::Result<()> {
+    #[cfg(unix)]
+    {
+        let mut options = OpenOptions::new();
+        options.write(true).create(true).truncate(true).mode(0o600);
+        let mut file = options.open(path)?;
+        file.write_all(contents.as_bytes())?;
+        return Ok(());
+    }
+
+    #[cfg(not(unix))]
+    {
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(path)?;
+        file.write_all(contents.as_bytes())
+    }
 }
 
 /// Format duration in a human-readable way
@@ -269,14 +335,18 @@ pub fn debug_llm_response(response: &str, duration: Duration, tokens_used: Optio
     }
 
     // Save full response to file for deep debugging
-    if let Err(e) = std::fs::write("/tmp/iris_last_response.txt", response) {
-        eprintln!("Failed to write debug response: {}", e);
-    } else {
-        println!(
-            "  {} {}",
-            "Full response saved to:".truecolor(NEON_CYAN.0, NEON_CYAN.1, NEON_CYAN.2),
-            "/tmp/iris_last_response.txt".truecolor(CORAL.0, CORAL.1, CORAL.2)
-        );
+    match write_debug_artifact("iris_last_response.txt", response) {
+        Ok(path) => {
+            let display_path = format!("{}", path.display());
+            println!(
+                "  {} {}",
+                "Full response saved to:".truecolor(NEON_CYAN.0, NEON_CYAN.1, NEON_CYAN.2),
+                display_path.truecolor(CORAL.0, CORAL.1, CORAL.2)
+            );
+        }
+        Err(e) => {
+            eprintln!("Failed to write debug response: {}", e);
+        }
     }
 
     // Show response (truncated if too long)
