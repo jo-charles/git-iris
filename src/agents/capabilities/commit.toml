@@ -52,4 +52,6 @@ Your task is to generate a commit message for the staged changes.
 - Follow the project's existing commit style patterns
 - Consider the scope and impact of changes
 - Keep the message concise but informative
-""" 
+- Produce **plain text only**. Do not use Markdown headings (`#`), code fences (```), tables, or decorative formatting. Bullet lists are acceptable using simple `-` prefixes.
+- Subject/body must follow conventional Git formatting (imperative subject, blank line, wrapped body paragraphs).
+"""

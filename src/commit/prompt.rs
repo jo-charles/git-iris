@@ -38,7 +38,8 @@ pub fn create_system_prompt(config: &Config) -> anyhow::Result<String> {
         16. If the purpose or impact of a change is not clear from the context, focus on describing the change itself without inferring intent.
         17. Do not use phrases like 'seems to', 'appears to', or 'might be' - only state what is certain based on the context.
         18. If there's not enough information to create a complete, authoritative message, state only what can be confidently determined from the context.
-        19. NO YAPPING!
+        19. Use plain text only—no Markdown headings (\"#\"), fenced code blocks (triple backticks), or stylistic markup like bold/italic. Bullet lists may use simple \"- \" prefixes.
+        20. NO YAPPING!
 
         Be sure to quote newlines and any other control characters in your response.
 

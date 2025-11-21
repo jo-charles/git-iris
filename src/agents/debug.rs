@@ -104,7 +104,7 @@ fn write_secure_file(path: &PathBuf, contents: &str) -> io::Result<()> {
         options.write(true).create(true).truncate(true).mode(0o600);
         let mut file = options.open(path)?;
         file.write_all(contents.as_bytes())?;
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(not(unix))]
