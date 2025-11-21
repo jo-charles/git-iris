@@ -288,7 +288,15 @@ impl Tool for GitChangedFiles {
         let current_dir = std::env::current_dir().map_err(GitError::from)?;
         let repo = GitRepo::new(&current_dir).map_err(GitError::from)?;
 
-        let files = match (args.from, args.to) {
+        let from = args.from;
+        let mut to = args.to;
+
+        // Default to HEAD when the caller provides only a starting point.
+        if from.is_some() && to.is_none() {
+            to = Some("HEAD".to_string());
+        }
+
+        let files = match (from, to) {
             (Some(from), Some(to)) => {
                 // When both from and to are provided, get files changed between commits/branches
                 let range_files = repo

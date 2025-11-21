@@ -503,15 +503,15 @@ Use the 'delegate_task' tool to spawn a sub-agent with a specific focused task. 
         // Inject gitmoji instructions if applicable
         if let Some(config) = &self.config {
             let is_conventional = config.instruction_preset == "conventional";
+            let gitmoji_enabled = config.use_gitmoji && !is_conventional;
 
-            // Add gitmoji for commit and PR capabilities if enabled
-            if (capability == "commit" || capability == "pr")
-                && config.use_gitmoji
-                && !is_conventional
-            {
+            // Add gitmoji instructions for commit/PR outputs when applicable
+            if (capability == "commit" || capability == "pr") && gitmoji_enabled {
                 system_prompt.push_str("\n\n=== GITMOJI INSTRUCTIONS ===\n");
                 system_prompt.push_str("Set the 'emoji' field to a single relevant gitmoji. ");
-                system_prompt.push_str("DO NOT include the emoji in the 'message' or 'title' text - only set the 'emoji' field. ");
+                system_prompt.push_str(
+                    "DO NOT include the emoji in the 'message' or 'title' text - only set the 'emoji' field. ",
+                );
                 system_prompt.push_str("Choose the most relevant emoji from this list:\n\n");
                 system_prompt.push_str(&crate::gitmoji::get_gitmoji_list());
                 system_prompt.push_str("\n\nThe emoji should match the primary type of change.");
@@ -521,6 +521,36 @@ Use the 'delegate_task' tool to spawn a sub-agent with a specific focused task. 
                 system_prompt
                     .push_str("DO NOT include any emojis in the commit message or PR title. ");
                 system_prompt.push_str("The 'emoji' field should be null.");
+            }
+
+            // Release notes and changelog entries support tasteful emoji usage in content
+            if gitmoji_enabled {
+                match capability {
+                    "release_notes" => {
+                        system_prompt.push_str("\n\n=== EMOJI STYLING ===\n");
+                        system_prompt.push_str(
+                            "Use at most one emoji per highlight title and per section title. Do not place emojis inside bullet descriptions, upgrade notes, or metrics. ",
+                        );
+                        system_prompt.push_str(
+                            "Skip emojis entirely if they do not add clarity for a given heading. When you do use one, pick it from the approved gitmoji list so it reinforces meaning (e.g., 🌟 Highlights, 🤖 Agents, 🔧 Tooling, 🐛 Fixes, ⚡ Performance). ",
+                        );
+                        system_prompt.push_str(
+                            "Never sprinkle emojis within normal sentences or JSON keys—only the human-readable heading text may include them.\n\n",
+                        );
+                        system_prompt.push_str(&crate::gitmoji::get_gitmoji_list());
+                    }
+                    "changelog" => {
+                        system_prompt.push_str("\n\n=== EMOJI STYLING ===\n");
+                        system_prompt.push_str(
+                            "Section keys must remain plain text (Added/Changed/Deprecated/Removed/Fixed/Security). When helpful, you may include at most one emoji within a change description to reinforce meaning. ",
+                        );
+                        system_prompt.push_str(
+                            "Never add emojis to JSON keys, section names, metrics, or upgrade notes. If the emoji does not add clarity, omit it.\n\n",
+                        );
+                        system_prompt.push_str(&crate::gitmoji::get_gitmoji_list());
+                    }
+                    _ => {}
+                }
             }
         }
 
