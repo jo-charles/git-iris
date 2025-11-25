@@ -15,8 +15,6 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt;
 use tokio::fs;
-use tokio_retry::Retry;
-use tokio_retry::strategy::ExponentialBackoff;
 
 use crate::agents::tools::{
     CodeSearch, FileAnalyzer, GitChangedFiles, GitDiff, GitLog, GitRepoInfo, GitStatus,
@@ -482,19 +480,14 @@ Use the 'delegate_task' tool to spawn a sub-agent with a specific focused task. 
         let gen_msg = get_waiting_message();
         crate::iris_status_dynamic!(IrisPhase::Generation, gen_msg.text, 3, 4);
 
-        // Prompt the agent with retry logic for transient failures
-        // Set multi_turn to allow the agent to call multiple tools (default is 0 = only 1 tool call)
+        // Prompt the agent with multi-turn support
+        // Set multi_turn to allow the agent to call multiple tools (default is 0 = single-shot)
         // For complex tasks like PRs and release notes, Iris may need many tool calls to analyze all changes
         // The agent knows when to stop, so we give it plenty of room (50 rounds)
         let timer = debug::DebugTimer::start("Agent prompt execution");
 
-        let retry_strategy = ExponentialBackoff::from_millis(10).factor(2).take(2); // 2 attempts total: initial + 1 retry
-
-        let response = Retry::spawn(retry_strategy, || async {
-            debug::debug_context_management("LLM attempt", "Sending prompt to agent");
-            agent.prompt(&full_prompt).multi_turn(50).await
-        })
-        .await?;
+        debug::debug_context_management("LLM request", "Sending prompt to agent with multi_turn(50)");
+        let response = agent.prompt(&full_prompt).multi_turn(50).await?;
 
         timer.finish();
 
