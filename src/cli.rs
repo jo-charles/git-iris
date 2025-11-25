@@ -72,13 +72,22 @@ pub struct Cli {
     )]
     pub repository_url: Option<String>,
 
-    /// Use agent framework for enhanced AI-powered operations
+    /// Use agent framework for enhanced AI-powered operations (default: enabled)
     #[arg(
         long = "agent",
         global = true,
-        help = "Use agent framework for enhanced AI-powered operations"
+        default_value = "true",
+        help = "Use agent framework for enhanced AI-powered operations (enabled by default)"
     )]
     pub agent: bool,
+
+    /// Use legacy non-agent implementation
+    #[arg(
+        long = "legacy",
+        global = true,
+        help = "Use legacy non-agent implementation (fallback mode)"
+    )]
+    pub legacy: bool,
 
     /// Enable debug mode for detailed agent observability
     #[arg(
@@ -424,7 +433,9 @@ pub async fn main() -> anyhow::Result<()> {
     }
 
     if let Some(command) = cli.command {
-        handle_command(command, cli.repository_url, cli.agent).await
+        // --legacy overrides --agent (which defaults to true)
+        let use_agent = cli.agent && !cli.legacy;
+        handle_command(command, cli.repository_url, use_agent).await
     } else {
         // If no subcommand is provided, print the help
         let _ = Cli::parse_from(["git-iris", "--help"]);
@@ -741,13 +752,23 @@ async fn handle_changelog(
     );
 
     if use_agent {
+        use crate::changes::ChangelogGenerator;
+        use crate::git::GitRepo;
+        use anyhow::Context;
+        use std::sync::Arc;
+
         // Use agent framework for changelog generation
+        let to_ref = to.clone().unwrap_or_else(|| "HEAD".to_string());
         let task_prompt = format!(
-            "Generate a changelog from {} to {}. Version: {:?}",
-            from,
-            to.as_deref().unwrap_or("HEAD"),
-            version_name
+            "Generate a changelog from {} to {}. Version: {:?}. Detail level: {}",
+            from, to_ref, version_name, common.detail_level
         );
+
+        // Capture values needed for the closure
+        let changelog_path = file.clone().unwrap_or_else(|| "CHANGELOG.md".to_string());
+        let version_for_update = version_name.clone();
+        let to_ref_for_update = to_ref.clone();
+        let repo_url_for_update = repository_url.clone().or(common.repository_url.clone());
 
         crate::agents::handle_with_agent(
             common,
@@ -755,11 +776,52 @@ async fn handle_changelog(
             "changelog",
             &task_prompt,
             |response| async move {
+                // Print the changelog
+                println!("{response}");
+
                 if update {
-                    // TODO: Update changelog file
-                    ui::print_success("Changelog updated successfully");
-                } else {
-                    println!("{response}");
+                    // Extract the formatted content for file update
+                    let formatted_content = response.to_string();
+
+                    // Create GitRepo for file update
+                    let git_repo = if let Some(url) = repo_url_for_update {
+                        Arc::new(
+                            GitRepo::clone_remote_repository(&url)
+                                .context("Failed to clone repository for changelog update")?,
+                        )
+                    } else {
+                        let repo_path = std::env::current_dir()?;
+                        Arc::new(
+                            GitRepo::new(&repo_path)
+                                .context("Failed to create GitRepo for changelog update")?,
+                        )
+                    };
+
+                    // Update changelog file
+                    let update_spinner = ui::create_spinner(&format!(
+                        "Updating changelog file at {changelog_path}..."
+                    ));
+
+                    match ChangelogGenerator::update_changelog_file(
+                        &formatted_content,
+                        &changelog_path,
+                        &git_repo,
+                        &to_ref_for_update,
+                        version_for_update,
+                    ) {
+                        Ok(()) => {
+                            update_spinner.finish_and_clear();
+                            ui::print_success(&format!(
+                                "✨ Changelog successfully updated at {}",
+                                changelog_path.bright_green()
+                            ));
+                        }
+                        Err(e) => {
+                            update_spinner.finish_and_clear();
+                            ui::print_error(&format!("Failed to update changelog file: {e}"));
+                            return Err(e);
+                        }
+                    }
                 }
                 Ok(())
             },
@@ -801,10 +863,11 @@ async fn handle_release_notes(
     if use_agent {
         // Use agent framework for release notes generation
         let task_prompt = format!(
-            "Generate release notes from {} to {}. Version: {:?}",
+            "Generate release notes from {} to {}. Version: {:?}. Detail level: {}",
             from,
             to.as_deref().unwrap_or("HEAD"),
-            version_name
+            version_name,
+            common.detail_level
         );
 
         crate::agents::handle_with_agent(
