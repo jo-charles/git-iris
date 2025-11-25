@@ -177,52 +177,10 @@ impl IrisStatus {
         }
     }
 
-    /// Format status for display with live token counting
+    /// Format status for display - clean and minimal
     pub fn format_for_display(&self) -> String {
-        let duration = self.duration();
-        let seconds = duration.as_secs();
-
-        // Progress bar
-        let progress_bar = if let Some(total) = self.total_steps {
-            let filled = (self.current_step * 8) / total;
-            let empty = 8 - filled;
-            format!(" [{}{}]", "█".repeat(filled), "░".repeat(empty))
-        } else {
-            String::new()
-        };
-
-        // Token display for streaming
-        let token_info = if self.is_streaming && self.tokens.total_tokens > 0 {
-            let rate = if self.tokens.tokens_per_second > 0.0 {
-                format!(" | {:.0}t/s", self.tokens.tokens_per_second)
-            } else {
-                String::new()
-            };
-
-            let estimated = if let Some(est) = self.tokens.estimated_remaining {
-                format!(" | ~{est}t")
-            } else {
-                String::new()
-            };
-
-            format!(" | {}t{}{}", self.tokens.total_tokens, rate, estimated)
-        } else if self.tokens.total_tokens > 0 {
-            format!(" | {}t", self.tokens.total_tokens)
-        } else {
-            String::new()
-        };
-
-        // Duration display
-        let time_info = if seconds > 0 {
-            format!(" ({seconds}s)")
-        } else {
-            String::new()
-        };
-
-        format!(
-            "{}{}{}{}",
-            self.message, progress_bar, token_info, time_info
-        )
+        // Just the message - clean and elegant
+        self.message.clone()
     }
 }
 

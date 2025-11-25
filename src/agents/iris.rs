@@ -398,9 +398,15 @@ Use the 'delegate_task' tool to spawn a sub-agent with a specific focused task. 
         T: JsonSchema + for<'a> serde::Deserialize<'a> + serde::Serialize + Send + Sync + 'static,
     {
         use crate::agents::debug;
+        use crate::agents::status::IrisPhase;
+        use crate::messages::get_waiting_message;
         use schemars::schema_for;
 
         debug::debug_phase_change(&format!("AGENT EXECUTION: {}", std::any::type_name::<T>()));
+
+        // Update status - building agent
+        let msg = get_waiting_message();
+        crate::iris_status_dynamic!(IrisPhase::Planning, msg.text, 2, 4);
 
         // Build agent with all tools attached
         let agent = self.build_agent();
@@ -437,6 +443,10 @@ Use the 'delegate_task' tool to spawn a sub-agent with a specific focused task. 
 
         debug::debug_llm_request(&full_prompt, Some(16384));
 
+        // Update status - generation phase (sending to LLM)
+        let gen_msg = get_waiting_message();
+        crate::iris_status_dynamic!(IrisPhase::Generation, gen_msg.text, 3, 4);
+
         // Prompt the agent with retry logic for transient failures
         // Set multi_turn to allow the agent to call multiple tools (default is 0 = only 1 tool call)
         // For complex tasks like PRs and release notes, Iris may need many tool calls to analyze all changes
@@ -454,6 +464,9 @@ Use the 'delegate_task' tool to spawn a sub-agent with a specific focused task. 
         timer.finish();
 
         debug::debug_llm_response(&response, std::time::Duration::from_secs(0), None);
+
+        // Update status - synthesis phase
+        crate::iris_status_dynamic!(IrisPhase::Synthesis, "✨ Iris is synthesizing results...", 4, 4);
 
         // Extract and parse JSON from the response
         let json_str = extract_json_from_response(&response)?;
@@ -487,6 +500,9 @@ Use the 'delegate_task' tool to spawn a sub-agent with a specific focused task. 
 
         debug::debug_json_parse_success(std::any::type_name::<T>());
 
+        // Update status - completed
+        crate::iris_status_completed!();
+
         Ok(result)
     }
 
@@ -498,6 +514,13 @@ Use the 'delegate_task' tool to spawn a sub-agent with a specific focused task. 
         capability: &str,
         user_prompt: &str,
     ) -> Result<StructuredResponse> {
+        use crate::agents::status::IrisPhase;
+        use crate::messages::get_waiting_message;
+
+        // Show initializing status with a fun random message
+        let waiting_msg = get_waiting_message();
+        crate::iris_status_dynamic!(IrisPhase::Initializing, waiting_msg.text, 1, 4);
+
         // Load the capability config to get both prompt and output type
         let (mut system_prompt, output_type) = self.load_capability_config(capability).await?;
 
@@ -557,6 +580,9 @@ Use the 'delegate_task' tool to spawn a sub-agent with a specific focused task. 
 
         // Set the current capability
         self.current_capability = Some(capability.to_string());
+
+        // Update status - analyzing with agent
+        crate::iris_status_dynamic!(IrisPhase::Analysis, "🔍 Iris is analyzing your changes...", 2, 4);
 
         // Use agent with tools for all structured outputs
         // The agent will use tools as needed and respond with JSON

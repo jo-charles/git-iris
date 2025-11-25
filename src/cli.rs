@@ -524,6 +524,9 @@ async fn handle_gen_with_agent(
         "Generate a commit message following best practices"
     };
 
+    // Create spinner for agent mode - it will poll IRIS_STATUS for dynamic updates
+    let spinner = ui::create_spinner("Initializing Iris...");
+
     let generated_message = crate::agents::handle_with_agent(
         common,
         repository_url,
@@ -537,6 +540,9 @@ async fn handle_gen_with_agent(
         },
     )
     .await?;
+
+    // Finish spinner after agent completes
+    spinner.finish_and_clear();
 
     if config.print_only {
         println!("{}", format_commit_message(&generated_message));
