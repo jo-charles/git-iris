@@ -260,14 +260,14 @@ fn format_changelog_response(response: &ChangelogResponse) -> String {
 
     // Add changes in the specified order
     for change_type in &ordered_types {
-        if let Some(entries) = response.sections.get(change_type) {
-            if !entries.is_empty() {
-                formatted.push_str(&format_change_type(change_type));
-                for entry in entries {
-                    formatted.push_str(&format_change_entry(entry));
-                }
-                formatted.push('\n');
+        if let Some(entries) = response.sections.get(change_type)
+            && !entries.is_empty()
+        {
+            formatted.push_str(&format_change_type(change_type));
+            for entry in entries {
+                formatted.push_str(&format_change_entry(entry));
             }
+            formatted.push('\n');
         }
     }
 

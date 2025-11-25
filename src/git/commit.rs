@@ -449,17 +449,13 @@ pub fn get_branch_diff_files(
         }
 
         // Get file content from target branch if it's a modified or added file
-        if matches!(file.change_type, ChangeType::Added | ChangeType::Modified) {
-            if let Ok(entry) = target_tree.get_path(std::path::Path::new(&file.path)) {
-                if let Ok(object) = entry.to_object(repo) {
-                    if let Some(blob) = object.as_blob() {
-                        if let Ok(content) = std::str::from_utf8(blob.content()) {
+        if matches!(file.change_type, ChangeType::Added | ChangeType::Modified)
+            && let Ok(entry) = target_tree.get_path(std::path::Path::new(&file.path))
+                && let Ok(object) = entry.to_object(repo)
+                    && let Some(blob) = object.as_blob()
+                        && let Ok(content) = std::str::from_utf8(blob.content()) {
                             file.content = Some(content.to_string());
                         }
-                    }
-                }
-            }
-        }
 
         let analyzer = crate::file_analyzers::get_analyzer(&file.path);
         file.analysis = analyzer.analyze(&file.path, file);
@@ -643,17 +639,13 @@ pub fn get_commit_range_files(repo: &Repository, from: &str, to: &str) -> Result
         }
 
         // Get file content from to commit if it's a modified or added file
-        if matches!(file.change_type, ChangeType::Added | ChangeType::Modified) {
-            if let Ok(entry) = to_tree.get_path(std::path::Path::new(&file.path)) {
-                if let Ok(object) = entry.to_object(repo) {
-                    if let Some(blob) = object.as_blob() {
-                        if let Ok(content) = std::str::from_utf8(blob.content()) {
+        if matches!(file.change_type, ChangeType::Added | ChangeType::Modified)
+            && let Ok(entry) = to_tree.get_path(std::path::Path::new(&file.path))
+                && let Ok(object) = entry.to_object(repo)
+                    && let Some(blob) = object.as_blob()
+                        && let Ok(content) = std::str::from_utf8(blob.content()) {
                             file.content = Some(content.to_string());
                         }
-                    }
-                }
-            }
-        }
 
         let analyzer = crate::file_analyzers::get_analyzer(&file.path);
         file.analysis = analyzer.analyze(&file.path, file);

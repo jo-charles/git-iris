@@ -133,7 +133,7 @@ impl IrisWorkspace {
             completed_tasks,
             self.notes.len()
         )
-        .unwrap();
+        .expect("writing to string cannot fail");
 
         // Active tasks
         if in_progress_tasks > 0 || pending_tasks > 0 {
@@ -147,7 +147,7 @@ impl IrisWorkspace {
                         task.description,
                         task.priority
                     )
-                    .unwrap();
+                    .expect("writing to string cannot fail");
                 }
             }
             summary.push('\n');
@@ -162,7 +162,7 @@ impl IrisWorkspace {
                 } else {
                     note.content.clone()
                 };
-                writeln!(summary, "- {preview}").unwrap();
+                writeln!(summary, "- {preview}").expect("writing to string cannot fail");
             }
         }
 
@@ -191,12 +191,12 @@ impl IrisWorkspace {
                     task.created,
                     task.updated
                 )
-                .unwrap();
+                .expect("writing to string cannot fail");
 
                 if !task.notes.is_empty() {
                     content.push_str("Notes:\n");
                     for note in &task.notes {
-                        writeln!(content, "  - {note}").unwrap();
+                        writeln!(content, "  - {note}").expect("writing to string cannot fail");
                     }
                 }
                 content.push('\n');
@@ -213,10 +213,11 @@ impl IrisWorkspace {
                     Content: {}\n",
                     note.id, note.timestamp, note.content
                 )
-                .unwrap();
+                .expect("writing to string cannot fail");
 
                 if !note.tags.is_empty() {
-                    writeln!(content, "Tags: {}", note.tags.join(", ")).unwrap();
+                    writeln!(content, "Tags: {}", note.tags.join(", "))
+                        .expect("writing to string cannot fail");
                 }
                 content.push('\n');
             }
@@ -255,13 +256,16 @@ impl WorkspaceTool {
         };
 
         if !target_path.exists() {
-            return Err(anyhow::anyhow!("Path does not exist: {:?}", target_path));
+            return Err(anyhow::anyhow!(
+                "Path does not exist: {}",
+                target_path.display()
+            ));
         }
 
         if !target_path.is_dir() {
             return Err(anyhow::anyhow!(
-                "Path is not a directory: {:?}",
-                target_path
+                "Path is not a directory: {}",
+                target_path.display()
             ));
         }
 
@@ -313,11 +317,17 @@ impl WorkspaceTool {
         let target_path = repo_path.join(file_path);
 
         if !target_path.exists() {
-            return Err(anyhow::anyhow!("File does not exist: {:?}", target_path));
+            return Err(anyhow::anyhow!(
+                "File does not exist: {}",
+                target_path.display()
+            ));
         }
 
         if !target_path.is_file() {
-            return Err(anyhow::anyhow!("Path is not a file: {:?}", target_path));
+            return Err(anyhow::anyhow!(
+                "Path is not a file: {}",
+                target_path.display()
+            ));
         }
 
         let file_content = fs::read_to_string(&target_path)?;

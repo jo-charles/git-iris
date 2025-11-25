@@ -46,7 +46,7 @@ impl PromptLibrary {
                 file.change_type,
                 file.diff
             )
-            .unwrap();
+            .expect("writing to string cannot fail");
 
             if let Some(content) = &file.content {
                 write!(
@@ -54,7 +54,7 @@ impl PromptLibrary {
                     "Full Content:\n{content}\n\
                     --- End of File ---\n\n"
                 )
-                .unwrap();
+                .expect("writing to string cannot fail");
             }
         }
 
@@ -145,7 +145,8 @@ impl PromptLibrary {
         if !commit_context.recent_commits.is_empty() {
             prompt.push_str("Recent commits:\n");
             for commit in commit_context.recent_commits.iter().take(3) {
-                writeln!(prompt, "{} - {}", &commit.hash[..7], commit.message).unwrap();
+                writeln!(prompt, "{} - {}", &commit.hash[..7], commit.message)
+                    .expect("writing to string cannot fail");
             }
             prompt.push('\n');
         }
@@ -162,11 +163,11 @@ impl PromptLibrary {
                     crate::context::ChangeType::Deleted => "Deleted",
                 }
             )
-            .unwrap();
+            .expect("writing to string cannot fail");
         }
 
         if let Some(lang) = &commit_context.project_metadata.language {
-            writeln!(prompt, "\nProject language: {lang}").unwrap();
+            writeln!(prompt, "\nProject language: {lang}").expect("writing to string cannot fail");
         }
 
         prompt
@@ -225,7 +226,7 @@ impl PromptLibrary {
                 file.analysis,
                 file.diff
             )
-            .unwrap();
+            .expect("writing to string cannot fail");
         }
 
         prompt.push_str(
@@ -279,7 +280,7 @@ impl PromptLibrary {
         if !commit_messages.is_empty() {
             prompt.push_str("Commit messages in this PR:\n");
             for (i, msg) in commit_messages.iter().enumerate() {
-                writeln!(prompt, "{}. {}", i + 1, msg).unwrap();
+                writeln!(prompt, "{}. {}", i + 1, msg).expect("writing to string cannot fail");
             }
             prompt.push('\n');
         }
@@ -296,7 +297,7 @@ impl PromptLibrary {
                     crate::context::ChangeType::Deleted => "deleted",
                 }
             )
-            .unwrap();
+            .expect("writing to string cannot fail");
         }
 
         prompt.push_str(

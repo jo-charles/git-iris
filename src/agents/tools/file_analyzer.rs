@@ -239,14 +239,14 @@ impl FileAnalyzer {
             "Rust source file" => {
                 // Extract function names
                 for line in content.lines() {
-                    if let Some(fn_match) = line.find("fn ") {
-                        if let Some(name_start) = line[fn_match + 3..].find(char::is_alphabetic) {
-                            let name_part = &line[fn_match + 3 + name_start..];
-                            if let Some(name_end) =
-                                name_part.find(|c: char| c == '(' || c.is_whitespace())
-                            {
-                                components.push(format!("fn {}", &name_part[..name_end]));
-                            }
+                    if let Some(fn_match) = line.find("fn ")
+                        && let Some(name_start) = line[fn_match + 3..].find(char::is_alphabetic)
+                    {
+                        let name_part = &line[fn_match + 3 + name_start..];
+                        if let Some(name_end) =
+                            name_part.find(|c: char| c == '(' || c.is_whitespace())
+                        {
+                            components.push(format!("fn {}", &name_part[..name_end]));
                         }
                     }
                 }

@@ -10,17 +10,12 @@ pub struct InstructionPreset {
     pub preset_type: PresetType, // New field to distinguish between commit and review presets
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Copy)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Copy, Default)]
 pub enum PresetType {
     Commit,
     Review,
+    #[default]
     Both,
-}
-
-impl Default for PresetType {
-    fn default() -> Self {
-        Self::Both
-    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]

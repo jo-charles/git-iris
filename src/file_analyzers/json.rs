@@ -65,13 +65,13 @@ impl JsonAnalyzer {
 
             if let Some(dependencies) = json["dependencies"].as_object() {
                 for dep in dependencies.keys() {
-                    metadata.dependencies.push(dep.to_string());
+                    metadata.dependencies.push(dep.clone());
                 }
             }
 
             if let Some(dev_dependencies) = json["devDependencies"].as_object() {
                 for dep in dev_dependencies.keys() {
-                    metadata.dependencies.push(dep.to_string());
+                    metadata.dependencies.push(dep.clone());
                 }
             }
 
@@ -109,8 +109,8 @@ fn extract_modified_top_level_keys(diff: &str) -> Option<Vec<String>> {
     let mut keys = HashSet::new();
 
     for (i, line) in lines.iter().enumerate() {
-        if let Some(cap) = re.captures(line) {
-            if let Some(key_match) = cap.get(1) {
+        if let Some(cap) = re.captures(line)
+            && let Some(key_match) = cap.get(1) {
                 let key = key_match.as_str();
                 let prev_line = if i > 0 { lines[i - 1] } else { "" };
                 let next_line = if i + 1 < lines.len() {
@@ -123,7 +123,6 @@ fn extract_modified_top_level_keys(diff: &str) -> Option<Vec<String>> {
                     keys.insert(key.to_string());
                 }
             }
-        }
     }
 
     if keys.is_empty() {

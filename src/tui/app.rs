@@ -180,9 +180,9 @@ impl TuiCommit {
             }
 
             // Poll for input events
-            if event::poll(Duration::from_millis(20))? {
-                if let Event::Key(key) = event::read()? {
-                    if key.kind == KeyEventKind::Press {
+            if event::poll(Duration::from_millis(20))?
+                && let Event::Key(key) = event::read()?
+                    && key.kind == KeyEventKind::Press {
                         match handle_input(self, key) {
                             InputResult::Exit => return Ok(ExitStatus::Cancelled),
                             InputResult::Commit(message) => match self.perform_commit(&message) {
@@ -195,8 +195,6 @@ impl TuiCommit {
                             InputResult::Continue => self.state.dirty = true,
                         }
                     }
-                }
-            }
 
             // Update the spinner state and redraw if in generating mode
             if self.state.mode == Mode::Generating

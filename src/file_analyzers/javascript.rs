@@ -90,14 +90,14 @@ impl JavaScriptAnalyzer {
 
             if let Some(dependencies) = json["dependencies"].as_object() {
                 for dep in dependencies.keys() {
-                    metadata.dependencies.push(dep.to_string());
+                    metadata.dependencies.push(dep.clone());
                 }
             }
 
             if let Some(dev_dependencies) = json["devDependencies"].as_object() {
                 for dep in dev_dependencies.keys() {
                     if dep.contains("test") || dep.contains("jest") || dep.contains("mocha") {
-                        metadata.test_framework = Some(dep.to_string());
+                        metadata.test_framework = Some(dep.clone());
                         break;
                     }
                 }

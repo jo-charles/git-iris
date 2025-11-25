@@ -420,8 +420,8 @@ impl GeneratedReview {
         dimension: QualityDimension,
         analysis: Option<&DimensionAnalysis>,
     ) {
-        if let Some(dim) = analysis {
-            if dim.issues_found && !dim.issues.is_empty() {
+        if let Some(dim) = analysis
+            && dim.issues_found && !dim.issues.is_empty() {
                 // Choose emoji based on the dimension
                 let (emoji, color_fn) = match dimension {
                     QualityDimension::Complexity => ("🧠", "bright_magenta"),
@@ -503,7 +503,6 @@ impl GeneratedReview {
                     .expect("write to string should not fail");
                 }
             }
-        }
     }
 }
 
@@ -661,7 +660,7 @@ async fn generate_review_based_on_parameters(
     // Create and start the spinner
     let spinner = ui::create_spinner("");
     let random_message = messages::get_review_waiting_message();
-    spinner.set_message(random_message.text.to_string());
+    spinner.set_message(random_message.text.clone());
 
     let review = if let (Some(from_branch), Some(to_branch)) = (from.as_ref(), to.as_ref()) {
         // Branch comparison review

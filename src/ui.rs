@@ -220,7 +220,7 @@ fn apply_gradient(text: &str, gradient: &[(u8, u8, u8)]) -> String {
             i * (gradient_len - 1) / (chars_len - 1)
         };
         let (r, g, b) = gradient[index];
-        write!(acc, "{}", c.to_string().truecolor(r, g, b)).unwrap();
+        write!(acc, "{}", c.to_string().truecolor(r, g, b)).expect("writing to string cannot fail");
         acc
     });
 

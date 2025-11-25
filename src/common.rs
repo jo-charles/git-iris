@@ -113,12 +113,11 @@ impl CommonParams {
             // Note: temp preset doesn't count as permanent changes
         }
 
-        if let Some(use_gitmoji) = self.gitmoji {
-            if config.use_gitmoji != use_gitmoji {
+        if let Some(use_gitmoji) = self.gitmoji
+            && config.use_gitmoji != use_gitmoji {
                 config.use_gitmoji = use_gitmoji;
                 changes_made = true;
             }
-        }
 
         Ok(changes_made)
     }

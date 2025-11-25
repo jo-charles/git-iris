@@ -306,12 +306,11 @@ impl GitRepo {
                 .any(|&pattern| name.eq_ignore_ascii_case(pattern))
             {
                 let object = entry.to_object(repo)?;
-                if let Some(blob) = object.as_blob() {
-                    if let Ok(content) = std::str::from_utf8(blob.content()) {
+                if let Some(blob) = object.as_blob()
+                    && let Ok(content) = std::str::from_utf8(blob.content()) {
                         log_debug!("README file found: {}", name);
                         return Ok(Some(content.to_string()));
                     }
-                }
             }
         }
 

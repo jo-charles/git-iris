@@ -117,15 +117,15 @@ fn recover_missing_fields(
         .unwrap_or_default();
 
     for field_name in required {
-        if !obj.contains_key(field_name) {
-            if let Some(prop_schema) = properties.get(field_name) {
-                let default_value = get_default_for_type(prop_schema);
-                warnings.push(format!(
-                    "Added missing required field '{}' with default value",
-                    field_name
-                ));
-                obj.insert(field_name.to_string(), default_value);
-            }
+        if !obj.contains_key(field_name)
+            && let Some(prop_schema) = properties.get(field_name)
+        {
+            let default_value = get_default_for_type(prop_schema);
+            warnings.push(format!(
+                "Added missing required field '{}' with default value",
+                field_name
+            ));
+            obj.insert(field_name.to_string(), default_value);
         }
     }
 }
@@ -155,16 +155,16 @@ fn recover_type_mismatches(
                 _ => None,
             };
 
-            if let Some(new_value) = converted {
-                if new_value != current_value {
-                    warnings.push(format!(
-                        "Converted field '{}' from {:?} to {}",
-                        field_name,
-                        type_name(&current_value),
-                        expected_type
-                    ));
-                    obj.insert(field_name.clone(), new_value);
-                }
+            if let Some(new_value) = converted
+                && new_value != current_value
+            {
+                warnings.push(format!(
+                    "Converted field '{}' from {:?} to {}",
+                    field_name,
+                    type_name(&current_value),
+                    expected_type
+                ));
+                obj.insert(field_name.clone(), new_value);
             }
         }
     }

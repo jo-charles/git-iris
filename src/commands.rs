@@ -67,28 +67,27 @@ fn apply_config_changes(
         .context("Could not get default provider")?;
 
     // Apply API key if provided
-    if let Some(key) = api_key {
-        if provider_config.api_key != key {
-            provider_config.api_key = key;
-            changes_made = true;
-        }
+    if let Some(key) = api_key
+        && provider_config.api_key != key
+    {
+        provider_config.api_key = key;
+        changes_made = true;
     }
 
     // Apply model change
-    if let Some(model) = model {
-        if provider_config.model != model {
-            provider_config.model = model;
-            changes_made = true;
-        }
+    if let Some(model) = model
+        && provider_config.model != model
+    {
+        provider_config.model = model;
+        changes_made = true;
     }
 
     // Apply fast model change
-    if let Some(fast_model) = fast_model {
-        if provider_config.fast_model != Some(fast_model.clone()) {
+    if let Some(fast_model) = fast_model
+        && provider_config.fast_model != Some(fast_model.clone()) {
             provider_config.fast_model = Some(fast_model);
             changes_made = true;
         }
-    }
 
     // Apply parameter changes
     if let Some(params) = param {
@@ -100,28 +99,25 @@ fn apply_config_changes(
     }
 
     // Apply gitmoji setting
-    if let Some(use_gitmoji) = common.gitmoji {
-        if config.use_gitmoji != use_gitmoji {
+    if let Some(use_gitmoji) = common.gitmoji
+        && config.use_gitmoji != use_gitmoji {
             config.use_gitmoji = use_gitmoji;
             changes_made = true;
         }
-    }
 
     // Apply instructions
-    if let Some(instr) = &common.instructions {
-        if config.instructions != *instr {
+    if let Some(instr) = &common.instructions
+        && config.instructions != *instr {
             config.instructions.clone_from(instr);
             changes_made = true;
         }
-    }
 
     // Apply token limit
-    if let Some(limit) = token_limit {
-        if provider_config.token_limit != Some(limit) {
+    if let Some(limit) = token_limit
+        && provider_config.token_limit != Some(limit) {
             provider_config.token_limit = Some(limit);
             changes_made = true;
         }
-    }
 
     // Apply preset
     if let Some(preset) = &common.preset {

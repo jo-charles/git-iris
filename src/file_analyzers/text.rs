@@ -44,18 +44,16 @@ impl FileAnalyzer for GenericTextAnalyzer {
         }
 
         // For config-like files, analyze key-value pairs
-        if is_likely_config_file(file) {
-            if let Some(keys) = extract_modified_keys(&staged_file.diff) {
+        if is_likely_config_file(file)
+            && let Some(keys) = extract_modified_keys(&staged_file.diff) {
                 analysis.push(format!("Modified configuration keys: {}", keys.join(", ")));
             }
-        }
 
         // For XML/HTML-like files, analyze tag changes
-        if has_extension(file, "xml") || has_extension(file, "html") || has_extension(file, "htm") {
-            if let Some(tags) = extract_modified_tags(&staged_file.diff) {
+        if (has_extension(file, "xml") || has_extension(file, "html") || has_extension(file, "htm"))
+            && let Some(tags) = extract_modified_tags(&staged_file.diff) {
                 analysis.push(format!("Modified tags: {}", tags.join(", ")));
             }
-        }
 
         // Add a fallback analysis if nothing else was found
         if analysis.is_empty() {

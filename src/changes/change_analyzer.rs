@@ -134,22 +134,22 @@ impl ChangeAnalyzer {
                 let mut analysis = Vec::new();
 
                 // Determine file type and add relevant analysis
-                if let Some(extension) = std::path::Path::new(&file_path).extension() {
-                    if let Some(ext_str) = extension.to_str() {
-                        match ext_str.to_lowercase().as_str() {
-                            "rs" => analysis.push("Rust source code changes".to_string()),
-                            "js" | "ts" => {
-                                analysis.push("JavaScript/TypeScript changes".to_string());
-                            }
-                            "py" => analysis.push("Python code changes".to_string()),
-                            "java" => analysis.push("Java code changes".to_string()),
-                            "c" | "cpp" | "h" => analysis.push("C/C++ code changes".to_string()),
-                            "md" => analysis.push("Documentation changes".to_string()),
-                            "json" | "yml" | "yaml" | "toml" => {
-                                analysis.push("Configuration changes".to_string());
-                            }
-                            _ => {}
+                if let Some(extension) = std::path::Path::new(&file_path).extension()
+                    && let Some(ext_str) = extension.to_str()
+                {
+                    match ext_str.to_lowercase().as_str() {
+                        "rs" => analysis.push("Rust source code changes".to_string()),
+                        "js" | "ts" => {
+                            analysis.push("JavaScript/TypeScript changes".to_string());
                         }
+                        "py" => analysis.push("Python code changes".to_string()),
+                        "java" => analysis.push("Java code changes".to_string()),
+                        "c" | "cpp" | "h" => analysis.push("C/C++ code changes".to_string()),
+                        "md" => analysis.push("Documentation changes".to_string()),
+                        "json" | "yml" | "yaml" | "toml" => {
+                            analysis.push("Configuration changes".to_string());
+                        }
+                        _ => {}
                     }
                 }
 

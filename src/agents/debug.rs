@@ -282,7 +282,7 @@ pub fn debug_stream_chunk(_chunk: &str, chunk_number: usize) {
     }
 
     // Only print every 10th chunk to avoid overwhelming output
-    if chunk_number % 10 == 0 {
+    if chunk_number.is_multiple_of(10) {
         println!(
             "{} {} #{}",
             timestamp(),

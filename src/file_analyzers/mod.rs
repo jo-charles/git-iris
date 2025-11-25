@@ -103,8 +103,8 @@ pub fn get_analyzer(file: &str) -> Box<dyn FileAnalyzer + Send + Sync> {
 /// Heuristic to determine if a file is likely text-based
 fn is_likely_text_file(file: &str) -> bool {
     let file_name = std::path::Path::new(file).file_name();
-    if let Some(name) = file_name {
-        if let Some(name_str) = name.to_str() {
+    if let Some(name) = file_name
+        && let Some(name_str) = name.to_str() {
             // Common configuration files without extensions
             let config_file_names = [
                 "dockerfile",
@@ -134,7 +134,6 @@ fn is_likely_text_file(file: &str) -> bool {
                 }
             }
         }
-    }
 
     false
 }
@@ -203,20 +202,17 @@ pub fn should_exclude_file(path: &str) -> bool {
         };
 
         if is_extension {
-            if let Some(file_name) = path.file_name() {
-                if let Some(file_name_str) = file_name.to_str() {
-                    if re.is_match(file_name_str) {
+            if let Some(file_name) = path.file_name()
+                && let Some(file_name_str) = file_name.to_str()
+                    && re.is_match(file_name_str) {
                         log_debug!("File excluded: {}", path.display());
                         return true;
                     }
-                }
-            }
-        } else if let Some(path_str) = path.to_str() {
-            if re.is_match(path_str) {
+        } else if let Some(path_str) = path.to_str()
+            && re.is_match(path_str) {
                 log_debug!("File excluded: {}", path.display());
                 return true;
             }
-        }
     }
     log_debug!("File not excluded: {}", path.display());
     false
