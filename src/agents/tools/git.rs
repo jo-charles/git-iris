@@ -8,7 +8,8 @@ use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-use crate::git::GitRepo;
+use crate::context::ChangeType;
+use crate::git::{GitRepo, StagedFile};
 
 #[derive(Debug, thiserror::Error)]
 #[error("Git error: {0}")]
@@ -48,6 +49,99 @@ fn enforce_required_properties(value: &mut Value) {
     let required_keys: Vec<Value> = props_obj.keys().cloned().map(Value::String).collect();
 
     obj.insert("required".to_string(), Value::Array(required_keys));
+}
+
+/// Calculate relevance score for a file (0.0 - 1.0)
+/// Higher score = more important for commit message
+#[allow(clippy::case_sensitive_file_extension_comparisons)]
+fn calculate_relevance_score(file: &StagedFile) -> (f32, Vec<&'static str>) {
+    let mut score: f32 = 0.5; // Base score
+    let mut reasons = Vec::new();
+    let path = file.path.to_lowercase();
+
+    // Change type scoring
+    match file.change_type {
+        ChangeType::Added => {
+            score += 0.15;
+            reasons.push("new file");
+        }
+        ChangeType::Modified => {
+            score += 0.1;
+        }
+        ChangeType::Deleted => {
+            score += 0.05;
+            reasons.push("deleted");
+        }
+    }
+
+    // File type scoring - source code is most important
+    if path.ends_with(".rs")
+        || path.ends_with(".py")
+        || path.ends_with(".ts")
+        || path.ends_with(".tsx")
+        || path.ends_with(".js")
+        || path.ends_with(".jsx")
+        || path.ends_with(".go")
+        || path.ends_with(".java")
+        || path.ends_with(".kt")
+        || path.ends_with(".swift")
+        || path.ends_with(".c")
+        || path.ends_with(".cpp")
+        || path.ends_with(".h")
+    {
+        score += 0.15;
+        reasons.push("source code");
+    } else if path.ends_with(".toml")
+        || path.ends_with(".json")
+        || path.ends_with(".yaml")
+        || path.ends_with(".yml")
+    {
+        score += 0.1;
+        reasons.push("config");
+    } else if path.ends_with(".md") || path.ends_with(".txt") || path.ends_with(".rst") {
+        score += 0.02;
+        reasons.push("docs");
+    }
+
+    // Path-based scoring
+    if path.contains("/src/") || path.starts_with("src/") {
+        score += 0.1;
+        reasons.push("core source");
+    }
+    if path.contains("/test") || path.contains("_test.") || path.contains(".test.") {
+        score -= 0.1;
+        reasons.push("test file");
+    }
+    if path.contains("generated") || path.contains(".lock") || path.contains("package-lock") {
+        score -= 0.2;
+        reasons.push("generated/lock");
+    }
+    if path.contains("/vendor/") || path.contains("/node_modules/") {
+        score -= 0.3;
+        reasons.push("vendored");
+    }
+
+    // Diff size scoring (estimate from diff length)
+    let diff_lines = file.diff.lines().count();
+    if diff_lines > 10 && diff_lines < 200 {
+        score += 0.1;
+        reasons.push("substantive changes");
+    } else if diff_lines >= 200 {
+        score += 0.05;
+        reasons.push("large diff");
+    }
+
+    // Clamp to 0.0-1.0
+    score = score.clamp(0.0, 1.0);
+
+    (score, reasons)
+}
+
+/// Scored file for output
+struct ScoredFile<'a> {
+    file: &'a StagedFile,
+    score: f32,
+    reasons: Vec<&'static str>,
 }
 
 // Git status tool
@@ -156,12 +250,70 @@ impl Tool for GitDiff {
             }
         };
 
-        let mut output = String::new();
-        output.push_str("File changes:\n");
+        // Score and sort files by relevance
+        let mut scored_files: Vec<ScoredFile> = files
+            .iter()
+            .map(|file| {
+                let (score, reasons) = calculate_relevance_score(file);
+                ScoredFile {
+                    file,
+                    score,
+                    reasons,
+                }
+            })
+            .collect();
 
-        for file in &files {
-            output.push_str(&format!("--- {}\n", file.path));
-            output.push_str(&file.diff);
+        // Sort by score descending (most important first)
+        scored_files.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        // Build output with summary header
+        let mut output = String::new();
+        let total_files = scored_files.len();
+        let total_additions: usize = files
+            .iter()
+            .map(|f| f.diff.lines().filter(|l| l.starts_with('+')).count())
+            .sum();
+        let total_deletions: usize = files
+            .iter()
+            .map(|f| f.diff.lines().filter(|l| l.starts_with('-')).count())
+            .sum();
+
+        output.push_str(&format!(
+            "=== CHANGES SUMMARY ===\nFiles: {} | +{} -{}\n\n",
+            total_files, total_additions, total_deletions
+        ));
+
+        // List files with relevance scores (helps agent prioritize)
+        output.push_str("Files by importance:\n");
+        for sf in &scored_files {
+            let reasons_str = if sf.reasons.is_empty() {
+                String::new()
+            } else {
+                format!(" ({})", sf.reasons.join(", "))
+            };
+            output.push_str(&format!(
+                "  [{:.0}%] {:?} {}{}\n",
+                sf.score * 100.0,
+                sf.file.change_type,
+                sf.file.path,
+                reasons_str
+            ));
+        }
+        output.push('\n');
+
+        // Output diffs in order of importance
+        output.push_str("=== DIFFS ===\n");
+        for sf in &scored_files {
+            output.push_str(&format!(
+                "--- {} [{:.0}% relevance]\n",
+                sf.file.path,
+                sf.score * 100.0
+            ));
+            output.push_str(&sf.file.diff);
             output.push('\n');
         }
 

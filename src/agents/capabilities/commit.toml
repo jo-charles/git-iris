@@ -3,55 +3,27 @@ description = "Generate commit messages from staged changes"
 output_type = "GeneratedMessage"
 
 task_prompt = """
-Your task is to generate a commit message for the staged changes.
+Generate a commit message for the staged changes.
 
-## Available Tools:
-- `git_diff(from="staged")` or `git_diff()` - Get staged file changes with diffs
-- `git_status()` - Get repository status and staged files
-- `git_log(count=10)` - Get recent commit history
-- `git_changed_files()` - List files that have changed
-- `file_analyzer(file_paths=["path/to/file"])` - Analyze file content and structure
-- `code_search(query="pattern", search_type="text|function|class")` - Search codebase
+## Tools Available
+- `git_diff()` - Get staged changes (ALWAYS call this first)
+- `git_log(count=5)` - Recent commits for style reference
+- `file_analyzer(file_paths=[...])` - Deep file analysis if needed
 
-## Workflow Steps:
-1. Use `git_diff()` to examine staged changes and get diffs
-2. Use `file_analyzer` to understand the context and purpose of modified files
-3. Use `code_search` or `git_log` to find related patterns or understand commit style
-4. Analyze the changes and generate an appropriate commit message
+## Workflow
+1. Call `git_diff()` to see what changed
+2. Optionally call `git_log(count=5)` to match project commit style
+3. Generate the commit message
 
-## Sample Workflows:
+## Output Requirements
+- **Subject line**: Imperative mood, max 72 chars, no period
+- **Body** (if needed): Explain WHY, not what. Wrap at 72 chars.
+- **Plain text only**: No markdown, no code fences, no headers
+- Be concise. Most commits need only a good subject line.
 
-### Standard Workflow:
-1. `git_diff()` - Get the actual changes
-2. `file_analyzer(file_paths=["path/to/key/file.rs"])` - Understand what each file does
-3. `git_log(count=10)` - Check recent commit message style
-4. Generate commit message following project patterns
-
-### Large Refactor:
-1. `git_diff()` - See the scope of changes
-2. `git_changed_files()` - Get all affected files
-3. `file_analyzer(file_paths=["key/file.rs"])` - Understand the refactor scope
-4. `code_search(query="refactor", search_type="text")` - Check how refactors are typically described
-5. Generate message emphasizing the refactor purpose and scope
-
-### Bug Fix:
-1. `git_diff()` - Examine the fix
-2. `file_analyzer(file_paths=["fixed/file.rs"])` - Understand the component
-3. `code_search(query="fix|bug", search_type="text")` - Check fix message patterns
-4. Generate message clearly describing what was fixed
-
-### New Feature:
-1. `git_diff()` - See what was added
-2. `file_analyzer(file_paths=["new/feature.rs"])` - Understand the feature
-3. `code_search(query="feat|add", search_type="text")` - Check feature message patterns
-4. Generate message highlighting the new capability
-
-## Guidelines:
-- Focus on what was changed and why it matters
-- Use clear, descriptive language
-- Follow the project's existing commit style patterns
-- Consider the scope and impact of changes
-- Keep the message concise but informative
-- Produce **plain text only**. Do not use Markdown headings (`#`), code fences (```), tables, or decorative formatting. Bullet lists are acceptable using simple `-` prefixes.
-- Subject/body must follow conventional Git formatting (imperative subject, blank line, wrapped body paragraphs).
+## Examples of Good Subjects
+- "Add user authentication via OAuth"
+- "Fix memory leak in connection pool"
+- "Refactor payment module for clarity"
+- "Update dependencies to latest versions"
 """

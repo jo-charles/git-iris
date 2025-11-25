@@ -528,6 +528,19 @@ Use the 'delegate_task' tool to spawn a sub-agent with a specific focused task. 
         // Load the capability config to get both prompt and output type
         let (mut system_prompt, output_type) = self.load_capability_config(capability).await?;
 
+        // Inject instruction preset if configured
+        if let Some(config) = &self.config {
+            let preset_name = &config.instruction_preset;
+            if !preset_name.is_empty() && preset_name != "default" {
+                let library = crate::instruction_presets::get_instruction_preset_library();
+                if let Some(preset) = library.get_preset(preset_name) {
+                    system_prompt.push_str("\n\n=== STYLE INSTRUCTIONS ===\n");
+                    system_prompt.push_str(&preset.instructions);
+                    system_prompt.push('\n');
+                }
+            }
+        }
+
         // Inject gitmoji instructions if applicable
         if let Some(config) = &self.config {
             let is_conventional = config.instruction_preset == "conventional";
