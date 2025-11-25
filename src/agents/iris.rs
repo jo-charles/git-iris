@@ -8,6 +8,7 @@ use rig::agent::{Agent, AgentBuilder as RigAgentBuilder};
 use rig::client::builder::DynClientBuilder;
 use rig::completion::{CompletionModel, Prompt};
 use schemars::JsonSchema;
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::borrow::Cow;
@@ -274,6 +275,37 @@ fn sanitize_json_response(raw: &str) -> Cow<'_, str> {
     Cow::Owned(sanitized)
 }
 
+/// Parse JSON with schema validation and error recovery
+///
+/// This function attempts to parse JSON with the following strategy:
+/// 1. Try direct parsing (fast path for well-formed responses)
+/// 2. If that fails, use the output validator for recovery
+/// 3. Log any warnings about recovered issues
+fn parse_with_recovery<T>(json_str: &str) -> Result<T>
+where
+    T: JsonSchema + DeserializeOwned,
+{
+    use crate::agents::debug as agent_debug;
+    use crate::agents::output_validator::validate_and_parse;
+
+    let validation_result = validate_and_parse::<T>(json_str)?;
+
+    // Log recovery warnings
+    if validation_result.recovered {
+        agent_debug::debug_context_management(
+            "JSON recovery applied",
+            &format!("{} issues fixed", validation_result.warnings.len()),
+        );
+        for warning in &validation_result.warnings {
+            agent_debug::debug_warning(warning);
+        }
+    }
+
+    validation_result
+        .value
+        .ok_or_else(|| anyhow::anyhow!("Failed to parse JSON even after recovery"))
+}
+
 /// The unified Iris agent that can handle any Git-Iris task
 pub struct IrisAgent {
     /// The underlying Rig client builder - we'll store the builder components instead
@@ -491,20 +523,8 @@ Use the 'delegate_task' tool to spawn a sub-agent with a specific focused task. 
             debug::debug_json_parse_attempt(sanitized_ref);
         }
 
-        // Parse via serde_json::Value first so duplicate keys collapse to the last occurrence
-        let canonical_value: serde_json::Value =
-            serde_json::from_str(sanitized_ref).map_err(|e| {
-                debug::debug_json_parse_error(&format!("Failed to parse JSON response: {}", e));
-                anyhow::anyhow!("Failed to parse JSON response: {}", e)
-            })?;
-
-        let result: T = serde_json::from_value(canonical_value).map_err(|e| {
-            debug::debug_json_parse_error(&format!(
-                "Failed to deserialize structured response: {}",
-                e
-            ));
-            anyhow::anyhow!("Failed to deserialize structured response: {}", e)
-        })?;
+        // Use the output validator for robust parsing with error recovery
+        let result: T = parse_with_recovery(sanitized_ref)?;
 
         debug::debug_json_parse_success(std::any::type_name::<T>());
 

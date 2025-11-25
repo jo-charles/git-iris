@@ -24,6 +24,9 @@ pub mod status;
 pub mod debug;
 pub mod debug_tool;
 
+// Output validation and recovery
+pub mod output_validator;
+
 // Re-exports for public API
 pub use core::{AgentBackend, AgentContext, TaskResult};
 pub use iris::{IrisAgent, IrisAgentBuilder, StreamingCallback};
