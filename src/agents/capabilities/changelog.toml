@@ -56,10 +56,26 @@ BreakingChange = {
 - When gitmoji mode is enabled you may include **at most one emoji inside an entry description** where it reinforces meaning. Never modify the JSON keys or section names with emojis; enum strings must stay plain text.
 - If gitmoji mode is disabled (or conventional preset), do not emit emojis anywhere.
 
+## Detail Level Adaptation
+Adapt your output based on the detail level specified in the user prompt:
+- **Minimal**: 1-2 entries per section, brief descriptions, no associated issues/PRs
+- **Standard** (default): 2-4 entries per section, balanced descriptions with commit refs
+- **Detailed**: 3-5+ entries per section, full descriptions with all metadata (issues, PRs, impact)
+
+## Writing Guidelines
+- Use present tense and imperative mood ("Add X" not "Added X")
+- Start each entry with capital letter, no ending period
+- Be concise but descriptive with good grammar
+- Avoid cliché words: "enhance", "streamline", "leverage", "optimize"
+- Focus on impact and significance—omit trivial changes below relevance threshold
+- Group related changes; list most impactful first within each section
+- Mention dependency/build changes under appropriate category
+- DO NOT speculate about purpose—only state what's evident from context
+
 ## Generation Steps
 1. Gather context via the mandatory tool calls; if you skipped a tool, explain why in your reasoning and call it before drafting.
 2. Bucket each change into the canonical section that best matches (Added, Changed, Deprecated, Removed, Fixed, Security).
-3. Provide 2–5 high-impact entries per non-empty section. Each entry should describe the change, its purpose, and where it lives in the codebase.
+3. Provide entries per section based on detail level. Each entry should describe the change, its purpose, and where it lives in the codebase.
 4. Document every breaking change (if any) with concrete upgrade steps in `breaking_changes`.
 5. Compute metrics from actual git data — do not guess.
 6. Output only the JSON object defined above; do not wrap in Markdown or prose.
