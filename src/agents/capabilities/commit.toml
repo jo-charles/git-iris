@@ -6,14 +6,19 @@ task_prompt = """
 Generate a commit message for the staged changes.
 
 ## Tools Available
-- `git_diff()` - Get staged changes (ALWAYS call this first)
+- `git_diff()` - Get staged changes with relevance scores and size guidance
 - `git_log(count=5)` - Recent commits for style reference
-- `file_analyzer(file_paths=[...])` - Deep file analysis if needed
 
 ## Workflow
 1. Call `git_diff()` to see what changed
-2. Optionally call `git_log(count=5)` to match project commit style
-3. Generate the commit message
+2. Read the **Size** and **Guidance** in the summary header
+3. Follow the guidance for focusing on relevant files
+4. Generate the commit message
+
+## Context Strategy by Size
+- **Small** (≤3 files, <100 lines): Consider all changes equally
+- **Medium** (≤10 files, <500 lines): Focus on files with >60% relevance
+- **Large** (>10 files or >500 lines): Focus ONLY on top 5-7 highest-relevance files; summarize the theme of lower-relevance changes
 
 ## Output Requirements
 - **Subject line**: Imperative mood, max 72 chars, no period

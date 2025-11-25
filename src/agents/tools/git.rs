@@ -51,6 +51,126 @@ fn enforce_required_properties(value: &mut Value) {
     obj.insert("required".to_string(), Value::Array(required_keys));
 }
 
+/// Helper to add a change type if not already present
+fn add_change(changes: &mut Vec<&'static str>, change: &'static str) {
+    if !changes.contains(&change) {
+        changes.push(change);
+    }
+}
+
+/// Check for function definitions in a line based on language
+fn is_function_def(line: &str, ext: &str) -> bool {
+    match ext {
+        "rs" => {
+            line.starts_with("pub fn ")
+                || line.starts_with("fn ")
+                || line.starts_with("pub async fn ")
+                || line.starts_with("async fn ")
+        }
+        "ts" | "tsx" | "js" | "jsx" => {
+            line.starts_with("function ")
+                || line.starts_with("async function ")
+                || line.contains(" = () =>")
+                || line.contains(" = async () =>")
+        }
+        "py" => line.starts_with("def ") || line.starts_with("async def "),
+        "go" => line.starts_with("func "),
+        _ => false,
+    }
+}
+
+/// Check for import statements based on language
+fn is_import(line: &str, ext: &str) -> bool {
+    match ext {
+        "rs" => line.starts_with("use ") || line.starts_with("pub use "),
+        "ts" | "tsx" | "js" | "jsx" => line.starts_with("import ") || line.starts_with("export "),
+        "py" => line.starts_with("import ") || line.starts_with("from "),
+        "go" => line.starts_with("import "),
+        _ => false,
+    }
+}
+
+/// Check for type definitions based on language
+fn is_type_def(line: &str, ext: &str) -> bool {
+    match ext {
+        "rs" => {
+            line.starts_with("pub struct ")
+                || line.starts_with("struct ")
+                || line.starts_with("pub enum ")
+                || line.starts_with("enum ")
+        }
+        "ts" | "tsx" | "js" | "jsx" => {
+            line.starts_with("interface ")
+                || line.starts_with("type ")
+                || line.starts_with("class ")
+        }
+        "py" => line.starts_with("class "),
+        "go" => line.starts_with("type "),
+        _ => false,
+    }
+}
+
+/// Detect semantic change types from diff content
+#[allow(clippy::cognitive_complexity)]
+fn detect_semantic_changes(diff: &str, path: &str) -> Vec<&'static str> {
+    use std::path::Path;
+
+    let mut changes = Vec::new();
+
+    // Get file extension
+    let ext = Path::new(path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(str::to_lowercase)
+        .unwrap_or_default();
+
+    // Only analyze supported languages
+    let supported = matches!(
+        ext.as_str(),
+        "rs" | "ts" | "tsx" | "js" | "jsx" | "py" | "go"
+    );
+
+    if supported {
+        // Analyze added lines for patterns
+        for line in diff
+            .lines()
+            .filter(|l| l.starts_with('+') && !l.starts_with("+++"))
+        {
+            let line = line.trim_start_matches('+').trim();
+
+            if is_function_def(line, &ext) {
+                add_change(&mut changes, "adds function");
+            }
+            if is_import(line, &ext) {
+                add_change(&mut changes, "modifies imports");
+            }
+            if is_type_def(line, &ext) {
+                add_change(&mut changes, "adds type");
+            }
+            // Rust-specific: impl blocks
+            if ext == "rs" && line.starts_with("impl ") {
+                add_change(&mut changes, "adds impl");
+            }
+        }
+    }
+
+    // Check for general change patterns
+    let has_deletions = diff
+        .lines()
+        .any(|l| l.starts_with('-') && !l.starts_with("---"));
+    let has_additions = diff
+        .lines()
+        .any(|l| l.starts_with('+') && !l.starts_with("+++"));
+
+    if has_deletions && has_additions && changes.is_empty() {
+        changes.push("refactors code");
+    } else if has_deletions && !has_additions {
+        changes.push("removes code");
+    }
+
+    changes
+}
+
 /// Calculate relevance score for a file (0.0 - 1.0)
 /// Higher score = more important for commit message
 #[allow(clippy::case_sensitive_file_extension_comparisons)]
@@ -131,6 +251,18 @@ fn calculate_relevance_score(file: &StagedFile) -> (f32, Vec<&'static str>) {
         reasons.push("large diff");
     }
 
+    // Add semantic change detection
+    let semantic_changes = detect_semantic_changes(&file.diff, &file.path);
+    for change in semantic_changes {
+        if !reasons.contains(&change) {
+            // Boost score for structural changes
+            if change == "adds function" || change == "adds type" || change == "adds impl" {
+                score += 0.1;
+            }
+            reasons.push(change);
+        }
+    }
+
     // Clamp to 0.0-1.0
     score = score.clamp(0.0, 1.0);
 
@@ -196,12 +328,28 @@ impl Tool for GitStatus {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GitDiff;
 
+/// Detail level for diff output
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum DetailLevel {
+    /// Summary only: file list with stats and relevance scores, no diffs
+    Summary,
+    /// Standard: includes diffs (default)
+    #[default]
+    Standard,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct GitDiffArgs {
+    /// Use "staged" or omit for staged changes, or specify commit/branch
     #[serde(default)]
     pub from: Option<String>,
+    /// Target commit/branch (use with from)
     #[serde(default)]
     pub to: Option<String>,
+    /// Detail level: "summary" for overview only, "standard" (default) for full diffs
+    #[serde(default)]
+    pub detail: DetailLevel,
 }
 
 impl Tool for GitDiff {
@@ -213,7 +361,7 @@ impl Tool for GitDiff {
     async fn definition(&self, _: String) -> ToolDefinition {
         ToolDefinition {
             name: "git_diff".to_string(),
-            description: "Get Git diff for file changes. Use with no args or from='staged' to get staged changes. Otherwise provide from/to commits or branches.".to_string(),
+            description: "Get Git diff for file changes. Use detail='summary' for quick overview (recommended first), then 'standard' for full diffs. Use with no args for staged changes.".to_string(),
             parameters: parameters_schema::<GitDiffArgs>(),
         }
     }
@@ -281,10 +429,23 @@ impl Tool for GitDiff {
             .iter()
             .map(|f| f.diff.lines().filter(|l| l.starts_with('-')).count())
             .sum();
+        let total_lines = total_additions + total_deletions;
+
+        // Categorize changeset size for agent guidance
+        let (size_category, guidance) = if total_files <= 3 && total_lines < 100 {
+            ("Small", "Focus on all files equally.")
+        } else if total_files <= 10 && total_lines < 500 {
+            ("Medium", "Prioritize files with >60% relevance.")
+        } else {
+            (
+                "Large",
+                "Focus on top 5-7 highest-relevance files. Summarize the rest.",
+            )
+        };
 
         output.push_str(&format!(
-            "=== CHANGES SUMMARY ===\nFiles: {} | +{} -{}\n\n",
-            total_files, total_additions, total_deletions
+            "=== CHANGES SUMMARY ===\nFiles: {} | +{} -{} | Size: {} ({} lines)\nGuidance: {}\n\n",
+            total_files, total_additions, total_deletions, size_category, total_lines, guidance
         ));
 
         // List files with relevance scores (helps agent prioritize)
@@ -305,16 +466,20 @@ impl Tool for GitDiff {
         }
         output.push('\n');
 
-        // Output diffs in order of importance
-        output.push_str("=== DIFFS ===\n");
-        for sf in &scored_files {
-            output.push_str(&format!(
-                "--- {} [{:.0}% relevance]\n",
-                sf.file.path,
-                sf.score * 100.0
-            ));
-            output.push_str(&sf.file.diff);
-            output.push('\n');
+        // Only include full diffs for Standard detail level
+        if matches!(args.detail, DetailLevel::Standard) {
+            output.push_str("=== DIFFS ===\n");
+            for sf in &scored_files {
+                output.push_str(&format!(
+                    "--- {} [{:.0}% relevance]\n",
+                    sf.file.path,
+                    sf.score * 100.0
+                ));
+                output.push_str(&sf.file.diff);
+                output.push('\n');
+            }
+        } else {
+            output.push_str("(Use detail='standard' to see full diffs)\n");
         }
 
         Ok(output)

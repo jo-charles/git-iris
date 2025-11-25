@@ -161,22 +161,16 @@ async fn test_agent_setup_service_from_temp_dir() {
     let original_dir = env::current_dir().unwrap();
     env::set_current_dir(&repo_path).unwrap();
 
-    let result = std::panic::catch_unwind(|| {
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        rt.block_on(async {
-            let common_params = git_iris::common::CommonParams::default();
-            let setup_service = AgentSetupService::from_common_params(&common_params, None);
+    // Run the test - already in a tokio runtime, no need for nested runtime
+    let common_params = git_iris::common::CommonParams::default();
+    let setup_service = AgentSetupService::from_common_params(&common_params, None);
 
-            assert!(setup_service.is_ok());
-            let setup_service = setup_service.unwrap();
-            assert!(setup_service.git_repo().is_some());
-        });
-    });
-
-    // Restore original directory
+    // Restore original directory before assertions
     env::set_current_dir(original_dir).unwrap();
 
-    assert!(result.is_ok());
+    assert!(setup_service.is_ok());
+    let setup_service = setup_service.unwrap();
+    assert!(setup_service.git_repo().is_some());
 }
 
 #[test]
@@ -244,35 +238,29 @@ async fn test_complete_agent_setup_workflow() {
     let original_dir = env::current_dir().unwrap();
     env::set_current_dir(&repo_path).unwrap();
 
-    let result = std::panic::catch_unwind(|| {
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        rt.block_on(async {
-            let common_params = git_iris::common::CommonParams::default();
-            let setup_service = AgentSetupService::from_common_params(&common_params, None);
+    // Already in a tokio runtime, no need for nested runtime
+    let common_params = git_iris::common::CommonParams::default();
+    let setup_service = AgentSetupService::from_common_params(&common_params, None);
 
-            // This will fail without proper API keys, but tests the pipeline
-            if let Ok(mut setup_service) = setup_service {
-                let agent_result = setup_service.create_iris_agent();
+    // This will fail without proper API keys, but tests the pipeline
+    if let Ok(mut setup_service) = setup_service {
+        let agent_result = setup_service.create_iris_agent();
 
-                // We expect this to fail in CI/testing without API keys
-                // but the error should be about missing API keys, not code structure
-                if let Err(e) = agent_result {
-                    let error_msg = e.to_string();
-                    assert!(
-                        error_msg.contains("API key")
-                            || error_msg.contains("OPENAI_API_KEY")
-                            || error_msg.contains("ANTHROPIC_API_KEY")
-                            || error_msg.contains("configuration")
-                            || error_msg.contains("provider"),
-                        "Expected API key or configuration error, got: {error_msg}"
-                    );
-                }
-            }
-        });
-    });
+        // We expect this to fail in CI/testing without API keys
+        // but the error should be about missing API keys, not code structure
+        if let Err(e) = agent_result {
+            let error_msg = e.to_string();
+            assert!(
+                error_msg.contains("API key")
+                    || error_msg.contains("OPENAI_API_KEY")
+                    || error_msg.contains("ANTHROPIC_API_KEY")
+                    || error_msg.contains("configuration")
+                    || error_msg.contains("provider"),
+                "Expected API key or configuration error, got: {error_msg}"
+            );
+        }
+    }
 
     // Restore original directory
     env::set_current_dir(original_dir).unwrap();
-
-    assert!(result.is_ok());
 }
