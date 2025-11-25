@@ -442,6 +442,7 @@ struct GenConfig {
 }
 
 /// Handle the `Gen` command with agent framework and TUI integration
+#[allow(clippy::too_many_lines)]
 async fn handle_gen_with_agent(
     common: CommonParams,
     config: GenConfig,

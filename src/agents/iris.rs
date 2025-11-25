@@ -257,7 +257,7 @@ fn sanitize_json_response(raw: &str) -> Cow<'_, str> {
                 '\t' => sanitized.push_str("\\t"),
                 c if c.is_control() => {
                     use std::fmt::Write as _;
-                    let _ = write!(&mut sanitized, "\\u{:04X}", c as u32);
+                    let _ = write!(&mut sanitized, "\\u{:04X}", u32::from(c));
                 }
                 _ => sanitized.push(ch),
             }
@@ -272,8 +272,6 @@ fn sanitize_json_response(raw: &str) -> Cow<'_, str> {
 
     Cow::Owned(sanitized)
 }
-
-/// Deduplicate duplicate top-level keys (`OpenAI` occasionally emits them when mixing tool and response streams).
 
 /// The unified Iris agent that can handle any Git-Iris task
 pub struct IrisAgent {
@@ -466,7 +464,12 @@ Use the 'delegate_task' tool to spawn a sub-agent with a specific focused task. 
         debug::debug_llm_response(&response, std::time::Duration::from_secs(0), None);
 
         // Update status - synthesis phase
-        crate::iris_status_dynamic!(IrisPhase::Synthesis, "✨ Iris is synthesizing results...", 4, 4);
+        crate::iris_status_dynamic!(
+            IrisPhase::Synthesis,
+            "✨ Iris is synthesizing results...",
+            4,
+            4
+        );
 
         // Extract and parse JSON from the response
         let json_str = extract_json_from_response(&response)?;
@@ -509,6 +512,7 @@ Use the 'delegate_task' tool to spawn a sub-agent with a specific focused task. 
     /// Execute a task with the given capability and user prompt
     ///
     /// This now automatically uses structured output based on the capability type
+    #[allow(clippy::too_many_lines)]
     pub async fn execute_task(
         &mut self,
         capability: &str,
@@ -582,7 +586,12 @@ Use the 'delegate_task' tool to spawn a sub-agent with a specific focused task. 
         self.current_capability = Some(capability.to_string());
 
         // Update status - analyzing with agent
-        crate::iris_status_dynamic!(IrisPhase::Analysis, "🔍 Iris is analyzing your changes...", 2, 4);
+        crate::iris_status_dynamic!(
+            IrisPhase::Analysis,
+            "🔍 Iris is analyzing your changes...",
+            2,
+            4
+        );
 
         // Use agent with tools for all structured outputs
         // The agent will use tools as needed and respond with JSON

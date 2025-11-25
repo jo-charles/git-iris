@@ -37,9 +37,8 @@ fn parameters_schema<T: schemars::JsonSchema>() -> Value {
 }
 
 fn enforce_required_properties(value: &mut Value) {
-    let obj = match value.as_object_mut() {
-        Some(obj) => obj,
-        None => return,
+    let Some(obj) = value.as_object_mut() else {
+        return;
     };
 
     let props_entry = obj

@@ -197,8 +197,7 @@ fn test_git_tools_exist() {
     let _git_repo_info = GitRepoInfo;
     let _git_changed_files = GitChangedFiles;
 
-    // These should compile without errors if the tools are properly defined
-    assert!(true);
+    // If we get here, all tools compiled successfully
 }
 
 #[test]
