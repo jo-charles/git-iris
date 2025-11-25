@@ -1,371 +1,177 @@
-# Git-Iris Agent Framework Documentation
+# Git-Iris Developer Guide
 
-This document serves as a comprehensive guide to the intelligent agent framework we've built for Git-Iris. This is designed to help future development sessions understand the architecture, capabilities, and design philosophy.
+## Architecture Overview
 
-## 🤖 Meet Iris - The Unified AI Agent
+Git-Iris uses an agent-first architecture powered by **Iris**, an LLM-driven agent built on the [Rig framework](https://docs.rs/rig-core). Iris dynamically explores codebases using tool calls rather than dumping all context upfront.
 
-Iris is the central AI agent that powers all Git-Iris operations. Unlike traditional static tools, Iris is truly agentic - she plans her own tasks, uses tools intelligently, takes notes, manages context, and adapts her approach based on what she learns.
+### Core Principle
+The LLM makes all intelligent decisions. We avoid deterministic heuristics—Iris decides which tools to use, manages her own context, and adapts her approach based on what she learns.
 
-### Core Philosophy: LLM-Driven Everything
-
-**Key Principle**: The LLM (Iris) makes all the intelligent decisions. We avoid deterministic heuristics and instead let Iris:
-- Decide which tools to use and when
-- Manage her own context and summarization
-- Take notes and build knowledge as she works
-- Plan and adapt her approach dynamically
-- Handle complex workflows through intelligent orchestration
-
-## 🏗️ Architecture Overview
-
-### Core Components
+## Project Structure
 
 ```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Iris Agent    │◄──►│  Tool Registry  │◄──►│ Status Tracker │
-│  (LLM Brain)    │    │   (Abilities)   │    │ (Progress UI)   │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-         │                       │                       │
-         ▼                       ▼                       ▼
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│  Context Mgmt   │    │ Workspace Tool  │    │  CLI Spinner    │
-│ (Smart Sizing)  │    │ (Notes/Tasks)   │    │ (Real-time UI)  │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
+src/
+├── agents/                 # Agent framework
+│   ├── iris.rs            # Main agent implementation
+│   ├── core.rs            # Backend abstraction (OpenAI/Anthropic)
+│   ├── setup.rs           # Agent setup service
+│   ├── status.rs          # Real-time status tracking
+│   ├── capabilities/      # Task-specific prompts (TOML)
+│   │   ├── commit.toml
+│   │   ├── review.toml
+│   │   ├── pr.toml
+│   │   ├── changelog.toml
+│   │   └── release_notes.toml
+│   └── tools/             # Tools Iris can use
+│       ├── git.rs         # Git operations (diff, log, status)
+│       ├── file_analyzer.rs # File content analysis
+│       ├── code_search.rs # Pattern searching
+│       └── workspace.rs   # Notes and task tracking
+├── cli.rs                 # CLI entry point
+├── commit/                # Commit message generation
+├── changes/               # Changelog/release notes
+├── config.rs              # Configuration management
+├── git.rs                 # Git2 wrapper
+└── llm.rs                 # LLM provider abstraction
 ```
 
-### Key Files & Modules
+## Agent Mode (Default)
 
-- **`src/agents/iris.rs`** - The main Iris agent implementation
-- **`src/agents/core.rs`** - Agent backend abstraction and context
-- **`src/agents/tools/`** - Clean, organized tool implementations:
-  - `mod.rs` - Tool trait and registry
-  - `git.rs` - Git repository operations
-  - `file_analyzer.rs` - File content analysis
-  - `code_search.rs` - Code pattern searching
-  - `workspace.rs` - Iris's personal workspace
-- **`src/agents/status.rs`** - Status tracking and progress display
-- **`src/agents/integration.rs`** - CLI integration layer
-- **`src/ui.rs`** - Beautiful spinner and status UI
+Agent mode is enabled by default. Use `--legacy` for the old non-agent implementation.
 
-## 🧠 Iris Capabilities
-
-### 1. Adaptive Planning & Execution
-Iris doesn't follow predetermined scripts. Instead, she:
-- **Plans intelligently**: Creates initial tool usage plans based on the task
-- **Expands dynamically**: Adds more tools as she discovers new context
-- **Adapts in real-time**: Modifies her approach based on what she learns
-
-```rust
-// Example: Iris decides her own tool sequence
-async fn plan_tool_usage_for_context_analysis(&self, context: &AgentContext) -> Result<Vec<ToolPlan>>
-async fn expand_plan_based_on_context(&self, context: &AgentContext, current_results: &[ToolResult], remaining_plan: &[ToolPlan]) -> Result<Vec<ToolPlan>>
-```
-
-### 2. Intelligent Context Management
-One of our key innovations - Iris manages her own context to avoid token limits:
-
-```rust
-async fn manage_review_context(&self, context: &CommitContext) -> Result<String> {
-    // If context is small enough, use it directly
-    if context_size < 8000 {
-        return Ok(full_context);
-    }
-    
-    // Otherwise, ask Iris to intelligently summarize
-    let smart_context_prompt = format!(
-        "Create a focused summary that preserves all critical information..."
-    );
-    
-    self.analyze_with_backend(&smart_context_prompt).await
-}
-```
-
-**What Iris preserves:**
-- Security-critical changes
-- Complex logic requiring careful review
-- Performance-sensitive code
-- Error handling patterns
-- API changes or breaking changes
-- Critical diff sections (exact code)
-
-**What Iris summarizes:**
-- Repetitive patterns
-- Simple refactoring
-- Formatting changes
-- Non-critical utility functions
-
-### 3. Self-Managing Workspace
-Iris has her own workspace tool for taking notes and managing tasks:
-
-```rust
-// Iris can create her own tasks
-workspace.add_task("Analyze security implications of auth changes", "high")
-
-// Take notes as she works
-workspace.add_note("Found potential SQL injection in user input validation", ["security", "critical"])
-
-// Update task progress
-workspace.update_task("task_1", Some("completed"), Some("Implemented rate limiting"))
-```
-
-This allows Iris to:
-- Keep track of complex analysis workflows
-- Remember insights across tool calls
-- Plan multi-step operations
-- Build institutional knowledge
-
-### 4. Beautiful Status Display
-Real-time progress feedback with clean, futuristic design:
-
-```
-⠋ Iris is performing deep analysis...  
-⠙ Iris is synthesizing findings...      
-⠹ Iris is generating recommendations...  
-⠸ ◎ Analysis complete                   
-```
-
-- **Braille pattern spinners** for clean, professional look
-- **Real-time status updates** showing Iris's thinking process
-- **Phase-aware progress** (Planning → Analysis → Synthesis → Generation)
-- **Integrated with CLI** using existing `indicatif` infrastructure
-
-## 🛠️ Tool Ecosystem
-
-### Core Tools Available to Iris
-
-Tools are now cleanly organized in `src/agents/tools/` with each tool in its own module:
-
-#### 1. Git Tool (`src/agents/tools/git.rs`)
-```rust
-// Operations Iris can perform
-"diff"   -> Get staged file changes with full context
-"status" -> Repository status and unstaged files  
-"log"    -> Recent commit history
-"files"  -> List of changed files
-```
-
-#### 2. File Analyzer Tool (`src/agents/tools/file_analyzer.rs`)
-```rust
-// Iris can analyze files in detail
-analyzer.analyze(path, include_content: true)
-// Returns: file type, line count, content, language-specific insights
-```
-
-#### 3. Code Search Tool (`src/agents/tools/code_search.rs`)
-```rust
-// Search for patterns, functions, classes
-search.find("function", query, file_pattern, max_results)
-```
-
-#### 4. Workspace Tool (`src/agents/tools/workspace.rs`)
-```rust
-// Iris's personal productivity system
-workspace.add_note(content, tags)
-workspace.add_task(description, priority)
-workspace.update_task(id, status, note)
-workspace.get_summary()
-```
-
-#### Tool Organization Benefits
-- **Clean separation** - Each tool is self-contained in its own file
-- **Easy to extend** - Adding new tools is straightforward
-- **Clear documentation** - Each tool has comprehensive docs
-- **Modular design** - Tools can be developed and tested independently
-
-### Tool Selection Philosophy
-Tools are **capabilities**, not rigid scripts. Iris decides:
-- Which tools to use for each task
-- What parameters to pass
-- When to use multiple tools in sequence
-- How to combine results from different tools
-
-## 📊 Status & Progress Tracking
-
-### Real-Time Status System
-```rust
-// Iris updates her status throughout execution
-iris_status_planning!();        // "📋 Iris is planning her approach..."
-iris_status_tool!("git", "Getting repository context");  // "🔧 Iris is analyzing git repository..."
-iris_status_analysis!();        // "🔬 Iris is performing deep analysis..."
-iris_status_synthesis!();       // "🧬 Iris is synthesizing findings..."
-iris_status_generation!();      // "✨ Iris is generating response..."
-iris_status_completed!();       // "✅ Analysis complete"
-```
-
-### Phase-Based Progress
-- **Initializing**: Iris awakens and prepares
-- **Planning**: Creates initial tool usage plan
-- **Tool Execution**: Executes tools with real-time updates
-- **Plan Expansion**: Decides if more tools are needed
-- **Analysis**: Deep analysis of gathered context
-- **Synthesis**: Combines insights into coherent understanding
-- **Generation**: Creates final output
-- **Completed**: Task finished successfully
-
-## 🔄 Workflow Examples
-
-### Code Review Workflow
-```
-1. 📋 Iris plans review approach
-2. 🔧 Analyzes git diff and repository context  
-3. 📄 Examines specific files needing attention
-4. 🧠 Builds understanding through intelligent context management
-5. 📝 Takes notes on critical findings
-6. 🔬 Performs deep analysis across quality dimensions
-7. ✨ Generates comprehensive review with recommendations
-```
-
-### Commit Message Generation
-```
-1. 📋 Plans context gathering strategy
-2. 🔧 Gets staged changes and file analysis
-3. 🔍 Searches for related code patterns if needed
-4. 📝 Takes notes on change significance  
-5. 🧬 Synthesizes understanding of change impact
-6. ✨ Generates contextual commit message
-```
-
-## 🌊 Real-Time Streaming Support
-
-Iris now supports real-time streaming for an enhanced user experience during LLM operations. This provides immediate feedback and makes long-running tasks feel more responsive.
-
-### Streaming Features
-
-#### 🔄 **Live Status Updates**
-- Real-time progress indicators during analysis phases
-- Dynamic status messages showing current operations
-- Beautiful Braille spinner integration with streaming feedback
-
-#### 🌊 **Word-by-Word Generation**
-- Commit messages stream as they're being generated
-- Users see text appearing in real-time
-- Enhanced perceived performance even for slower models
-
-#### 🎯 **Smart Callback System**
-- Modular `StreamingCallback` trait for different feedback types
-- `IrisStreamingCallback` provides default UI integration
-- Custom callbacks can be implemented for specific use cases
-
-### Streaming Architecture
-
-```rust
-// Streaming callback trait
-#[async_trait]
-pub trait StreamingCallback: Send + Sync {
-    async fn on_chunk(&self, chunk: &str) -> Result<()>;
-    async fn on_complete(&self, full_response: &str) -> Result<()>;
-    async fn on_error(&self, error: &anyhow::Error) -> Result<()>;
-}
-
-// Usage in agent integration
-let integration = AgentIntegration::new(config, git_repo).await?;
-let commit_message = integration
-    .generate_commit_message_streaming(preset, instructions, None)
-    .await?;
-```
-
-### Streaming Benefits
-
-#### 🚀 **Enhanced UX**
-- **Immediate feedback**: Users see progress instantly
-- **Reduced perceived latency**: Streaming makes operations feel faster
-- **Better engagement**: Real-time updates keep users informed
-
-#### 🎨 **Beautiful Integration**
-- **Status synchronization**: Streaming updates integrate with Iris status display
-- **UI consistency**: Maintains Git-Iris's beautiful terminal experience
-- **Progressive disclosure**: Information appears as it becomes available
-
-#### 🔧 **Technical Advantages**
-- **Rig framework integration**: Leverages Rig's streaming capabilities
-- **Provider agnostic**: Works with both OpenAI and Anthropic backends
-- **Graceful fallbacks**: Falls back to standard mode if streaming fails
-
-## 🎯 Key Design Decisions
-
-### 1. LLM-First Architecture
-- **No deterministic heuristics** - Iris makes all decisions
-- **Context-aware tool selection** - Tools chosen based on situation
-- **Adaptive behavior** - Changes approach based on findings
-
-### 2. Agent Personification
-- Iris is consistently referred to as "she" and "Iris"
-- All prompts use "You are Iris" language
-- Status messages show "Iris is..." for personal connection
-- Creates a cohesive AI assistant experience
-
-### 3. Intelligent Defaults with Flexibility
-- Smart context management prevents token limit issues
-- Beautiful UI provides feedback without being noisy
-- Agent mode is opt-in via `--agent` flag
-- Graceful fallbacks to traditional Git-Iris behavior
-
-### 4. Self-Improving System
-- Iris learns and takes notes as she works
-- Workspace tool allows building institutional knowledge
-- Future sessions can benefit from previous learnings
-- Adaptive planning improves with experience
-
-## 🚀 CLI Integration
-
-### Agent Mode Activation
 ```bash
-# Enable agent mode with --agent flag
-git-iris gen --agent                    # AI commit message
-git-iris review --agent --print         # AI code review  
-git-iris pr --agent                     # AI PR description
-git-iris changelog --agent --from v1.0  # AI changelog
+git-iris gen                    # Agent mode (default)
+git-iris gen --legacy           # Legacy mode
+git-iris gen --debug            # Agent mode with debug output
 ```
 
-### Status Display Integration
-- **Seamless integration** with existing CLI infrastructure
-- **Progressive enhancement** - works with existing commands
-- **Clean visual design** using braille patterns
-- **Real-time updates** without overwhelming output
+## Capabilities
 
-## 🔧 Future Enhancements
+Each capability is defined in `src/agents/capabilities/*.toml`:
 
-### Planned Improvements
-1. **MCP Server Integration** - Allow external tools to connect to Iris
-2. **Project Metadata Integration** - Learn project-specific patterns
-3. **Persistent Knowledge Base** - Remember insights across sessions
-4. **Advanced Tool Orchestration** - Complex multi-tool workflows
-5. **Custom Tool Development** - Easy addition of new capabilities
+- **commit** - Generate commit messages from staged changes
+- **review** - Comprehensive code reviews with severity ratings
+- **pr** - Pull request descriptions
+- **changelog** - Structured changelogs (Keep a Changelog format)
+- **release_notes** - Release notes with highlights and sections
 
-### Architectural Flexibility
-The framework is designed to grow:
-- **Modular tool system** - Easy to add new capabilities
-- **Provider-agnostic backend** - Works with any LLM provider  
-- **Extensible status system** - New phases and updates
-- **Clean abstraction layers** - Separate concerns properly
+Capabilities define:
+- `name` - Capability identifier
+- `output_type` - Expected JSON schema (e.g., `GeneratedMessage`, `GeneratedReview`)
+- `task_prompt` - Instructions for Iris
 
-## 💡 Development Philosophy
+## Tools Available to Iris
 
-### Core Principles
-1. **LLM Intelligence First** - Let the AI make decisions
-2. **Beautiful User Experience** - Clean, informative, delightful
-3. **Adaptive & Learning** - Improve with experience
-4. **Modular Architecture** - Easy to extend and modify
-5. **Fail Gracefully** - Fallback to working alternatives
+| Tool | Purpose |
+|------|---------|
+| `git_diff` | Get staged/commit changes with relevance scores |
+| `git_log` | Recent commit history |
+| `git_status` | Repository status |
+| `git_changed_files` | List of changed files |
+| `file_analyzer` | Deep file analysis (content, metadata) |
+| `code_search` | Search for patterns, functions, classes |
+| `workspace` | Iris's notes and task tracking |
+| `project_docs` | Read project documentation |
 
-### Code Quality
-- **Comprehensive error handling** with graceful degradation
-- **Extensive logging** for debugging and understanding
-- **Clean abstractions** separating concerns
-- **Thread-safe design** for concurrent operations
-- **Performance conscious** with intelligent optimizations
+## Output Types
 
----
+Iris produces structured JSON matching these schemas (in `src/commit/types.rs` and `src/changes/models.rs`):
 
-## 🎉 What We've Built
+- `GeneratedMessage` - Commit message (emoji, title, body)
+- `GeneratedPullRequest` - PR description with sections
+- `GeneratedReview` - Code review with dimension analysis
+- `ChangelogResponse` - Changelog sections (Added, Changed, Fixed, etc.)
+- `ReleaseNotesResponse` - Release notes with highlights
 
-This agent framework represents a significant evolution in how AI tools work. Instead of static, predetermined sequences, we have:
+## Adding a New Capability
 
-- **A truly intelligent agent** that plans and adapts
-- **Beautiful, real-time feedback** showing the agent's thinking
-- **Sophisticated context management** preventing token issues
-- **Self-improving workspace** for building knowledge
-- **Seamless CLI integration** that enhances existing workflows
+1. Create `src/agents/capabilities/new_capability.toml`:
+```toml
+name = "my_capability"
+description = "What it does"
+output_type = "MyOutputType"
 
-Iris isn't just a tool - she's an AI assistant that understands Git workflows, learns from experience, and provides intelligent, contextual help exactly when you need it.
+task_prompt = """
+Instructions for Iris...
+"""
+```
 
-The future of Git-Iris is agentic, adaptive, and absolutely delightful to use. 🚀
+2. Add output type to `src/agents/iris.rs` `StructuredResponse` enum
+3. Add match arm in `execute_task()` for the new output type
+
+## Key Design Decisions
+
+1. **LLM-First**: No hardcoded heuristics—Iris makes decisions
+2. **Tool-Based Context**: Gather only what's needed via tool calls
+3. **Structured Output**: JSON schemas ensure parseable responses
+4. **Output Validation**: Recovery logic handles malformed JSON
+5. **Graceful Fallback**: `--legacy` mode if agent fails
+
+## Development Commands
+
+```bash
+cargo build                     # Build
+cargo test                      # Run tests
+cargo clippy                    # Lint
+cargo run -- gen --debug        # Test commit generation with debug
+RUST_LOG=debug cargo run -- gen # Verbose logging
+```
+
+## SilkCircuit Design Language
+
+Git-Iris CLI output follows the **SilkCircuit Neon** color palette for a cohesive, electric aesthetic.
+
+### Color Palette
+
+| Color | Hex | Usage |
+|-------|-----|-------|
+| Electric Purple | `#e135ff` | Keywords, markers, emphasis |
+| Neon Cyan | `#80ffea` | Functions, paths, interactions |
+| Coral | `#ff6ac1` | Hashes, numbers, constants |
+| Electric Yellow | `#f1fa8c` | Warnings, timestamps |
+| Success Green | `#50fa7b` | Success states, confirmations |
+| Error Red | `#ff6363` | Errors, danger, removals |
+
+### Semantic Usage
+
+- **Branch names** → Neon Cyan (bold)
+- **Commit hashes** → Coral
+- **Timestamps** → Electric Yellow
+- **Current item markers** → Electric Purple
+- **Warnings** → Electric Yellow
+- **Success messages** → Success Green
+- **Errors** → Error Red
+
+### Implementation
+
+Using the `colored` crate with true color support:
+
+```rust
+use colored::Colorize;
+
+// Success message
+println!("{}", "✨ Commit created successfully".truecolor(80, 250, 123));
+
+// Error message
+println!("{}", "Error: No staged changes".truecolor(255, 99, 99));
+
+// Commit hash
+println!("Commit: {}", hash.truecolor(255, 106, 193));
+```
+
+### Typography
+
+- Monospace fonts: JetBrains Mono, Fira Code, SF Mono
+- Unicode box-drawing for separators: `─`, `━`
+- Braille spinners for progress: `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`
+
+## Provider Configuration
+
+Set via environment or config:
+```bash
+export IRIS_PROVIDER=anthropic
+export IRIS_MODEL=claude-sonnet-4-5-20250929
+export ANTHROPIC_API_KEY=sk-...
+```
+
+Or use `git-iris config --provider anthropic --api-key YOUR_KEY`

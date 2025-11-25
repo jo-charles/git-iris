@@ -65,12 +65,16 @@ Each provider has its own subtable under `[providers]` with these fields:
 
 ## Supported Providers and Default Models
 
-1. OpenAI
-   - Default model: "gpt-o4"
-2. Claude
-   - Default model: "claude-3-7-sonnet-20250219"
-3. Gemini
-   - Default model: "gemini-2.0-flash"
+| Provider | Default Model | Notes |
+|----------|--------------|-------|
+| openai | gpt-4o | Requires OPENAI_API_KEY |
+| anthropic | claude-3-7-sonnet-20250219 | Requires ANTHROPIC_API_KEY |
+| google | gemini-2.0-flash | Requires GOOGLE_API_KEY |
+| groq | llama-3.1-70b-versatile | Requires GROQ_API_KEY |
+| ollama | llama3 | Local, no API key needed |
+| xai | grok-2-beta | Requires XAI_API_KEY |
+| deepseek | deepseek-chat | Requires DEEPSEEK_API_KEY |
+| phind | phind-v2 | No API key needed |
 
 ## Example Configuration File
 
@@ -89,11 +93,11 @@ model = "gpt-4"
 additional_params = { temperature = "0.7", max_tokens = "150" }
 custom_token_limit = 8000
 
-[providers.claude]
+[providers.anthropic]
 api_key = "sk-abcdef1234567890"
 model = "claude-3-7-sonnet-20250219"
 additional_params = { temperature = "0.8" }
-custom_token_limit = 100000
+custom_token_limit = 200000
 
 [providers.gemini]
 api_key = "your-gemini-api-key"

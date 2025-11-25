@@ -26,7 +26,9 @@ _Git-Iris in action: AI-powered Git workflow assistance_
 
 ## 🌟 Overview
 
-Git-Iris is a comprehensive AI-powered Git workflow assistant that enhances your development process from start to finish. It offers intelligent support for crafting meaningful commit messages, generating insightful changelogs, creating detailed release notes, and providing code reviews. By leveraging advanced AI models, Git-Iris boosts your productivity and improves the quality of your project documentation.
+Git-Iris is a comprehensive AI-powered Git workflow assistant that enhances your development process from start to finish. Powered by **Iris**, an intelligent agent that dynamically explores your codebase, Git-Iris crafts meaningful commit messages, generates insightful changelogs, creates detailed release notes, and provides thorough code reviews.
+
+Unlike traditional tools that dump context and hope for the best, Iris uses tool calls to gather precisely the information she needs—analyzing diffs, exploring file relationships, and building understanding iteratively. This agent-first architecture delivers more accurate, context-aware results while handling large changesets gracefully.
 
 ## ✨ Features
 
@@ -248,6 +250,8 @@ These options apply to all commands:
 - `-q`, `--quiet`: Suppress non-essential output (spinners, waiting messages, etc.)
 - `-v`, `--version`: Display version information
 - `-r`, `--repo`: Use a remote repository URL instead of local repository
+- `--legacy`: Use legacy non-agent implementation (fallback mode)
+- `--debug`: Enable debug mode with detailed agent execution output
 
 ### Generate Commit Messages
 
