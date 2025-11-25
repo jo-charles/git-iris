@@ -1,7 +1,17 @@
+//! `SilkCircuit` spinner — Electric animation
+//!
+//! Braille-based spinner with `SilkCircuit` color pulsing.
+
 use crate::messages::ColoredMessage;
 use crate::messages::get_waiting_message;
 use ratatui::style::Color;
 use unicode_width::UnicodeWidthStr;
+
+/// `SilkCircuit` spinner frames — elegant braille animation
+const SPINNER_FRAMES: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+
+/// Alternative classic star frames for non-agent mode
+const STAR_FRAMES: [char; 6] = ['◐', '◓', '◑', '◒', '◐', '◓'];
 
 pub struct SpinnerState {
     frames: Vec<char>,
@@ -17,14 +27,14 @@ impl SpinnerState {
 
         if use_agent_status {
             Self {
-                frames: vec!['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'],
+                frames: SPINNER_FRAMES.to_vec(),
                 current_frame: 0,
                 message: get_waiting_message(),
                 use_agent_status: true,
             }
         } else {
             Self {
-                frames: vec!['✦', '✧', '✶', '✷', '✸', '✹', '✺', '✻', '✼', '✽'],
+                frames: STAR_FRAMES.to_vec(),
                 current_frame: 0,
                 message: get_waiting_message(),
                 use_agent_status: false,
@@ -34,7 +44,7 @@ impl SpinnerState {
 
     pub fn new_with_agent() -> Self {
         Self {
-            frames: vec!['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'],
+            frames: SPINNER_FRAMES.to_vec(),
             current_frame: 0,
             message: get_waiting_message(),
             use_agent_status: true,

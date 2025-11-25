@@ -6,16 +6,57 @@ use ratatui::style::Color;
 use std::fmt::Write;
 use std::time::Duration;
 
-pub const STARLIGHT: Color = Color::Rgb(255, 255, 240);
-pub const NEBULA_PURPLE: Color = Color::Rgb(167, 132, 239);
-pub const CELESTIAL_BLUE: Color = Color::Rgb(75, 115, 235);
-pub const SOLAR_YELLOW: Color = Color::Rgb(255, 225, 100);
-pub const AURORA_GREEN: Color = Color::Rgb(140, 255, 170);
-pub const PLASMA_CYAN: Color = Color::Rgb(20, 255, 255);
-pub const METEOR_RED: Color = Color::Rgb(255, 89, 70);
-pub const GALAXY_PINK: Color = Color::Rgb(255, 162, 213);
-pub const COMET_ORANGE: Color = Color::Rgb(255, 165, 0);
-pub const BLACK_HOLE: Color = Color::Rgb(0, 0, 0);
+// ═══════════════════════════════════════════════════════════════════════════════
+// SilkCircuit Neon — Electric meets elegant
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Electric Purple #e135ff — Keywords, control flow, importance
+pub const ELECTRIC_PURPLE: Color = Color::Rgb(225, 53, 255);
+/// Pure Pink #ff00ff — Tags, booleans, maximum emphasis
+pub const PURE_PINK: Color = Color::Rgb(255, 0, 255);
+/// Soft Pink #ff99ff — Strings, secondary emphasis
+pub const SOFT_PINK: Color = Color::Rgb(255, 153, 255);
+/// Neon Cyan #80ffea — Functions, methods, interactions
+pub const NEON_CYAN: Color = Color::Rgb(128, 255, 234);
+/// Bright Cyan #00ffcc — High-energy interaction
+pub const BRIGHT_CYAN: Color = Color::Rgb(0, 255, 204);
+/// Coral #ff6ac1 — Numbers, constants
+pub const CORAL: Color = Color::Rgb(255, 106, 193);
+/// Electric Yellow #f1fa8c — Classes, types, warnings
+pub const ELECTRIC_YELLOW: Color = Color::Rgb(241, 250, 140);
+/// Success Green #50fa7b — Success states, confirmations
+pub const SUCCESS_GREEN: Color = Color::Rgb(80, 250, 123);
+/// Error Red #ff6363 — Errors, danger, removals
+pub const ERROR_RED: Color = Color::Rgb(255, 99, 99);
+/// Soft White #f8f8f2 — Primary text
+pub const SOFT_WHITE: Color = Color::Rgb(248, 248, 242);
+/// Purple Muted #6272a4 — Comments, secondary text
+pub const PURPLE_MUTED: Color = Color::Rgb(98, 114, 164);
+/// Dim Gray — Alias for purple muted
+pub const DIM_GRAY: Color = PURPLE_MUTED;
+/// Deep Purple #bd93f9 — Accents, borders
+pub const DEEP_PURPLE: Color = Color::Rgb(189, 147, 249);
+/// Void #282a36 — Background hints, surfaces
+pub const VOID: Color = Color::Rgb(40, 42, 54);
+/// Dark Base #12101a — Deep background
+pub const DARK_BASE: Color = Color::Rgb(18, 16, 26);
+/// Highlight #1a162a — Elevated surfaces
+pub const HIGHLIGHT: Color = Color::Rgb(26, 22, 42);
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Legacy aliases (for backwards compatibility during transition)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+pub const STARLIGHT: Color = SOFT_WHITE;
+pub const NEBULA_PURPLE: Color = DEEP_PURPLE;
+pub const CELESTIAL_BLUE: Color = NEON_CYAN;
+pub const SOLAR_YELLOW: Color = ELECTRIC_YELLOW;
+pub const AURORA_GREEN: Color = SUCCESS_GREEN;
+pub const PLASMA_CYAN: Color = NEON_CYAN;
+pub const METEOR_RED: Color = ERROR_RED;
+pub const GALAXY_PINK: Color = CORAL;
+pub const COMET_ORANGE: Color = ELECTRIC_YELLOW;
+pub const BLACK_HOLE: Color = VOID;
 
 /// Track quiet mode state
 static QUIET_MODE: std::sync::LazyLock<Mutex<bool>> =
@@ -135,25 +176,27 @@ pub fn print_newline() {
     }
 }
 
+/// Create gradient text with `SilkCircuit` Electric Purple -> Neon Cyan
 pub fn create_gradient_text(text: &str) -> String {
     let gradient = vec![
-        (129, 0, 255), // Deep purple
-        (134, 51, 255),
-        (139, 102, 255),
-        (144, 153, 255),
-        (149, 204, 255), // Light cyan
+        (225, 53, 255),  // Electric Purple
+        (200, 100, 255), // Mid purple
+        (180, 150, 250), // Light purple
+        (150, 200, 245), // Purple-cyan
+        (128, 255, 234), // Neon Cyan
     ];
 
     apply_gradient(text, &gradient)
 }
 
+/// Create secondary gradient with `SilkCircuit` Coral -> Electric Yellow
 pub fn create_secondary_gradient_text(text: &str) -> String {
     let gradient = vec![
-        (75, 0, 130),   // Indigo
-        (106, 90, 205), // Slate blue
-        (138, 43, 226), // Blue violet
-        (148, 0, 211),  // Dark violet
-        (153, 50, 204), // Dark orchid
+        (255, 106, 193), // Coral
+        (255, 150, 180), // Light coral
+        (255, 200, 160), // Coral-yellow
+        (248, 230, 140), // Light yellow
+        (241, 250, 140), // Electric Yellow
     ];
 
     apply_gradient(text, &gradient)
