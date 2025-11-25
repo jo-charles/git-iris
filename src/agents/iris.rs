@@ -18,7 +18,8 @@ use tokio_retry::Retry;
 use tokio_retry::strategy::ExponentialBackoff;
 
 use crate::agents::tools::{
-    CodeSearch, FileAnalyzer, GitChangedFiles, GitDiff, GitLog, GitRepoInfo, GitStatus, Workspace,
+    CodeSearch, FileAnalyzer, GitChangedFiles, GitDiff, GitLog, GitRepoInfo, GitStatus,
+    ProjectDocs, ProjectMetadataTool, Workspace,
 };
 // Added to ensure builder extension methods like `.max_tokens` are in scope
 
@@ -348,6 +349,8 @@ Use the 'delegate_task' tool to spawn a sub-agent with a specific focused task. 
             .tool(DebugTool::new(GitChangedFiles))
             .tool(DebugTool::new(FileAnalyzer))
             .tool(DebugTool::new(CodeSearch))
+            .tool(DebugTool::new(ProjectMetadataTool))
+            .tool(DebugTool::new(ProjectDocs))
             .build();
 
         agent_builder
@@ -362,6 +365,8 @@ Use the 'delegate_task' tool to spawn a sub-agent with a specific focused task. 
             // Analysis and search tools
             .tool(DebugTool::new(FileAnalyzer))
             .tool(DebugTool::new(CodeSearch))
+            .tool(DebugTool::new(ProjectMetadataTool))
+            .tool(DebugTool::new(ProjectDocs))
             // Workspace for Iris's notes and task management
             .tool(DebugTool::new(Workspace::new()))
             // Sub-agent delegation (Rig's built-in agent-as-tool!)

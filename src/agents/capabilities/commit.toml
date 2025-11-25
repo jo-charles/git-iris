@@ -8,6 +8,7 @@ Generate a commit message for the staged changes.
 ## Tools Available
 - `git_diff()` - Get staged changes with relevance scores and size guidance
 - `git_log(count=5)` - Recent commits for style reference
+- `project_metadata()` - Get project language, framework, and dependencies (optional)
 
 ## Workflow
 1. Call `git_diff()` to see what changed

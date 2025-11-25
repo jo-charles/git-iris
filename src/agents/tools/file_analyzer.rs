@@ -45,24 +45,117 @@ impl FileAnalyzer {
         Self
     }
 
+    /// Maximum file size to analyze (500KB)
+    const MAX_FILE_SIZE: u64 = 500 * 1024;
+
+    /// Check if a file appears to be binary by looking for null bytes
+    fn is_binary(content: &[u8]) -> bool {
+        // Check first 8KB for null bytes (common indicator of binary)
+        let check_size = content.len().min(8192);
+        content[..check_size].contains(&0)
+    }
+
+    /// Check if file extension indicates binary
+    fn is_binary_extension(path: &str) -> bool {
+        let binary_extensions = [
+            ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".ico", ".webp", ".svg", ".pdf", ".zip",
+            ".tar", ".gz", ".rar", ".7z", ".exe", ".dll", ".so", ".dylib", ".bin", ".wasm", ".ttf",
+            ".otf", ".woff", ".woff2", ".eot", ".mp3", ".mp4", ".wav", ".avi", ".mov", ".sqlite",
+            ".db", ".lock", ".pyc", ".class", ".o", ".a",
+        ];
+        let path_lower = path.to_lowercase();
+        binary_extensions
+            .iter()
+            .any(|ext| path_lower.ends_with(ext))
+    }
+
+    /// Build a skipped file analysis result (for binary/large files)
+    fn skipped_analysis(
+        file_path: &str,
+        file_type: &str,
+        summary: &str,
+        metadata: HashMap<String, serde_json::Value>,
+        performance_notes: Vec<String>,
+    ) -> FileAnalysis {
+        FileAnalysis {
+            file_path: file_path.to_string(),
+            file_type: file_type.to_string(),
+            summary: summary.to_string(),
+            key_components: vec![],
+            dependencies: vec![],
+            complexity_score: 0,
+            lines_of_code: 0,
+            security_issues: vec![],
+            performance_notes,
+            architectural_insights: vec![],
+            extracted_metadata: metadata,
+        }
+    }
+
     /// Analyze a single file using the appropriate analyzer
+    #[allow(clippy::too_many_lines)]
     async fn analyze_file(&self, file_path: &str, repo_path: &Path) -> Result<FileAnalysis> {
         let analyzer = get_analyzer(file_path);
 
-        // Read file content
         let full_path = if Path::new(file_path).is_absolute() {
             Path::new(file_path).to_path_buf()
         } else {
             repo_path.join(file_path)
         };
 
-        let content = if full_path.exists() && full_path.is_file() {
-            tokio::fs::read_to_string(&full_path)
-                .await
-                .unwrap_or_else(|_| String::new())
-        } else {
+        if !full_path.exists() || !full_path.is_file() {
             return Err(anyhow::anyhow!("File not found: {}", file_path));
-        };
+        }
+
+        // Check for binary extension first (fast check)
+        if Self::is_binary_extension(file_path) {
+            let mut meta = HashMap::new();
+            meta.insert("binary".to_string(), serde_json::Value::Bool(true));
+            return Ok(Self::skipped_analysis(
+                file_path,
+                "binary",
+                "Binary file (skipped content analysis)",
+                meta,
+                vec![],
+            ));
+        }
+
+        // Check file size
+        let file_metadata = tokio::fs::metadata(&full_path).await?;
+        if file_metadata.len() > Self::MAX_FILE_SIZE {
+            let mut meta = HashMap::new();
+            meta.insert("large_file".to_string(), serde_json::Value::Bool(true));
+            meta.insert(
+                "size_bytes".to_string(),
+                serde_json::Value::Number(file_metadata.len().into()),
+            );
+            #[allow(clippy::cast_precision_loss, clippy::as_conversions)]
+            let size_kb = file_metadata.len() as f64 / 1024.0;
+            return Ok(Self::skipped_analysis(
+                file_path,
+                analyzer.get_file_type(),
+                &format!("Large file ({size_kb:.1} KB) - skipped detailed analysis"),
+                meta,
+                vec!["Large file may impact build/bundle size".to_string()],
+            ));
+        }
+
+        // Read file as bytes first to check for binary content
+        let bytes = tokio::fs::read(&full_path).await?;
+        if Self::is_binary(&bytes) {
+            let mut meta = HashMap::new();
+            meta.insert("binary".to_string(), serde_json::Value::Bool(true));
+            return Ok(Self::skipped_analysis(
+                file_path,
+                "binary",
+                "Binary file (detected by content analysis)",
+                meta,
+                vec![],
+            ));
+        }
+
+        // Convert to string for text analysis
+        let content = String::from_utf8_lossy(&bytes).to_string();
 
         // Create a mock StagedFile for analysis (since we're not in a commit context)
         let staged_file = StagedFile {

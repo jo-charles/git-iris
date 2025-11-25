@@ -50,6 +50,12 @@ pub use file_analyzer::FileAnalyzer;
 pub mod code_search;
 pub use code_search::CodeSearch;
 
+pub mod project_metadata;
+pub use project_metadata::ProjectMetadataTool;
+
+pub mod docs;
+pub use docs::ProjectDocs;
+
 pub mod workspace_new;
 pub use workspace_new::Workspace;
 
