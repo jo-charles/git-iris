@@ -55,9 +55,10 @@ where
 
     // Set temperature if specified in additional params
     if let Some(temp) = provider_config.additional_params.get("temperature")
-        && let Ok(temp_val) = temp.parse::<f32>() {
-            builder = builder.temperature(temp_val);
-        }
+        && let Ok(temp_val) = temp.parse::<f32>()
+    {
+        builder = builder.temperature(temp_val);
+    }
 
     // Set max tokens if specified in additional params, otherwise use 4096 as default
     // For OpenAI thinking models, don't set max_tokens via builder since they use max_completion_tokens
@@ -75,9 +76,10 @@ where
 
     // Set top_p if specified in additional params
     if let Some(top_p) = provider_config.additional_params.get("top_p")
-        && let Ok(tp_val) = top_p.parse::<f32>() {
-            builder = builder.top_p(tp_val);
-        }
+        && let Ok(tp_val) = top_p.parse::<f32>()
+    {
+        builder = builder.top_p(tp_val);
+    }
 
     // Build the provider
     let provider = builder
@@ -350,10 +352,11 @@ pub fn get_combined_config<S: ::std::hash::BuildHasher>(
     // Handle OpenAI thinking models: convert max_tokens to max_completion_tokens
     if provider_name.to_lowercase() == "openai"
         && let Some(model) = combined_params.get("model")
-            && is_openai_thinking_model(model)
-                && let Some(max_tokens) = combined_params.remove("max_tokens") {
-                    combined_params.insert("max_completion_tokens".to_string(), max_tokens);
-                }
+        && is_openai_thinking_model(model)
+        && let Some(max_tokens) = combined_params.remove("max_tokens")
+    {
+        combined_params.insert("max_completion_tokens".to_string(), max_tokens);
+    }
 
     combined_params
 }

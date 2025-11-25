@@ -59,5 +59,8 @@ pub use docs::ProjectDocs;
 pub mod workspace_new;
 pub use workspace_new::Workspace;
 
+pub mod parallel_analyze;
+pub use parallel_analyze::{ParallelAnalyze, ParallelAnalyzeResult, SubagentResult};
+
 // Legacy workspace (unused, kept for reference)
 pub mod workspace;

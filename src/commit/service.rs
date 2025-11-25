@@ -99,9 +99,10 @@ impl IrisCommitService {
             // because unstaged changes might have changed since we last checked
             let cached_context = self.cached_context.read().await;
             if let Some(context) = &*cached_context
-                && !include_unstaged {
-                    return Ok(context.clone());
-                }
+                && !include_unstaged
+            {
+                return Ok(context.clone());
+            }
         }
 
         let context = self

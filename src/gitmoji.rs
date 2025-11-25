@@ -52,9 +52,10 @@ pub fn get_gitmoji(commit_type: &str) -> Option<&'static str> {
 pub fn apply_gitmoji(commit_message: &str) -> String {
     let parts: Vec<&str> = commit_message.splitn(2, ':').collect();
     if parts.len() == 2
-        && let Some((gitmoji, _)) = GITMOJI_MAP.get(parts[0].trim()) {
-            return format!("{} {}: {}", gitmoji, parts[0].trim(), parts[1].trim());
-        }
+        && let Some((gitmoji, _)) = GITMOJI_MAP.get(parts[0].trim())
+    {
+        return format!("{} {}: {}", gitmoji, parts[0].trim(), parts[1].trim());
+    }
     commit_message.to_string()
 }
 

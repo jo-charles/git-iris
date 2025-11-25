@@ -18,7 +18,7 @@ use tokio::fs;
 
 use crate::agents::tools::{
     CodeSearch, FileAnalyzer, GitChangedFiles, GitDiff, GitLog, GitRepoInfo, GitStatus,
-    ProjectDocs, ProjectMetadataTool, Workspace,
+    ParallelAnalyze, ProjectDocs, ProjectMetadataTool, Workspace,
 };
 // Added to ensure builder extension methods like `.max_tokens` are in scope
 
@@ -352,15 +352,23 @@ impl IrisAgent {
         let preamble = self.preamble.as_deref().unwrap_or(
             "You are Iris, a helpful AI assistant specialized in Git operations and workflows.
 
-You have access to Git tools and code analysis tools. You also have the ability to delegate tasks to specialized sub-agents.
+You have access to Git tools, code analysis tools, and powerful sub-agent capabilities for handling large analyses.
+
+**Available Sub-Agent Tools:**
+
+1. **parallel_analyze** - Run multiple analysis tasks CONCURRENTLY with independent context windows
+   - Best for: Large changesets (>500 lines or >20 files), batch commit analysis
+   - Each task runs in its own subagent, preventing context overflow
+   - Example: parallel_analyze({ \"tasks\": [\"Analyze auth/ changes for security\", \"Review db/ for performance\", \"Check api/ for breaking changes\"] })
+
+2. **analyze_subagent** - Delegate a single focused task to a sub-agent
+   - Best for: Deep dive on specific files or focused analysis
+   - Example: analyze_subagent({ \"prompt\": \"Analyze the security implications of changes in src/auth/\" })
 
 **When to use sub-agents:**
-- Large PR analysis: Delegate analysis of different directories/modules to parallel sub-agents
-- Complex multi-part tasks: Break down into independent subtasks
-- Avoid context overflow: When you have too much data to analyze at once
-
-**How to use sub-agents:**
-Use the 'delegate_task' tool to spawn a sub-agent with a specific focused task. The sub-agent will analyze its portion and return a summary for you to synthesize."
+- Large changesets: Use parallel_analyze to distribute work and avoid context overflow
+- Complex analyses: Break into independent subtasks for clearer results
+- Focused deep dives: Use analyze_subagent for detailed file-level analysis"
         );
 
         // Build a simple sub-agent that can be delegated to
@@ -369,7 +377,16 @@ Use the 'delegate_task' tool to spawn a sub-agent with a specific focused task. 
             .client_builder
             .agent(&self.provider, &self.model)
             .expect("Failed to create sub-agent")
-            .preamble("You are a specialized analysis sub-agent. Complete your assigned task concisely and return a focused summary.")
+            .name("analyze_subagent")
+            .description("Delegate focused analysis tasks to a sub-agent with its own context window. Use for analyzing specific files, commits, or code sections independently. The sub-agent has access to Git tools (diff, log, status) and file analysis tools.")
+            .preamble("You are a specialized analysis sub-agent for Iris. Your job is to complete focused analysis tasks and return concise, actionable summaries.
+
+Guidelines:
+- Use the available tools to gather information
+- Focus only on what's asked - don't expand scope
+- Return a clear, structured summary of findings
+- Highlight important issues, patterns, or insights
+- Keep your response focused and concise")
             .max_tokens(4096);
         let sub_agent_builder = self.apply_reasoning_defaults(sub_agent_builder);
         let sub_agent = sub_agent_builder
@@ -399,6 +416,11 @@ Use the 'delegate_task' tool to spawn a sub-agent with a specific focused task. 
             .tool(DebugTool::new(ProjectDocs))
             // Workspace for Iris's notes and task management
             .tool(DebugTool::new(Workspace::new()))
+            // Parallel analysis for distributing work across multiple subagents
+            .tool(DebugTool::new(ParallelAnalyze::new(
+                &self.provider,
+                &self.model,
+            )))
             // Sub-agent delegation (Rig's built-in agent-as-tool!)
             .tool(sub_agent)
             .build()
@@ -486,7 +508,10 @@ Use the 'delegate_task' tool to spawn a sub-agent with a specific focused task. 
         // The agent knows when to stop, so we give it plenty of room (50 rounds)
         let timer = debug::DebugTimer::start("Agent prompt execution");
 
-        debug::debug_context_management("LLM request", "Sending prompt to agent with multi_turn(50)");
+        debug::debug_context_management(
+            "LLM request",
+            "Sending prompt to agent with multi_turn(50)",
+        );
         let response = agent.prompt(&full_prompt).multi_turn(50).await?;
 
         timer.finish();

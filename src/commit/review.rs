@@ -421,88 +421,89 @@ impl GeneratedReview {
         analysis: Option<&DimensionAnalysis>,
     ) {
         if let Some(dim) = analysis
-            && dim.issues_found && !dim.issues.is_empty() {
-                // Choose emoji based on the dimension
-                let (emoji, color_fn) = match dimension {
-                    QualityDimension::Complexity => ("🧠", "bright_magenta"),
-                    QualityDimension::Abstraction => ("🏗️", "bright_cyan"),
-                    QualityDimension::Deletion => ("🗑️", "bright_white"),
-                    QualityDimension::Hallucination => ("👻", "bright_magenta"),
-                    QualityDimension::Style => ("🎨", "bright_blue"),
-                    QualityDimension::Security => ("🔒", "bright_red"),
-                    QualityDimension::Performance => ("⚡", "bright_yellow"),
-                    QualityDimension::Duplication => ("🔄", "bright_cyan"),
-                    QualityDimension::ErrorHandling => ("🧯", "bright_red"),
-                    QualityDimension::Testing => ("🧪", "bright_green"),
-                    QualityDimension::BestPractices => ("📐", "bright_blue"),
+            && dim.issues_found
+            && !dim.issues.is_empty()
+        {
+            // Choose emoji based on the dimension
+            let (emoji, color_fn) = match dimension {
+                QualityDimension::Complexity => ("🧠", "bright_magenta"),
+                QualityDimension::Abstraction => ("🏗️", "bright_cyan"),
+                QualityDimension::Deletion => ("🗑️", "bright_white"),
+                QualityDimension::Hallucination => ("👻", "bright_magenta"),
+                QualityDimension::Style => ("🎨", "bright_blue"),
+                QualityDimension::Security => ("🔒", "bright_red"),
+                QualityDimension::Performance => ("⚡", "bright_yellow"),
+                QualityDimension::Duplication => ("🔄", "bright_cyan"),
+                QualityDimension::ErrorHandling => ("🧯", "bright_red"),
+                QualityDimension::Testing => ("🧪", "bright_green"),
+                QualityDimension::BestPractices => ("📐", "bright_blue"),
+            };
+
+            let title = dimension.display_name();
+            let header = match color_fn {
+                "bright_magenta" => format!("◤ {emoji} {title} ◢").bright_magenta().bold(),
+                "bright_cyan" => format!("◤ {emoji} {title} ◢").bright_cyan().bold(),
+                "bright_white" => format!("◤ {emoji} {title} ◢").bright_white().bold(),
+                "bright_blue" => format!("◤ {emoji} {title} ◢").bright_blue().bold(),
+                "bright_red" => format!("◤ {emoji} {title} ◢").bright_red().bold(),
+                "bright_yellow" => format!("◤ {emoji} {title} ◢").bright_yellow().bold(),
+                "bright_green" => format!("◤ {emoji} {title} ◢").bright_green().bold(),
+                _ => format!("◤ {emoji} {title} ◢").normal().bold(),
+            };
+
+            write!(formatted, "{header}\n\n").expect("write to string should not fail");
+
+            for (i, issue) in dim.issues.iter().enumerate() {
+                // Severity badge with custom styling based on severity
+                let severity_badge = match issue.severity.as_str() {
+                    "Critical" => format!("[{}]", "CRITICAL".bright_red().bold()),
+                    "High" => format!("[{}]", "HIGH".red().bold()),
+                    "Medium" => format!("[{}]", "MEDIUM".yellow().bold()),
+                    "Low" => format!("[{}]", "LOW".bright_yellow().bold()),
+                    _ => format!("[{}]", issue.severity.normal().bold()),
                 };
 
-                let title = dimension.display_name();
-                let header = match color_fn {
-                    "bright_magenta" => format!("◤ {emoji} {title} ◢").bright_magenta().bold(),
-                    "bright_cyan" => format!("◤ {emoji} {title} ◢").bright_cyan().bold(),
-                    "bright_white" => format!("◤ {emoji} {title} ◢").bright_white().bold(),
-                    "bright_blue" => format!("◤ {emoji} {title} ◢").bright_blue().bold(),
-                    "bright_red" => format!("◤ {emoji} {title} ◢").bright_red().bold(),
-                    "bright_yellow" => format!("◤ {emoji} {title} ◢").bright_yellow().bold(),
-                    "bright_green" => format!("◤ {emoji} {title} ◢").bright_green().bold(),
-                    _ => format!("◤ {emoji} {title} ◢").normal().bold(),
-                };
+                writeln!(
+                    formatted,
+                    "  {} {} {}",
+                    format!("{:02}", i + 1).bright_white().bold(),
+                    severity_badge,
+                    issue.description.bright_white()
+                )
+                .expect("write to string should not fail");
 
-                write!(formatted, "{header}\n\n").expect("write to string should not fail");
+                let formatted_location = Self::format_location(&issue.location).bright_white();
+                writeln!(
+                    formatted,
+                    "     {}: {}",
+                    "LOCATION".bright_cyan().bold(),
+                    formatted_location
+                )
+                .expect("write to string should not fail");
 
-                for (i, issue) in dim.issues.iter().enumerate() {
-                    // Severity badge with custom styling based on severity
-                    let severity_badge = match issue.severity.as_str() {
-                        "Critical" => format!("[{}]", "CRITICAL".bright_red().bold()),
-                        "High" => format!("[{}]", "HIGH".red().bold()),
-                        "Medium" => format!("[{}]", "MEDIUM".yellow().bold()),
-                        "Low" => format!("[{}]", "LOW".bright_yellow().bold()),
-                        _ => format!("[{}]", issue.severity.normal().bold()),
-                    };
-
-                    writeln!(
-                        formatted,
-                        "  {} {} {}",
-                        format!("{:02}", i + 1).bright_white().bold(),
-                        severity_badge,
-                        issue.description.bright_white()
-                    )
+                // Format explanation with some spacing for readability
+                let explanation_lines = textwrap::wrap(&issue.explanation, EXPLANATION_WRAP_WIDTH);
+                write!(formatted, "     {}: ", "DETAIL".bright_cyan().bold())
                     .expect("write to string should not fail");
-
-                    let formatted_location = Self::format_location(&issue.location).bright_white();
-                    writeln!(
-                        formatted,
-                        "     {}: {}",
-                        "LOCATION".bright_cyan().bold(),
-                        formatted_location
-                    )
-                    .expect("write to string should not fail");
-
-                    // Format explanation with some spacing for readability
-                    let explanation_lines =
-                        textwrap::wrap(&issue.explanation, EXPLANATION_WRAP_WIDTH);
-                    write!(formatted, "     {}: ", "DETAIL".bright_cyan().bold())
-                        .expect("write to string should not fail");
-                    for (i, line) in explanation_lines.iter().enumerate() {
-                        if i == 0 {
-                            writeln!(formatted, "{line}").expect("write to string should not fail");
-                        } else {
-                            writeln!(formatted, "            {line}")
-                                .expect("write to string should not fail");
-                        }
+                for (i, line) in explanation_lines.iter().enumerate() {
+                    if i == 0 {
+                        writeln!(formatted, "{line}").expect("write to string should not fail");
+                    } else {
+                        writeln!(formatted, "            {line}")
+                            .expect("write to string should not fail");
                     }
-
-                    // Format recommendation with a different style
-                    write!(
-                        formatted,
-                        "     {}: {}\n\n",
-                        "FIX".bright_green().bold(),
-                        issue.recommendation.bright_green()
-                    )
-                    .expect("write to string should not fail");
                 }
+
+                // Format recommendation with a different style
+                write!(
+                    formatted,
+                    "     {}: {}\n\n",
+                    "FIX".bright_green().bold(),
+                    issue.recommendation.bright_green()
+                )
+                .expect("write to string should not fail");
             }
+        }
     }
 }
 

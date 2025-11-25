@@ -84,10 +84,11 @@ fn apply_config_changes(
 
     // Apply fast model change
     if let Some(fast_model) = fast_model
-        && provider_config.fast_model != Some(fast_model.clone()) {
-            provider_config.fast_model = Some(fast_model);
-            changes_made = true;
-        }
+        && provider_config.fast_model != Some(fast_model.clone())
+    {
+        provider_config.fast_model = Some(fast_model);
+        changes_made = true;
+    }
 
     // Apply parameter changes
     if let Some(params) = param {
@@ -100,24 +101,27 @@ fn apply_config_changes(
 
     // Apply gitmoji setting
     if let Some(use_gitmoji) = common.gitmoji
-        && config.use_gitmoji != use_gitmoji {
-            config.use_gitmoji = use_gitmoji;
-            changes_made = true;
-        }
+        && config.use_gitmoji != use_gitmoji
+    {
+        config.use_gitmoji = use_gitmoji;
+        changes_made = true;
+    }
 
     // Apply instructions
     if let Some(instr) = &common.instructions
-        && config.instructions != *instr {
-            config.instructions.clone_from(instr);
-            changes_made = true;
-        }
+        && config.instructions != *instr
+    {
+        config.instructions.clone_from(instr);
+        changes_made = true;
+    }
 
     // Apply token limit
     if let Some(limit) = token_limit
-        && provider_config.token_limit != Some(limit) {
-            provider_config.token_limit = Some(limit);
-            changes_made = true;
-        }
+        && provider_config.token_limit != Some(limit)
+    {
+        provider_config.token_limit = Some(limit);
+        changes_made = true;
+    }
 
     // Apply preset
     if let Some(preset) = &common.preset {

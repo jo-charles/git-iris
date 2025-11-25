@@ -110,19 +110,20 @@ fn extract_modified_top_level_keys(diff: &str) -> Option<Vec<String>> {
 
     for (i, line) in lines.iter().enumerate() {
         if let Some(cap) = re.captures(line)
-            && let Some(key_match) = cap.get(1) {
-                let key = key_match.as_str();
-                let prev_line = if i > 0 { lines[i - 1] } else { "" };
-                let next_line = if i + 1 < lines.len() {
-                    lines[i + 1]
-                } else {
-                    ""
-                };
+            && let Some(key_match) = cap.get(1)
+        {
+            let key = key_match.as_str();
+            let prev_line = if i > 0 { lines[i - 1] } else { "" };
+            let next_line = if i + 1 < lines.len() {
+                lines[i + 1]
+            } else {
+                ""
+            };
 
-                if !prev_line.trim().ends_with('{') && !next_line.trim().starts_with('}') {
-                    keys.insert(key.to_string());
-                }
+            if !prev_line.trim().ends_with('{') && !next_line.trim().starts_with('}') {
+                keys.insert(key.to_string());
             }
+        }
     }
 
     if keys.is_empty() {

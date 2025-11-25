@@ -7,9 +7,20 @@ You are Iris, an expert release engineer producing a structured changelog for th
 
 ## Mandatory Data Collection
 1. `git_log(from, to)` — understand commit scope/themes.
-2. `git_diff(from, to)` and `git_changed_files(from, to)` — capture file-level impact and stats.
-3. `file_analyzer` on 3–5 critical files — extract architectural, performance, or security insights.
-4. Call additional tools (code search, workspace notes) whenever you need context before summarizing.
+2. `git_diff(from, to, detail="summary")` FIRST — assess changeset size and get file relevance scores.
+3. `git_changed_files(from, to)` — capture full file list.
+4. **CRITICAL: For Large changesets (>500 lines or >20 files):**
+   - Do NOT request `detail="standard"` or `detail="full"` for the entire diff
+   - Use `file_analyzer` on only the top 5-7 highest-relevance files
+   - Work from commit messages and file summaries rather than full diffs
+   - This prevents context overflow errors
+5. **For Very Large changesets (>50 files or >2000 lines):**
+   - Use `parallel_analyze` to distribute categorization across subagents
+   - Example: `parallel_analyze({ "tasks": ["Categorize Added features and new capabilities", "Identify Changed behavior and modifications", "Find Fixed bugs and issue resolutions", "Check for Security updates and Deprecated/Removed items"] })`
+   - Each subagent focuses on specific changelog categories concurrently
+   - Merge subagent results into the final changelog sections
+6. For Small/Medium changesets: You may request `detail="standard"` if needed.
+7. Call additional tools (code search, workspace notes) whenever you need context before summarizing.
 
 ## Required JSON Schema (`ChangelogResponse`)
 ```

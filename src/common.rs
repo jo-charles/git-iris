@@ -114,10 +114,11 @@ impl CommonParams {
         }
 
         if let Some(use_gitmoji) = self.gitmoji
-            && config.use_gitmoji != use_gitmoji {
-                config.use_gitmoji = use_gitmoji;
-                changes_made = true;
-            }
+            && config.use_gitmoji != use_gitmoji
+        {
+            config.use_gitmoji = use_gitmoji;
+            changes_made = true;
+        }
 
         Ok(changes_made)
     }
