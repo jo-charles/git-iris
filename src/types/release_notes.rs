@@ -25,4 +25,3 @@ impl MarkdownReleaseNotes {
         &self.content
     }
 }
-

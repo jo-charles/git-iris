@@ -235,6 +235,24 @@ pub enum Commands {
         version_name: Option<String>,
     },
 
+    /// Launch Iris Studio - unified TUI for all operations
+    #[command(
+        about = "Launch Iris Studio TUI",
+        long_about = "Launch Iris Studio, a unified terminal user interface for exploring code, generating commits, reviewing changes, and more. The interface adapts to your repository state."
+    )]
+    Studio {
+        #[command(flatten)]
+        common: CommonParams,
+
+        /// Initial mode to launch in
+        #[arg(
+            long,
+            value_name = "MODE",
+            help = "Initial mode: explore, commit, review, pr, changelog"
+        )]
+        mode: Option<String>,
+    },
+
     // Configuration and utility commands
     /// Configure the AI-assisted Git commit message generator
     #[command(about = "Configure Git-Iris settings and providers")]
@@ -835,6 +853,7 @@ pub async fn handle_command(
             from,
             to,
         } => handle_pr(common, print, from, to, repository_url).await,
+        Commands::Studio { common, mode } => handle_studio(common, mode, repository_url).await,
     }
 }
 
@@ -907,4 +926,68 @@ async fn handle_pr(
     ui::print_newline();
 
     handle_pr_with_agent(common, print, from, to, repository_url).await
+}
+
+/// Handle the `Studio` command
+async fn handle_studio(
+    common: CommonParams,
+    mode: Option<String>,
+    repository_url: Option<String>,
+) -> anyhow::Result<()> {
+    use crate::agents::IrisAgentService;
+    use crate::config::Config;
+    use crate::git::GitRepo;
+    use crate::services::GitCommitService;
+    use crate::studio::{Mode, run_studio};
+    use anyhow::Context;
+    use std::sync::Arc;
+
+    log_debug!(
+        "Handling 'studio' command with common: {:?}, mode: {:?}",
+        common,
+        mode
+    );
+
+    let mut cfg = Config::load()?;
+    common.apply_to_config(&mut cfg)?;
+
+    // Create git repo
+    let repo_url = repository_url.clone().or(common.repository_url.clone());
+    let git_repo =
+        Arc::new(GitRepo::new_from_url(repo_url.clone()).context("Failed to create GitRepo")?);
+
+    // Create services
+    let commit_service = Arc::new(GitCommitService::new(
+        git_repo.clone(),
+        cfg.use_gitmoji,
+        true, // verify hooks
+    ));
+
+    let agent_service = Arc::new(IrisAgentService::from_common_params(
+        &common,
+        repository_url,
+    )?);
+
+    // Parse initial mode
+    let initial_mode = mode
+        .as_deref()
+        .and_then(|m| match m.to_lowercase().as_str() {
+            "explore" => Some(Mode::Explore),
+            "commit" => Some(Mode::Commit),
+            "review" => Some(Mode::Review),
+            "pr" => Some(Mode::PR),
+            "changelog" => Some(Mode::Changelog),
+            _ => {
+                ui::print_warning(&format!("Unknown mode '{}', using auto-detect", m));
+                None
+            }
+        });
+
+    run_studio(
+        cfg,
+        Some(git_repo),
+        Some(commit_service),
+        Some(agent_service),
+        initial_mode,
+    )
 }

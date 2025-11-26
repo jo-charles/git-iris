@@ -133,11 +133,16 @@ A great new feature was added.
 ## Breaking Changes
 
 - API endpoint changed
-"#.to_string(),
+"#
+        .to_string(),
     };
 
     // Test raw content
-    assert!(release_notes.raw_content().contains("# Release Notes v1.0.0"));
+    assert!(
+        release_notes
+            .raw_content()
+            .contains("# Release Notes v1.0.0")
+    );
     assert!(release_notes.raw_content().contains("## Highlights"));
     assert!(release_notes.raw_content().contains("## Breaking Changes"));
 

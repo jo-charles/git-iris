@@ -58,7 +58,8 @@ This PR fixes an issue where users couldn't log in properly.
 ## Commits
 
 - `abc1234`: Fix authentication bug
-"#.to_string(),
+"#
+        .to_string(),
     };
 
     let raw = pr.raw_content();
@@ -193,7 +194,8 @@ Test with 🧪 test suite
 ## Notes
 
 Deployment requires 🔑 secrets
-"#.to_string(),
+"#
+        .to_string(),
     };
 
     let raw = pr.raw_content();

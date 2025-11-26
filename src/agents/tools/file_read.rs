@@ -51,10 +51,7 @@ impl FileRead {
     #[allow(clippy::cast_precision_loss, clippy::as_conversions)] // Fine for human-readable file sizes
     fn list_directory(dir_path: &Path, display_path: &str) -> Result<String, FileReadError> {
         let mut output = String::new();
-        output.push_str(&format!(
-            "=== {} is a directory ===\n\n",
-            display_path
-        ));
+        output.push_str(&format!("=== {} is a directory ===\n\n", display_path));
         output.push_str("Contents:\n\n");
 
         let mut entries: Vec<_> = fs::read_dir(dir_path)
