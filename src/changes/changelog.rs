@@ -1,58 +1,18 @@
-use super::common::generate_changes_content;
-use super::models::{BreakingChange, ChangeEntry, ChangeMetrics, ChangelogResponse, ChangelogType};
-use super::prompt;
-use crate::common::DetailLevel;
-use crate::config::Config;
+//! Changelog file utilities
+
 use crate::git::GitRepo;
 use crate::log_debug;
 use anyhow::{Context, Result};
-use chrono;
-use colored::Colorize;
 use regex;
-use std::fmt::Write as FmtWrite;
 use std::fs;
 use std::io::Write;
 use std::path::Path;
 use std::sync::Arc;
 
-/// Struct responsible for generating changelogs
+/// Utilities for changelog file management
 pub struct ChangelogGenerator;
 
 impl ChangelogGenerator {
-    /// Generates a changelog for the specified range of commits.
-    ///
-    /// # Arguments
-    ///
-    /// * `git_repo` - `GitRepo` instance
-    /// * `from` - Starting point for the changelog (e.g., a commit hash or tag)
-    /// * `to` - Ending point for the changelog (e.g., a commit hash, tag, or "HEAD")
-    /// * `config` - Configuration object containing LLM settings
-    /// * `detail_level` - Level of detail for the changelog (Minimal, Standard, or Detailed)
-    ///
-    /// # Returns
-    ///
-    /// A Result containing the generated changelog as a String, or an error
-    pub async fn generate(
-        git_repo: Arc<GitRepo>,
-        from: &str,
-        to: &str,
-        config: &Config,
-        detail_level: DetailLevel,
-    ) -> Result<String> {
-        let changelog: ChangelogResponse = generate_changes_content::<ChangelogResponse>(
-            git_repo,
-            from,
-            to,
-            config,
-            detail_level,
-            prompt::create_changelog_system_prompt,
-            prompt::create_changelog_user_prompt,
-        )
-        .await?;
-
-        Ok(format_changelog_response(&changelog))
-    }
-
     /// Updates a changelog file with new content
     ///
     /// This function reads the existing changelog file (if it exists), preserves the header,
@@ -221,130 +181,7 @@ impl ChangelogGenerator {
 
 /// Strips ANSI color/style codes from a string
 fn strip_ansi_codes(s: &str) -> String {
-    // This regex matches ANSI escape codes like colors and styles
     let re = regex::Regex::new(r"\x1B\[([0-9]{1,2}(;[0-9]{1,2})*)?[m|K]")
         .expect("Failed to compile ANSI escape code regex");
     re.replace_all(s, "").to_string()
-}
-
-/// Formats the `ChangelogResponse` into a human-readable changelog
-fn format_changelog_response(response: &ChangelogResponse) -> String {
-    let mut formatted = String::new();
-
-    // Add header
-    formatted.push_str(&"# Changelog\n\n".bright_cyan().bold().to_string());
-    formatted.push_str("All notable changes to this project will be documented in this file.\n\n");
-    formatted.push_str(
-        "The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),\n",
-    );
-    formatted.push_str("and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).\n\n");
-
-    // Add version and release date - don't provide a date here, it will be set later
-    let version = response
-        .version
-        .clone()
-        .unwrap_or_else(|| "Unreleased".to_string());
-
-    write!(formatted, "## [{}] - \n\n", version.bright_green().bold())
-        .expect("writing to string should never fail");
-
-    // Define the order of change types
-    let ordered_types = [
-        ChangelogType::Added,
-        ChangelogType::Changed,
-        ChangelogType::Fixed,
-        ChangelogType::Removed,
-        ChangelogType::Deprecated,
-        ChangelogType::Security,
-    ];
-
-    // Add changes in the specified order
-    for change_type in &ordered_types {
-        if let Some(entries) = response.sections.get(change_type)
-            && !entries.is_empty()
-        {
-            formatted.push_str(&format_change_type(change_type));
-            for entry in entries {
-                formatted.push_str(&format_change_entry(entry));
-            }
-            formatted.push('\n');
-        }
-    }
-
-    // Add breaking changes
-    if !response.breaking_changes.is_empty() {
-        formatted.push_str(
-            &"### ⚠️ Breaking Changes\n\n"
-                .bright_red()
-                .bold()
-                .to_string(),
-        );
-        for breaking_change in &response.breaking_changes {
-            formatted.push_str(&format_breaking_change(breaking_change));
-        }
-        formatted.push('\n');
-    }
-
-    // Add metrics
-    formatted.push_str(&"### 📊 Metrics\n\n".bright_magenta().bold().to_string());
-    formatted.push_str(&format_metrics(&response.metrics));
-
-    formatted
-}
-
-/// Formats a change type with an appropriate emoji
-fn format_change_type(change_type: &ChangelogType) -> String {
-    let (emoji, text) = match change_type {
-        ChangelogType::Added => ("✨", "Added"),
-        ChangelogType::Changed => ("🔄", "Changed"),
-        ChangelogType::Deprecated => ("⚠️", "Deprecated"),
-        ChangelogType::Removed => ("🗑️", "Removed"),
-        ChangelogType::Fixed => ("🐛", "Fixed"),
-        ChangelogType::Security => ("🔒", "Security"),
-    };
-    format!("### {} {}\n\n", emoji, text.bright_blue().bold())
-}
-
-/// Formats a single change entry
-fn format_change_entry(entry: &ChangeEntry) -> String {
-    let mut formatted = format!("- {}", entry.description);
-
-    if !entry.associated_issues.is_empty() {
-        write!(
-            formatted,
-            " ({})",
-            entry.associated_issues.join(", ").yellow()
-        )
-        .expect("writing to string should never fail");
-    }
-
-    if let Some(pr) = &entry.pull_request {
-        write!(formatted, " [{}]", pr.bright_purple())
-            .expect("writing to string should never fail");
-    }
-
-    writeln!(formatted, " ({})", entry.commit_hashes.join(", ").dimmed())
-        .expect("writing to string should never fail");
-
-    formatted
-}
-
-/// Formats a breaking change
-fn format_breaking_change(breaking_change: &BreakingChange) -> String {
-    format!(
-        "- {} ({})\n",
-        breaking_change.description,
-        breaking_change.commit_hash.dimmed()
-    )
-}
-
-/// Formats the change metrics
-fn format_metrics(metrics: &ChangeMetrics) -> String {
-    format!(
-        "- Total Commits: {}\n- Files Changed: {}\n- Insertions: {}\n- Deletions: {}\n",
-        metrics.total_commits.to_string().green(),
-        metrics.files_changed.to_string().yellow(),
-        metrics.insertions.to_string().green(),
-        metrics.deletions.to_string().red()
-    )
 }

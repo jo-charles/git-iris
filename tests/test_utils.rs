@@ -1,6 +1,4 @@
-use git_iris::changes::change_analyzer::{AnalyzedChange, FileChange};
 use git_iris::changes::models::ChangeMetrics;
-use git_iris::changes::models::ChangelogType;
 use git_iris::commit::types::GeneratedPullRequest;
 use git_iris::config::{Config, ProviderConfig};
 use git_iris::context::{ChangeType, CommitContext, ProjectMetadata, RecentCommit, StagedFile};
@@ -468,27 +466,6 @@ impl MockDataBuilder {
                 .into_iter()
                 .collect(),
             ..Default::default()
-        }
-    }
-
-    /// Create mock `AnalyzedChange` for changelog testing
-    pub fn analyzed_change() -> AnalyzedChange {
-        AnalyzedChange {
-            commit_hash: "abcdef123456".to_string(),
-            commit_message: "Add new feature".to_string(),
-            author: "Jane Doe".to_string(),
-            file_changes: vec![FileChange {
-                old_path: "src/old.rs".to_string(),
-                new_path: "src/new.rs".to_string(),
-                change_type: ChangeType::Modified,
-                analysis: vec!["Modified function: process_data".to_string()],
-            }],
-            metrics: Self::change_metrics(),
-            impact_score: 0.75,
-            change_type: ChangelogType::Added,
-            is_breaking_change: false,
-            associated_issues: vec!["#123".to_string()],
-            pull_request: Some("PR #456".to_string()),
         }
     }
 

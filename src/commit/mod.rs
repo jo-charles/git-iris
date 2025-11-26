@@ -1,8 +1,6 @@
-mod relevance;
+pub mod prompt;
 pub mod review;
 pub mod types;
-
-pub mod prompt;
 
 use git2::FileMode;
 pub use types::{

@@ -6,8 +6,6 @@ use crate::instruction_presets::{
 };
 use crate::llm::get_available_provider_names;
 use crate::log_debug;
-use crate::mcp::config::{MCPServerConfig, MCPTransportType};
-use crate::mcp::server;
 use crate::ui;
 use anyhow::Context;
 use anyhow::{Result, anyhow};
@@ -490,52 +488,3 @@ pub fn handle_list_presets_command() -> Result<()> {
     Ok(())
 }
 
-/// Handle the 'serve' command to start an MCP server
-pub async fn handle_serve_command(
-    dev: bool,
-    transport: String,
-    port: Option<u16>,
-    listen_address: Option<String>,
-) -> anyhow::Result<()> {
-    log_debug!(
-        "Starting 'serve' command with dev: {}, transport: {}, port: {:?}, listen_address: {:?}",
-        dev,
-        transport,
-        port,
-        listen_address
-    );
-
-    // Create MCP server configuration
-    let mut config = MCPServerConfig::default();
-
-    // Set development mode
-    if dev {
-        config = config.with_dev_mode();
-    }
-
-    // Set transport type
-    let transport_type = match transport.to_lowercase().as_str() {
-        "stdio" => MCPTransportType::StdIO,
-        "sse" => MCPTransportType::SSE,
-        _ => {
-            return Err(anyhow::anyhow!(
-                "Invalid transport type: {}. Valid options are: stdio, sse",
-                transport
-            ));
-        }
-    };
-    config = config.with_transport(transport_type);
-
-    // Set port if provided
-    if let Some(p) = port {
-        config = config.with_port(p);
-    }
-
-    // Set listen address if provided
-    if let Some(addr) = listen_address {
-        config = config.with_listen_address(addr);
-    }
-
-    // Start the server - all UI output is now handled inside serve implementation
-    server::serve(config).await
-}

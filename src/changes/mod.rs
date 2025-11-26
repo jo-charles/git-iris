@@ -1,11 +1,7 @@
-mod changelog;
-mod common;
-mod readme_reader;
-mod releasenotes;
+//! Changes module - changelog and release notes functionality
 
-pub mod change_analyzer;
+mod changelog;
+
 pub mod models;
-pub mod prompt;
 
 pub use changelog::ChangelogGenerator;
-pub use releasenotes::ReleaseNotesGenerator;

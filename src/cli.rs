@@ -235,38 +235,6 @@ pub enum Commands {
         version_name: Option<String>,
     },
 
-    /// Start an MCP server to provide Git-Iris functionality to AI tools
-    #[command(
-        about = "Start an MCP server",
-        long_about = "Start a Model Context Protocol (MCP) server to provide Git-Iris functionality to AI tools and assistants."
-    )]
-    Serve {
-        /// Enable development mode with more verbose logging
-        #[arg(long, help = "Enable development mode with more verbose logging")]
-        dev: bool,
-
-        /// Transport type to use (stdio, sse)
-        #[arg(
-            short,
-            long,
-            help = "Transport type to use (stdio, sse)",
-            default_value = "stdio"
-        )]
-        transport: String,
-
-        /// Port to use for network transports
-        #[arg(short, long, help = "Port to use for network transports")]
-        port: Option<u16>,
-
-        /// Listen address for network transports
-        #[arg(
-            long,
-            help = "Listen address for network transports (e.g., '127.0.0.1', '0.0.0.0')",
-            default_value = "127.0.0.1"
-        )]
-        listen_address: Option<String>,
-    },
-
     // Configuration and utility commands
     /// Configure the AI-assisted Git commit message generator
     #[command(about = "Configure Git-Iris settings and providers")]
@@ -771,23 +739,6 @@ async fn handle_release_notes(
     Ok(())
 }
 
-/// Handle the `Serve` command
-async fn handle_serve(
-    dev: bool,
-    transport: String,
-    port: Option<u16>,
-    listen_address: Option<String>,
-) -> anyhow::Result<()> {
-    log_debug!(
-        "Handling 'serve' command with dev: {}, transport: {}, port: {:?}, listen_address: {:?}",
-        dev,
-        transport,
-        port,
-        listen_address
-    );
-    commands::handle_serve_command(dev, transport, port, listen_address).await
-}
-
 /// Handle the command based on parsed arguments
 #[allow(clippy::too_many_lines)]
 pub async fn handle_command(
@@ -855,12 +806,6 @@ pub async fn handle_command(
             to,
             version_name,
         } => handle_release_notes(common, from, to, repository_url, version_name).await,
-        Commands::Serve {
-            dev,
-            transport,
-            port,
-            listen_address,
-        } => handle_serve(dev, transport, port, listen_address).await,
         Commands::ProjectConfig {
             common,
             model,

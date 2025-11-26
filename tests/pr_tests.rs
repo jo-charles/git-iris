@@ -1,8 +1,7 @@
 use anyhow::Result;
-use git_iris::commit::prompt::{create_pr_system_prompt, create_pr_user_prompt};
 use git_iris::commit::types::{GeneratedPullRequest, format_pull_request};
 use git_iris::config::Config;
-use git_iris::context::{ChangeType, CommitContext, StagedFile};
+use git_iris::context::ChangeType;
 use git_iris::git::GitRepo;
 use std::sync::Arc;
 use tempfile::TempDir;
@@ -12,10 +11,6 @@ use tempfile::TempDir;
 mod test_utils;
 use test_utils::{MockDataBuilder, setup_git_repo_with_commits};
 
-fn create_mock_pr_context() -> CommitContext {
-    MockDataBuilder::pr_commit_context()
-}
-
 fn create_mock_generated_pr() -> GeneratedPullRequest {
     MockDataBuilder::generated_pull_request()
 }
@@ -23,64 +18,6 @@ fn create_mock_generated_pr() -> GeneratedPullRequest {
 fn setup_test_repo_with_commits_arc() -> Result<(TempDir, Arc<GitRepo>)> {
     let (temp_dir, git_repo) = setup_git_repo_with_commits()?;
     Ok((temp_dir, Arc::new(git_repo)))
-}
-
-// Tests for PR prompt generation
-#[test]
-fn test_create_pr_system_prompt() {
-    let config = Config::default();
-    let prompt = create_pr_system_prompt(&config).expect("Failed to create PR system prompt");
-
-    assert!(prompt.contains("pull request descriptions"));
-    assert!(prompt.contains("atomic unit"));
-    assert!(prompt.contains("title"));
-    assert!(prompt.contains("summary"));
-    assert!(prompt.contains("description"));
-    assert!(prompt.contains("commits"));
-    assert!(prompt.contains("breaking_changes"));
-    assert!(prompt.contains("testing_notes"));
-    assert!(prompt.contains("notes"));
-}
-
-#[test]
-fn test_create_pr_system_prompt_with_custom_instructions() {
-    let config = Config {
-        instructions: "Always include security implications".to_string(),
-        ..Default::default()
-    };
-
-    let prompt = create_pr_system_prompt(&config).expect("Failed to create PR system prompt");
-    assert!(prompt.contains("Always include security implications"));
-}
-
-#[test]
-fn test_create_pr_user_prompt_basic() {
-    let context = create_mock_pr_context();
-    let commit_messages = vec![
-        "abc1234: Add JWT authentication middleware".to_string(),
-        "def5678: Implement user registration endpoint".to_string(),
-    ];
-
-    let prompt = create_pr_user_prompt(&context, &commit_messages);
-
-    assert!(prompt.contains("Range: main..feature-auth"));
-    assert!(prompt.contains("Commits in this PR:"));
-    assert!(prompt.contains("abc1234: Add JWT authentication middleware"));
-    assert!(prompt.contains("def5678: Implement user registration endpoint"));
-    assert!(prompt.contains("src/auth/middleware.rs"));
-    assert!(prompt.contains("src/auth/models.rs"));
-    assert!(prompt.contains("Language: Rust"));
-    assert!(prompt.contains("Framework: Warp"));
-}
-
-#[test]
-fn test_create_pr_user_prompt_empty_commits() {
-    let context = create_mock_pr_context();
-    let commit_messages = vec![];
-
-    let prompt = create_pr_user_prompt(&context, &commit_messages);
-
-    assert!(prompt.contains("No commits available"));
 }
 
 // Tests for PR type formatting
@@ -219,22 +156,6 @@ async fn test_git_repo_pr_methods() -> Result<()> {
     Ok(())
 }
 
-// Edge case tests
-#[test]
-fn test_pr_prompt_with_large_commit_list() {
-    let context = create_mock_pr_context();
-    let commit_messages: Vec<String> = (0..100)
-        .map(|i| format!("abc{i:04}: Commit number {i}"))
-        .collect();
-
-    let prompt = create_pr_user_prompt(&context, &commit_messages);
-
-    // Should handle large commit lists gracefully
-    assert!(prompt.contains("Commits in this PR:"));
-    assert!(prompt.contains("abc0000: Commit number 0"));
-    assert!(prompt.contains("abc0099: Commit number 99"));
-}
-
 #[test]
 fn test_format_pull_request_with_unicode() {
     let pr = GeneratedPullRequest {
@@ -260,31 +181,8 @@ fn test_format_pull_request_with_unicode() {
     assert!(formatted.contains("🔑"));
 }
 
-#[test]
-fn test_pr_context_with_excluded_files() {
-    let mut context = create_mock_pr_context();
-    context.staged_files.push(StagedFile {
-        path: "node_modules/package/index.js".to_string(),
-        change_type: ChangeType::Modified,
-        diff: "[Content excluded]".to_string(),
-        analysis: vec!["[Analysis excluded]".to_string()],
-        content: None,
-        content_excluded: true,
-    });
-
-    let commit_messages = vec!["abc1234: Update dependencies".to_string()];
-    let prompt = create_pr_user_prompt(&context, &commit_messages);
-
-    assert!(prompt.contains("node_modules/package/index.js"));
-    assert!(prompt.contains("[Content excluded]"));
-    assert!(prompt.contains("[Analysis excluded]"));
-}
-
 #[cfg(test)]
 mod commitish_tests {
-    // We need to expose the functions for testing
-    // For now, let's create a simple test module that can test the logic
-
     /// Test helper to check if a reference looks like a commit hash
     fn is_likely_commit_hash(reference: &str) -> bool {
         reference.len() >= 7 && reference.chars().all(|c| c.is_ascii_hexdigit())
