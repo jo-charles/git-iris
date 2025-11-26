@@ -1,5 +1,12 @@
 //! Code review types and formatting
+//!
+//! This module provides markdown-based review output that lets the LLM drive
+//! the review structure while we beautify it for terminal display.
 
+use crate::ui::rgb::{
+    CORAL, DIM_SEPARATOR, DIM_WHITE, ELECTRIC_PURPLE, ELECTRIC_YELLOW, ERROR_RED, NEON_CYAN,
+    SUCCESS_GREEN,
+};
 use colored::Colorize;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -8,6 +15,303 @@ use textwrap;
 
 /// Width in characters for wrapping explanations in code reviews
 const EXPLANATION_WRAP_WIDTH: usize = 80;
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// NEW: Markdown-based review (LLM-driven structure)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Simple markdown-based review that lets the LLM determine structure
+#[derive(Serialize, Deserialize, Debug, Clone, JsonSchema)]
+pub struct MarkdownReview {
+    /// The full markdown content of the review
+    pub content: String,
+}
+
+impl MarkdownReview {
+    /// Render the markdown content with `SilkCircuit` terminal styling
+    pub fn format(&self) -> String {
+        render_markdown_for_terminal(&self.content)
+    }
+}
+
+/// Render markdown content with `SilkCircuit` terminal styling
+///
+/// This function parses markdown and applies our color palette for beautiful
+/// terminal output. It handles:
+/// - Headers (H1, H2, H3) with Electric Purple styling
+/// - Bold text with Neon Cyan
+/// - Code blocks with dimmed background styling
+/// - Bullet lists with Coral bullets
+/// - Severity badges [CRITICAL], [HIGH], etc.
+#[allow(clippy::too_many_lines)]
+pub fn render_markdown_for_terminal(markdown: &str) -> String {
+    let mut output = String::new();
+    let mut in_code_block = false;
+    let mut code_block_content = String::new();
+
+    for line in markdown.lines() {
+        // Handle code blocks
+        if line.starts_with("```") {
+            if in_code_block {
+                // End of code block - output it
+                for code_line in code_block_content.lines() {
+                    writeln!(
+                        output,
+                        "  {}",
+                        code_line.truecolor(DIM_WHITE.0, DIM_WHITE.1, DIM_WHITE.2)
+                    )
+                    .expect("write to string should not fail");
+                }
+                code_block_content.clear();
+                in_code_block = false;
+            } else {
+                in_code_block = true;
+            }
+            continue;
+        }
+
+        if in_code_block {
+            code_block_content.push_str(line);
+            code_block_content.push('\n');
+            continue;
+        }
+
+        // Handle headers
+        if let Some(header) = line.strip_prefix("### ") {
+            writeln!(
+                output,
+                "\n{} {} {}",
+                "─".truecolor(NEON_CYAN.0, NEON_CYAN.1, NEON_CYAN.2),
+                style_header_text(header)
+                    .truecolor(NEON_CYAN.0, NEON_CYAN.1, NEON_CYAN.2)
+                    .bold(),
+                "─".repeat(30usize.saturating_sub(header.len())).truecolor(
+                    DIM_SEPARATOR.0,
+                    DIM_SEPARATOR.1,
+                    DIM_SEPARATOR.2
+                )
+            )
+            .expect("write to string should not fail");
+        } else if let Some(header) = line.strip_prefix("## ") {
+            writeln!(
+                output,
+                "\n{} {} {}",
+                "─".truecolor(ELECTRIC_PURPLE.0, ELECTRIC_PURPLE.1, ELECTRIC_PURPLE.2),
+                style_header_text(header)
+                    .truecolor(ELECTRIC_PURPLE.0, ELECTRIC_PURPLE.1, ELECTRIC_PURPLE.2)
+                    .bold(),
+                "─".repeat(32usize.saturating_sub(header.len())).truecolor(
+                    DIM_SEPARATOR.0,
+                    DIM_SEPARATOR.1,
+                    DIM_SEPARATOR.2
+                )
+            )
+            .expect("write to string should not fail");
+        } else if let Some(header) = line.strip_prefix("# ") {
+            // Main title - big and bold
+            writeln!(
+                output,
+                "{}  {}  {}",
+                "━━━".truecolor(ELECTRIC_PURPLE.0, ELECTRIC_PURPLE.1, ELECTRIC_PURPLE.2),
+                style_header_text(header)
+                    .truecolor(NEON_CYAN.0, NEON_CYAN.1, NEON_CYAN.2)
+                    .bold(),
+                "━━━".truecolor(ELECTRIC_PURPLE.0, ELECTRIC_PURPLE.1, ELECTRIC_PURPLE.2)
+            )
+            .expect("write to string should not fail");
+        }
+        // Handle bullet points
+        else if let Some(content) = line.strip_prefix("- ") {
+            let styled = style_line_content(content);
+            writeln!(
+                output,
+                "  {} {}",
+                "•".truecolor(CORAL.0, CORAL.1, CORAL.2),
+                styled
+            )
+            .expect("write to string should not fail");
+        } else if let Some(content) = line.strip_prefix("* ") {
+            let styled = style_line_content(content);
+            writeln!(
+                output,
+                "  {} {}",
+                "•".truecolor(CORAL.0, CORAL.1, CORAL.2),
+                styled
+            )
+            .expect("write to string should not fail");
+        }
+        // Handle numbered lists
+        else if line.chars().next().is_some_and(|c| c.is_ascii_digit()) && line.contains(". ") {
+            if let Some((num, rest)) = line.split_once(". ") {
+                let styled = style_line_content(rest);
+                writeln!(
+                    output,
+                    "  {} {}",
+                    format!("{}.", num)
+                        .truecolor(CORAL.0, CORAL.1, CORAL.2)
+                        .bold(),
+                    styled
+                )
+                .expect("write to string should not fail");
+            }
+        }
+        // Handle empty lines
+        else if line.trim().is_empty() {
+            output.push('\n');
+        }
+        // Regular paragraph text
+        else {
+            let styled = style_line_content(line);
+            writeln!(output, "{styled}").expect("write to string should not fail");
+        }
+    }
+
+    output
+}
+
+/// Style header text - uppercase and clean
+fn style_header_text(text: &str) -> String {
+    text.to_uppercase()
+}
+
+/// Style inline content - handles bold, code, severity badges
+#[allow(clippy::too_many_lines)]
+fn style_line_content(content: &str) -> String {
+    let mut result = String::new();
+    let mut chars = content.chars().peekable();
+    let mut current_text = String::new();
+
+    while let Some(ch) = chars.next() {
+        match ch {
+            // Handle severity badges [CRITICAL], [HIGH], [MEDIUM], [LOW]
+            '[' => {
+                // Flush current text
+                if !current_text.is_empty() {
+                    result.push_str(
+                        &current_text
+                            .truecolor(DIM_WHITE.0, DIM_WHITE.1, DIM_WHITE.2)
+                            .to_string(),
+                    );
+                    current_text.clear();
+                }
+
+                // Collect badge content
+                let mut badge = String::new();
+                for c in chars.by_ref() {
+                    if c == ']' {
+                        break;
+                    }
+                    badge.push(c);
+                }
+
+                // Style based on severity
+                let badge_upper = badge.to_uppercase();
+                let styled_badge = match badge_upper.as_str() {
+                    "CRITICAL" => format!(
+                        "[{}]",
+                        "CRITICAL"
+                            .truecolor(ERROR_RED.0, ERROR_RED.1, ERROR_RED.2)
+                            .bold()
+                    ),
+                    "HIGH" => format!(
+                        "[{}]",
+                        "HIGH"
+                            .truecolor(ERROR_RED.0, ERROR_RED.1, ERROR_RED.2)
+                            .bold()
+                    ),
+                    "MEDIUM" => format!(
+                        "[{}]",
+                        "MEDIUM"
+                            .truecolor(ELECTRIC_YELLOW.0, ELECTRIC_YELLOW.1, ELECTRIC_YELLOW.2)
+                            .bold()
+                    ),
+                    "LOW" => format!("[{}]", "LOW".truecolor(CORAL.0, CORAL.1, CORAL.2).bold()),
+                    _ => format!(
+                        "[{}]",
+                        badge.truecolor(NEON_CYAN.0, NEON_CYAN.1, NEON_CYAN.2)
+                    ),
+                };
+                result.push_str(&styled_badge);
+            }
+            // Handle bold text **text**
+            '*' if chars.peek() == Some(&'*') => {
+                // Flush current text
+                if !current_text.is_empty() {
+                    result.push_str(
+                        &current_text
+                            .truecolor(DIM_WHITE.0, DIM_WHITE.1, DIM_WHITE.2)
+                            .to_string(),
+                    );
+                    current_text.clear();
+                }
+
+                chars.next(); // consume second *
+
+                // Collect bold content
+                let mut bold = String::new();
+                while let Some(c) = chars.next() {
+                    if c == '*' && chars.peek() == Some(&'*') {
+                        chars.next(); // consume closing **
+                        break;
+                    }
+                    bold.push(c);
+                }
+
+                result.push_str(
+                    &bold
+                        .truecolor(NEON_CYAN.0, NEON_CYAN.1, NEON_CYAN.2)
+                        .bold()
+                        .to_string(),
+                );
+            }
+            // Handle inline code `code`
+            '`' => {
+                // Flush current text
+                if !current_text.is_empty() {
+                    result.push_str(
+                        &current_text
+                            .truecolor(DIM_WHITE.0, DIM_WHITE.1, DIM_WHITE.2)
+                            .to_string(),
+                    );
+                    current_text.clear();
+                }
+
+                // Collect code content
+                let mut code = String::new();
+                for c in chars.by_ref() {
+                    if c == '`' {
+                        break;
+                    }
+                    code.push(c);
+                }
+
+                result.push_str(
+                    &code
+                        .truecolor(ELECTRIC_YELLOW.0, ELECTRIC_YELLOW.1, ELECTRIC_YELLOW.2)
+                        .to_string(),
+                );
+            }
+            _ => {
+                current_text.push(ch);
+            }
+        }
+    }
+
+    // Flush remaining text
+    if !current_text.is_empty() {
+        result.push_str(
+            &current_text
+                .truecolor(DIM_WHITE.0, DIM_WHITE.1, DIM_WHITE.2)
+                .to_string(),
+        );
+    }
+
+    result
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// LEGACY: Structured review types (kept for backwards compatibility)
+// ═══════════════════════════════════════════════════════════════════════════════
 
 /// Represents a specific issue found during code review
 #[derive(Serialize, Deserialize, Debug, Clone, JsonSchema)]
@@ -297,19 +601,38 @@ impl GeneratedReview {
 
     /// Formats the header section with title, summary, and quality assessment
     fn format_header(formatted: &mut String, summary: &str, code_quality: &str) {
+        // SilkCircuit header
         write!(
             formatted,
-            "{}\n\n{}\n\n",
-            "✧･ﾟ: *✧･ﾟ CODE REVIEW ✧･ﾟ: *✧･ﾟ".bright_magenta().bold(),
-            summary.bright_white()
+            "{}  {}  {}\n\n",
+            "━━━".truecolor(ELECTRIC_PURPLE.0, ELECTRIC_PURPLE.1, ELECTRIC_PURPLE.2),
+            "CODE REVIEW"
+                .truecolor(NEON_CYAN.0, NEON_CYAN.1, NEON_CYAN.2)
+                .bold(),
+            "━━━".truecolor(ELECTRIC_PURPLE.0, ELECTRIC_PURPLE.1, ELECTRIC_PURPLE.2)
         )
         .expect("write to string should not fail");
 
+        // Summary
+        writeln!(
+            formatted,
+            "{}",
+            summary.truecolor(DIM_WHITE.0, DIM_WHITE.1, DIM_WHITE.2)
+        )
+        .expect("write to string should not fail");
+
+        // Quality assessment section
         write!(
             formatted,
-            "{}\n\n{}\n\n",
-            "◤ QUALITY ASSESSMENT ◢".bright_cyan().bold(),
-            code_quality.bright_white()
+            "\n{} {} {}\n\n{}\n\n",
+            "─".truecolor(ELECTRIC_PURPLE.0, ELECTRIC_PURPLE.1, ELECTRIC_PURPLE.2),
+            "QUALITY"
+                .truecolor(ELECTRIC_PURPLE.0, ELECTRIC_PURPLE.1, ELECTRIC_PURPLE.2)
+                .bold(),
+            "─"
+                .repeat(30)
+                .truecolor(DIM_SEPARATOR.0, DIM_SEPARATOR.1, DIM_SEPARATOR.2),
+            code_quality.truecolor(DIM_WHITE.0, DIM_WHITE.1, DIM_WHITE.2)
         )
         .expect("write to string should not fail");
     }
@@ -317,11 +640,26 @@ impl GeneratedReview {
     /// Formats the positive aspects section
     fn format_positive_aspects(formatted: &mut String, positive_aspects: &[String]) {
         if !positive_aspects.is_empty() {
-            write!(formatted, "{}\n\n", "✅ STRENGTHS //".green().bold())
-                .expect("write to string should not fail");
+            write!(
+                formatted,
+                "{} {} {}\n\n",
+                "─".truecolor(SUCCESS_GREEN.0, SUCCESS_GREEN.1, SUCCESS_GREEN.2),
+                "STRENGTHS"
+                    .truecolor(SUCCESS_GREEN.0, SUCCESS_GREEN.1, SUCCESS_GREEN.2)
+                    .bold(),
+                "─"
+                    .repeat(28)
+                    .truecolor(DIM_SEPARATOR.0, DIM_SEPARATOR.1, DIM_SEPARATOR.2)
+            )
+            .expect("write to string should not fail");
             for aspect in positive_aspects {
-                writeln!(formatted, "  {} {}", "•".bright_green(), aspect.green())
-                    .expect("write to string should not fail");
+                writeln!(
+                    formatted,
+                    "  {} {}",
+                    "•".truecolor(SUCCESS_GREEN.0, SUCCESS_GREEN.1, SUCCESS_GREEN.2),
+                    aspect.truecolor(DIM_WHITE.0, DIM_WHITE.1, DIM_WHITE.2)
+                )
+                .expect("write to string should not fail");
             }
             formatted.push('\n');
         }
@@ -330,11 +668,26 @@ impl GeneratedReview {
     /// Formats the issues section
     fn format_issues(formatted: &mut String, issues: &[String]) {
         if !issues.is_empty() {
-            write!(formatted, "{}\n\n", "⚠️ CORE ISSUES //".yellow().bold())
-                .expect("write to string should not fail");
+            write!(
+                formatted,
+                "{} {} {}\n\n",
+                "─".truecolor(ELECTRIC_YELLOW.0, ELECTRIC_YELLOW.1, ELECTRIC_YELLOW.2),
+                "ISSUES"
+                    .truecolor(ELECTRIC_YELLOW.0, ELECTRIC_YELLOW.1, ELECTRIC_YELLOW.2)
+                    .bold(),
+                "─"
+                    .repeat(30)
+                    .truecolor(DIM_SEPARATOR.0, DIM_SEPARATOR.1, DIM_SEPARATOR.2)
+            )
+            .expect("write to string should not fail");
             for issue in issues {
-                writeln!(formatted, "  {} {}", "•".bright_yellow(), issue.yellow())
-                    .expect("write to string should not fail");
+                writeln!(
+                    formatted,
+                    "  {} {}",
+                    "•".truecolor(ELECTRIC_YELLOW.0, ELECTRIC_YELLOW.1, ELECTRIC_YELLOW.2),
+                    issue.truecolor(DIM_WHITE.0, DIM_WHITE.1, DIM_WHITE.2)
+                )
+                .expect("write to string should not fail");
             }
             formatted.push('\n');
         }
@@ -400,16 +753,22 @@ impl GeneratedReview {
         if !suggestions.is_empty() {
             write!(
                 formatted,
-                "{}\n\n",
-                "💡 SUGGESTIONS //".bright_blue().bold()
+                "{} {} {}\n\n",
+                "─".truecolor(NEON_CYAN.0, NEON_CYAN.1, NEON_CYAN.2),
+                "SUGGESTIONS"
+                    .truecolor(NEON_CYAN.0, NEON_CYAN.1, NEON_CYAN.2)
+                    .bold(),
+                "─"
+                    .repeat(26)
+                    .truecolor(DIM_SEPARATOR.0, DIM_SEPARATOR.1, DIM_SEPARATOR.2)
             )
             .expect("write to string should not fail");
             for suggestion in suggestions {
                 writeln!(
                     formatted,
                     "  {} {}",
-                    "•".bright_cyan(),
-                    suggestion.bright_blue()
+                    "•".truecolor(NEON_CYAN.0, NEON_CYAN.1, NEON_CYAN.2),
+                    suggestion.truecolor(DIM_WHITE.0, DIM_WHITE.1, DIM_WHITE.2)
                 )
                 .expect("write to string should not fail");
             }
@@ -426,82 +785,128 @@ impl GeneratedReview {
             && dim.issues_found
             && !dim.issues.is_empty()
         {
-            // Choose emoji based on the dimension
-            let (emoji, color_fn) = match dimension {
-                QualityDimension::Complexity => ("🧠", "bright_magenta"),
-                QualityDimension::Abstraction => ("🏗️", "bright_cyan"),
-                QualityDimension::Deletion => ("🗑️", "bright_white"),
-                QualityDimension::Hallucination => ("👻", "bright_magenta"),
-                QualityDimension::Style => ("🎨", "bright_blue"),
-                QualityDimension::Security => ("🔒", "bright_red"),
-                QualityDimension::Performance => ("⚡", "bright_yellow"),
-                QualityDimension::Duplication => ("🔄", "bright_cyan"),
-                QualityDimension::ErrorHandling => ("🧯", "bright_red"),
-                QualityDimension::Testing => ("🧪", "bright_green"),
-                QualityDimension::BestPractices => ("📐", "bright_blue"),
+            // Get dimension color
+            let color = match dimension {
+                QualityDimension::Security | QualityDimension::ErrorHandling => ERROR_RED,
+                QualityDimension::Performance => ELECTRIC_YELLOW,
+                QualityDimension::Testing => SUCCESS_GREEN,
+                QualityDimension::Complexity
+                | QualityDimension::Hallucination
+                | QualityDimension::Style => ELECTRIC_PURPLE,
+                _ => NEON_CYAN,
             };
 
-            let title = dimension.display_name();
-            let header = match color_fn {
-                "bright_magenta" => format!("◤ {emoji} {title} ◢").bright_magenta().bold(),
-                "bright_cyan" => format!("◤ {emoji} {title} ◢").bright_cyan().bold(),
-                "bright_white" => format!("◤ {emoji} {title} ◢").bright_white().bold(),
-                "bright_blue" => format!("◤ {emoji} {title} ◢").bright_blue().bold(),
-                "bright_red" => format!("◤ {emoji} {title} ◢").bright_red().bold(),
-                "bright_yellow" => format!("◤ {emoji} {title} ◢").bright_yellow().bold(),
-                "bright_green" => format!("◤ {emoji} {title} ◢").bright_green().bold(),
-                _ => format!("◤ {emoji} {title} ◢").normal().bold(),
-            };
+            let title = dimension.display_name().to_uppercase();
+            let title_len = title.len();
+            let padding = 34usize.saturating_sub(title_len);
 
-            write!(formatted, "{header}\n\n").expect("write to string should not fail");
+            // Section header
+            write!(
+                formatted,
+                "{} {} {}\n\n",
+                "─".truecolor(color.0, color.1, color.2),
+                title.truecolor(color.0, color.1, color.2).bold(),
+                "─"
+                    .repeat(padding)
+                    .truecolor(DIM_SEPARATOR.0, DIM_SEPARATOR.1, DIM_SEPARATOR.2)
+            )
+            .expect("write to string should not fail");
 
             for (i, issue) in dim.issues.iter().enumerate() {
-                // Severity badge with custom styling based on severity
+                // Severity badge
                 let severity_badge = match issue.severity.as_str() {
-                    "Critical" => format!("[{}]", "CRITICAL".bright_red().bold()),
-                    "High" => format!("[{}]", "HIGH".red().bold()),
-                    "Medium" => format!("[{}]", "MEDIUM".yellow().bold()),
-                    "Low" => format!("[{}]", "LOW".bright_yellow().bold()),
-                    _ => format!("[{}]", issue.severity.normal().bold()),
+                    "Critical" => format!(
+                        "[{}]",
+                        "CRITICAL"
+                            .truecolor(ERROR_RED.0, ERROR_RED.1, ERROR_RED.2)
+                            .bold()
+                    ),
+                    "High" => format!(
+                        "[{}]",
+                        "HIGH"
+                            .truecolor(ERROR_RED.0, ERROR_RED.1, ERROR_RED.2)
+                            .bold()
+                    ),
+                    "Medium" => format!(
+                        "[{}]",
+                        "MEDIUM"
+                            .truecolor(ELECTRIC_YELLOW.0, ELECTRIC_YELLOW.1, ELECTRIC_YELLOW.2)
+                            .bold()
+                    ),
+                    "Low" => format!("[{}]", "LOW".truecolor(CORAL.0, CORAL.1, CORAL.2).bold()),
+                    _ => format!(
+                        "[{}]",
+                        issue
+                            .severity
+                            .truecolor(DIM_WHITE.0, DIM_WHITE.1, DIM_WHITE.2)
+                            .bold()
+                    ),
                 };
 
                 writeln!(
                     formatted,
                     "  {} {} {}",
-                    format!("{:02}", i + 1).bright_white().bold(),
+                    format!("{:02}", i + 1)
+                        .truecolor(color.0, color.1, color.2)
+                        .bold(),
                     severity_badge,
-                    issue.description.bright_white()
+                    issue
+                        .description
+                        .truecolor(DIM_WHITE.0, DIM_WHITE.1, DIM_WHITE.2)
                 )
                 .expect("write to string should not fail");
 
-                let formatted_location = Self::format_location(&issue.location).bright_white();
+                let formatted_location = Self::format_location(&issue.location);
                 writeln!(
                     formatted,
                     "     {}: {}",
-                    "LOCATION".bright_cyan().bold(),
-                    formatted_location
+                    "LOCATION"
+                        .truecolor(NEON_CYAN.0, NEON_CYAN.1, NEON_CYAN.2)
+                        .bold(),
+                    formatted_location.truecolor(DIM_WHITE.0, DIM_WHITE.1, DIM_WHITE.2)
                 )
                 .expect("write to string should not fail");
 
-                // Format explanation with some spacing for readability
+                // Format explanation
                 let explanation_lines = textwrap::wrap(&issue.explanation, EXPLANATION_WRAP_WIDTH);
-                write!(formatted, "     {}: ", "DETAIL".bright_cyan().bold())
-                    .expect("write to string should not fail");
+                write!(
+                    formatted,
+                    "     {}: ",
+                    "DETAIL"
+                        .truecolor(NEON_CYAN.0, NEON_CYAN.1, NEON_CYAN.2)
+                        .bold()
+                )
+                .expect("write to string should not fail");
                 for (i, line) in explanation_lines.iter().enumerate() {
                     if i == 0 {
-                        writeln!(formatted, "{line}").expect("write to string should not fail");
+                        writeln!(
+                            formatted,
+                            "{}",
+                            line.truecolor(DIM_WHITE.0, DIM_WHITE.1, DIM_WHITE.2)
+                        )
+                        .expect("write to string should not fail");
                     } else {
-                        writeln!(formatted, "            {line}")
-                            .expect("write to string should not fail");
+                        writeln!(
+                            formatted,
+                            "            {}",
+                            line.truecolor(DIM_WHITE.0, DIM_WHITE.1, DIM_WHITE.2)
+                        )
+                        .expect("write to string should not fail");
                     }
                 }
 
-                // Format recommendation with a different style
+                // Format recommendation
                 write!(
                     formatted,
                     "     {}: {}\n\n",
-                    "FIX".bright_green().bold(),
-                    issue.recommendation.bright_green()
+                    "FIX"
+                        .truecolor(SUCCESS_GREEN.0, SUCCESS_GREEN.1, SUCCESS_GREEN.2)
+                        .bold(),
+                    issue.recommendation.truecolor(
+                        SUCCESS_GREEN.0,
+                        SUCCESS_GREEN.1,
+                        SUCCESS_GREEN.2
+                    )
                 )
                 .expect("write to string should not fail");
             }

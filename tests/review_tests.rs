@@ -50,27 +50,27 @@ fn test_review_format() {
     // We can't match exact strings because of color codes, so we'll check for key substrings
     assert!(formatted.contains("CODE REVIEW"));
     assert!(formatted.contains("Test summary"));
-    assert!(formatted.contains("QUALITY ASSESSMENT"));
+    assert!(formatted.contains("QUALITY")); // SilkCircuit styling uses "QUALITY" not "QUALITY ASSESSMENT"
     assert!(formatted.contains("Good quality"));
     assert!(formatted.contains("STRENGTHS"));
     assert!(formatted.contains("Positive 1"));
     assert!(formatted.contains("Positive 2"));
-    assert!(formatted.contains("CORE ISSUES"));
+    assert!(formatted.contains("ISSUES")); // SilkCircuit styling uses "ISSUES" not "CORE ISSUES"
     assert!(formatted.contains("Issue 1"));
     assert!(formatted.contains("SUGGESTIONS"));
     assert!(formatted.contains("Suggestion 1"));
     assert!(formatted.contains("Suggestion 2"));
 
-    // Check the complexity dimension was formatted
-    assert!(formatted.contains("Complexity"));
+    // Check the complexity dimension was formatted (SilkCircuit uses uppercase headers)
+    assert!(formatted.contains("COMPLEXITY"));
     assert!(formatted.contains("Complex function"));
     assert!(formatted.contains("MEDIUM"));
     assert!(formatted.contains("src/main.rs:42"));
     assert!(formatted.contains("This function has too many nested conditionals"));
     assert!(formatted.contains("Extract nested logic into separate functions"));
 
-    // Check the best practices dimension was formatted
-    assert!(formatted.contains("Best Practices"));
+    // Check the best practices dimension was formatted (SilkCircuit uses uppercase headers)
+    assert!(formatted.contains("BEST PRACTICES"));
     assert!(formatted.contains("SOLID principle violation"));
     assert!(formatted.contains("HIGH"));
     assert!(formatted.contains("src/user_service.rs:105-120"));

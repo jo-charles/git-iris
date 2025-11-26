@@ -62,6 +62,9 @@ pub enum StructuredResponse {
     PullRequest(crate::types::GeneratedPullRequest),
     Changelog(crate::types::ChangelogResponse),
     ReleaseNotes(crate::types::ReleaseNotesResponse),
+    /// New markdown-based review (LLM-driven structure)
+    MarkdownReview(crate::types::MarkdownReview),
+    /// Legacy structured review (kept for backwards compatibility)
     Review(Box<crate::types::GeneratedReview>),
     PlainText(String),
 }
@@ -88,6 +91,9 @@ impl fmt::Display for StructuredResponse {
             }
             StructuredResponse::ReleaseNotes(rn) => {
                 write!(f, "{}", rn.content())
+            }
+            StructuredResponse::MarkdownReview(review) => {
+                write!(f, "{}", review.format())
             }
             StructuredResponse::Review(review) => {
                 write!(f, "{}", review.format())
@@ -707,6 +713,13 @@ Guidelines:
                     .await?;
                 Ok(StructuredResponse::ReleaseNotes(response))
             }
+            "MarkdownReview" => {
+                let response = self
+                    .execute_with_agent::<crate::types::MarkdownReview>(&system_prompt, user_prompt)
+                    .await?;
+                Ok(StructuredResponse::MarkdownReview(response))
+            }
+            // Legacy structured review (kept for backwards compatibility)
             "GeneratedReview" => {
                 let response = self
                     .execute_with_agent::<crate::types::GeneratedReview>(
