@@ -53,6 +53,7 @@ pub fn get_mode_layout(mode: Mode) -> ModeLayout {
         Mode::Review => review_layout(),
         Mode::PR => pr_layout(),
         Mode::Changelog => changelog_layout(),
+        Mode::ReleaseNotes => release_notes_layout(),
     }
 }
 
@@ -187,21 +188,51 @@ fn changelog_layout() -> ModeLayout {
             },
             PanelConfig {
                 id: PanelId::Center,
-                title: "Changes",
+                title: "Changelog",
                 focusable: true,
                 min_width: 35,
             },
             PanelConfig {
                 id: PanelId::Right,
-                title: "Changelog",
+                title: "Changes",
                 focusable: true,
                 min_width: 30,
             },
         ],
         constraints: vec![
             Constraint::Percentage(15),
-            Constraint::Percentage(40),
             Constraint::Percentage(45),
+            Constraint::Percentage(40),
+        ],
+    }
+}
+
+fn release_notes_layout() -> ModeLayout {
+    ModeLayout {
+        panels: vec![
+            PanelConfig {
+                id: PanelId::Left,
+                title: "Commits",
+                focusable: true,
+                min_width: 15,
+            },
+            PanelConfig {
+                id: PanelId::Center,
+                title: "Release Notes",
+                focusable: true,
+                min_width: 35,
+            },
+            PanelConfig {
+                id: PanelId::Right,
+                title: "Changes",
+                focusable: true,
+                min_width: 30,
+            },
+        ],
+        constraints: vec![
+            Constraint::Percentage(15),
+            Constraint::Percentage(45),
+            Constraint::Percentage(40),
         ],
     }
 }

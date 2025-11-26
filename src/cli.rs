@@ -644,7 +644,11 @@ async fn handle_review(
     let context = TaskContext::for_review(commit, from, to, include_unstaged)?;
 
     // Create spinner for progress indication (skip for raw output)
-    let spinner = if raw { None } else { Some(ui::create_spinner("Initializing Iris...")) };
+    let spinner = if raw {
+        None
+    } else {
+        Some(ui::create_spinner("Initializing Iris..."))
+    };
 
     // Use IrisAgentService for agent execution
     let service = IrisAgentService::from_common_params(&common, repository_url)?;
@@ -704,7 +708,11 @@ async fn handle_changelog(
     let to_ref = to.unwrap_or_else(|| "HEAD".to_string());
 
     // Create spinner for progress indication (skip for raw output)
-    let spinner = if raw { None } else { Some(ui::create_spinner("Initializing Iris...")) };
+    let spinner = if raw {
+        None
+    } else {
+        Some(ui::create_spinner("Initializing Iris..."))
+    };
 
     // Use IrisAgentService for agent execution
     let service = IrisAgentService::from_common_params(&common, repository_url.clone())?;
@@ -795,7 +803,11 @@ async fn handle_release_notes(
     let context = TaskContext::for_changelog(from, to);
 
     // Create spinner for progress indication (skip for raw output)
-    let spinner = if raw { None } else { Some(ui::create_spinner("Initializing Iris...")) };
+    let spinner = if raw {
+        None
+    } else {
+        Some(ui::create_spinner("Initializing Iris..."))
+    };
 
     // Use IrisAgentService for agent execution
     let service = IrisAgentService::from_common_params(&common, repository_url)?;
@@ -873,7 +885,19 @@ pub async fn handle_command(
             update,
             file,
             version_name,
-        } => handle_changelog(common, from, to, raw, repository_url, update, file, version_name).await,
+        } => {
+            handle_changelog(
+                common,
+                from,
+                to,
+                raw,
+                repository_url,
+                update,
+                file,
+                version_name,
+            )
+            .await
+        }
         Commands::ReleaseNotes {
             common,
             from,
@@ -940,7 +964,11 @@ async fn handle_pr_with_agent(
     let context = TaskContext::for_pr(from, to);
 
     // Create spinner for progress indication (skip for raw output)
-    let spinner = if raw { None } else { Some(ui::create_spinner("Initializing Iris...")) };
+    let spinner = if raw {
+        None
+    } else {
+        Some(ui::create_spinner("Initializing Iris..."))
+    };
 
     // Use IrisAgentService for agent execution
     let service = IrisAgentService::from_common_params(&common, repository_url)?;

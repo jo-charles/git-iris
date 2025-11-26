@@ -339,6 +339,7 @@ fn handle_ref_selector_modal(state: &mut StudioState, key: KeyEvent) -> Action {
                 Pr,
                 Review,
                 Changelog,
+                ReleaseNotes,
             }
 
             let reload_type = if let Some(selected_ref) = filtered.get(selected) {
@@ -367,6 +368,14 @@ fn handle_ref_selector_modal(state: &mut StudioState, key: KeyEvent) -> Action {
                         state.modes.changelog.to_ref.clone_from(selected_ref);
                         ("Changelog to", ReloadType::Changelog)
                     }
+                    RefSelectorTarget::ReleaseNotesFrom => {
+                        state.modes.release_notes.from_ref.clone_from(selected_ref);
+                        ("Release Notes from", ReloadType::ReleaseNotes)
+                    }
+                    RefSelectorTarget::ReleaseNotesTo => {
+                        state.modes.release_notes.to_ref.clone_from(selected_ref);
+                        ("Release Notes to", ReloadType::ReleaseNotes)
+                    }
                 };
                 state.notify(Notification::info(format!("{label} set to {selected_ref}")));
                 reload
@@ -378,6 +387,7 @@ fn handle_ref_selector_modal(state: &mut StudioState, key: KeyEvent) -> Action {
                 ReloadType::Pr => Action::ReloadPrData,
                 ReloadType::Review => Action::ReloadReviewData,
                 ReloadType::Changelog => Action::ReloadChangelogData,
+                ReloadType::ReleaseNotes => Action::ReloadReleaseNotesData,
                 ReloadType::None => Action::Redraw,
             }
         }

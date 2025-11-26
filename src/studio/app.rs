@@ -34,7 +34,7 @@ use super::events::{Action, handle_key_event};
 use super::layout::{LayoutAreas, calculate_layout, get_mode_layout};
 use super::render::{
     render_changelog_panel, render_commit_panel, render_explore_panel, render_modal,
-    render_pr_panel, render_review_panel,
+    render_pr_panel, render_release_notes_panel, render_review_panel,
 };
 use super::state::{GitStatus, IrisStatus, Mode, Notification, PanelId, StudioState};
 use super::theme;
@@ -53,6 +53,8 @@ pub enum IrisTaskResult {
     PRContent(String),
     /// Generated changelog (markdown)
     ChangelogContent(String),
+    /// Generated release notes (markdown)
+    ReleaseNotesContent(String),
     /// Chat response from Iris
     ChatResponse(String),
     /// Error from the task
@@ -311,6 +313,7 @@ impl StudioApp {
                                         Mode::PR => self.update_pr_data(),
                                         Mode::Review => self.update_review_data(),
                                         Mode::Changelog => self.update_changelog_data(),
+                                        Mode::ReleaseNotes => self.update_release_notes_data(),
                                         Mode::Commit => {
                                             if self.state.git_status.has_staged() {
                                                 self.auto_generate_commit();
@@ -328,6 +331,9 @@ impl StudioApp {
                                 }
                                 Action::ReloadChangelogData => {
                                     self.update_changelog_data();
+                                }
+                                Action::ReloadReleaseNotesData => {
+                                    self.update_release_notes_data();
                                 }
                                 Action::None => {}
                             }
@@ -397,6 +403,15 @@ impl StudioApp {
                         .notify(Notification::success("Changelog generated"));
                     self.state.mark_dirty();
                 }
+                IrisTaskResult::ReleaseNotesContent(content) => {
+                    self.state.set_iris_idle();
+                    self.state.modes.release_notes.release_notes_content = content;
+                    self.state.modes.release_notes.release_notes_scroll = 0;
+                    self.state.modes.release_notes.generating = false;
+                    self.state
+                        .notify(Notification::success("Release notes generated"));
+                    self.state.mark_dirty();
+                }
                 IrisTaskResult::ChatResponse(response) => {
                     // Add response to chat state
                     if let Some(Modal::Chat(chat)) = &mut self.state.modal {
@@ -444,6 +459,9 @@ impl StudioApp {
             IrisQueryRequest::GenerateChangelog { from_ref, to_ref } => {
                 self.spawn_changelog_generation(from_ref, to_ref);
             }
+            IrisQueryRequest::GenerateReleaseNotes { from_ref, to_ref } => {
+                self.spawn_release_notes_generation(from_ref, to_ref);
+            }
             IrisQueryRequest::SemanticBlame {
                 file,
                 start_line,
@@ -481,6 +499,7 @@ impl StudioApp {
                 Mode::PR => "Current mode: PR - preparing pull request",
                 Mode::Explore => "Current mode: Explore - navigating codebase",
                 Mode::Changelog => "Current mode: Changelog - generating changelogs",
+                Mode::ReleaseNotes => "Current mode: Release Notes - generating release notes",
             };
 
             let prompt = format!("{}\n\nUser: {}", mode_context, message);
@@ -611,6 +630,41 @@ impl StudioApp {
                 }
                 Err(e) => {
                     let _ = tx.send(IrisTaskResult::Error(format!("Changelog error: {}", e)));
+                }
+            }
+        });
+    }
+
+    /// Spawn a task for release notes generation
+    fn spawn_release_notes_generation(&self, from_ref: String, to_ref: String) {
+        use crate::agents::{StructuredResponse, TaskContext};
+
+        let Some(agent) = self.agent_service.clone() else {
+            let tx = self.iris_result_tx.clone();
+            let _ = tx.send(IrisTaskResult::Error(
+                "Agent service not available".to_string(),
+            ));
+            return;
+        };
+
+        let tx = self.iris_result_tx.clone();
+
+        tokio::spawn(async move {
+            // Build context for release notes (comparing two refs)
+            let context = TaskContext::for_changelog(from_ref, Some(to_ref));
+
+            // Execute the release_notes capability
+            match agent.execute_task("release_notes", context).await {
+                Ok(response) => {
+                    let release_notes_text = match response {
+                        StructuredResponse::ReleaseNotes(rn) => rn.content,
+                        StructuredResponse::PlainText(text) => text,
+                        other => other.to_string(),
+                    };
+                    let _ = tx.send(IrisTaskResult::ReleaseNotesContent(release_notes_text));
+                }
+                Err(e) => {
+                    let _ = tx.send(IrisTaskResult::Error(format!("Release notes error: {}", e)));
                 }
             }
         });
@@ -927,6 +981,9 @@ impl StudioApp {
             Mode::Review => render_review_panel(&mut self.state, frame, area, panel_id),
             Mode::PR => render_pr_panel(&mut self.state, frame, area, panel_id),
             Mode::Changelog => render_changelog_panel(&mut self.state, frame, area, panel_id),
+            Mode::ReleaseNotes => {
+                render_release_notes_panel(&mut self.state, frame, area, panel_id)
+            }
         }
     }
 
@@ -1120,6 +1177,54 @@ impl StudioApp {
         self.state.mark_dirty();
     }
 
+    /// Update release notes mode data when refs change
+    pub fn update_release_notes_data(&mut self) {
+        use super::state::ChangelogCommit;
+
+        // Clone the Arc to avoid borrow conflicts with self.state mutations
+        let Some(repo) = self.state.repo.clone() else {
+            return;
+        };
+
+        let from = self.state.modes.release_notes.from_ref.clone();
+        let to = self.state.modes.release_notes.to_ref.clone();
+
+        // Load commits between the refs
+        match repo.get_commits_between_with_callback(&from, &to, |commit| {
+            Ok(ChangelogCommit {
+                hash: commit.hash[..7.min(commit.hash.len())].to_string(),
+                message: commit.message.lines().next().unwrap_or("").to_string(),
+                author: commit.author.clone(),
+            })
+        }) {
+            Ok(commits) => {
+                self.state.modes.release_notes.commits = commits;
+                self.state.modes.release_notes.selected_commit = 0;
+                self.state.modes.release_notes.commit_scroll = 0;
+            }
+            Err(e) => {
+                self.state.notify(Notification::warning(format!(
+                    "Could not load commits: {}",
+                    e
+                )));
+            }
+        }
+
+        // Load diff between the refs
+        match repo.get_ref_diff_full(&from, &to) {
+            Ok(diff_text) => {
+                let diffs = parse_diff(&diff_text);
+                self.state.modes.release_notes.diff_view.set_diffs(diffs);
+            }
+            Err(e) => {
+                self.state
+                    .notify(Notification::warning(format!("Could not load diff: {}", e)));
+            }
+        }
+
+        self.state.mark_dirty();
+    }
+
     fn render_status(&self, frame: &mut Frame, area: Rect) {
         let mut spans = Vec::new();
 
@@ -1133,11 +1238,9 @@ impl StudioApp {
             };
             spans.push(Span::styled(&notification.message, style));
         } else {
-            // Default keybinding hints
-            spans.push(Span::styled(
-                "[?] help  [Tab] panel  [q] quit",
-                theme::dimmed(),
-            ));
+            // Context-aware keybinding hints based on mode and panel
+            let hints = self.get_context_hints();
+            spans.push(Span::styled(hints, theme::dimmed()));
         }
 
         // Right-align Iris status
@@ -1164,6 +1267,34 @@ impl StudioApp {
 
         let status = Paragraph::new(Line::from(spans));
         frame.render_widget(status, area);
+    }
+
+    /// Get context-aware keybinding hints based on mode and focused panel
+    fn get_context_hints(&self) -> String {
+        let base = "[?]help [Tab]panel [q]quit";
+
+        match self.state.active_mode {
+            Mode::Commit => match self.state.focused_panel {
+                PanelId::Left => format!("{} · [↑↓]nav [Enter]select", base),
+                PanelId::Center => format!(
+                    "{} · [e]edit [r]regen [p]preset [g]emoji [←→]msg [Enter]commit",
+                    base
+                ),
+                PanelId::Right => format!("{} · [↑↓]scroll [n/p]file []/[]hunk", base),
+            },
+            Mode::Review | Mode::PR | Mode::Changelog | Mode::ReleaseNotes => {
+                match self.state.focused_panel {
+                    PanelId::Left => format!("{} · [f/t]set refs [r]generate", base),
+                    PanelId::Center => format!("{} · [↑↓]scroll [y]copy [r]generate", base),
+                    PanelId::Right => format!("{} · [↑↓]scroll", base),
+                }
+            }
+            Mode::Explore => match self.state.focused_panel {
+                PanelId::Left => format!("{} · [↑↓]nav [Enter]open", base),
+                PanelId::Center => format!("{} · [↑↓]scroll", base),
+                PanelId::Right => format!("{} · [c]chat", base),
+            },
+        }
     }
 }
 

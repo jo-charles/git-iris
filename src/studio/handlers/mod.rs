@@ -7,6 +7,7 @@ mod commit;
 mod explore;
 mod modal;
 mod pr;
+mod release_notes;
 mod review;
 
 use arboard::Clipboard;
@@ -19,6 +20,7 @@ pub use commit::handle_commit_key;
 pub use explore::handle_explore_key;
 pub use modal::handle_modal_key;
 pub use pr::handle_pr_key;
+pub use release_notes::handle_release_notes_key;
 pub use review::handle_review_key;
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -46,6 +48,8 @@ pub enum Action {
     ReloadReviewData,
     /// Reload Changelog data (after ref selection changes)
     ReloadChangelogData,
+    /// Reload Release Notes data (after ref selection changes)
+    ReloadReleaseNotesData,
 }
 
 /// Request to query Iris agent
@@ -69,6 +73,8 @@ pub enum IrisQueryRequest {
     GeneratePR,
     /// Generate changelog between refs
     GenerateChangelog { from_ref: String, to_ref: String },
+    /// Generate release notes between refs
+    GenerateReleaseNotes { from_ref: String, to_ref: String },
     /// Chat with Iris
     Chat { message: String },
 }
@@ -96,6 +102,7 @@ pub fn handle_key_event(state: &mut StudioState, key: KeyEvent) -> Action {
         Mode::Review => handle_review_key(state, key),
         Mode::PR => handle_pr_key(state, key),
         Mode::Changelog => handle_changelog_key(state, key),
+        Mode::ReleaseNotes => handle_release_notes_key(state, key),
     }
 }
 
@@ -136,6 +143,9 @@ fn handle_global_key(state: &mut StudioState, key: KeyEvent) -> Option<Action> {
         }
         KeyCode::Char('L') if key.modifiers.contains(KeyModifiers::SHIFT) => {
             Some(Action::SwitchMode(Mode::Changelog))
+        }
+        KeyCode::Char('N') if key.modifiers.contains(KeyModifiers::SHIFT) => {
+            Some(Action::SwitchMode(Mode::ReleaseNotes))
         }
 
         // Panel navigation

@@ -25,12 +25,14 @@ pub enum Mode {
     Explore,
     /// Commit mode - generate and edit commit messages
     Commit,
-    /// Review mode - AI-powered code review (future)
+    /// Review mode - AI-powered code review
     Review,
-    /// PR mode - pull request creation (future)
+    /// PR mode - pull request creation
     PR,
-    /// Changelog mode - release documentation (future)
+    /// Changelog mode - structured changelogs
     Changelog,
+    /// Release Notes mode - release documentation
+    ReleaseNotes,
 }
 
 impl Mode {
@@ -42,6 +44,7 @@ impl Mode {
             Mode::Review => "Review",
             Mode::PR => "PR",
             Mode::Changelog => "Changelog",
+            Mode::ReleaseNotes => "Release",
         }
     }
 
@@ -53,6 +56,7 @@ impl Mode {
             Mode::Review => 'R',
             Mode::PR => 'P',
             Mode::Changelog => 'L',
+            Mode::ReleaseNotes => 'N',
         }
     }
 
@@ -60,7 +64,12 @@ impl Mode {
     pub fn is_available(&self) -> bool {
         matches!(
             self,
-            Mode::Explore | Mode::Commit | Mode::Review | Mode::PR | Mode::Changelog
+            Mode::Explore
+                | Mode::Commit
+                | Mode::Review
+                | Mode::PR
+                | Mode::Changelog
+                | Mode::ReleaseNotes
         )
     }
 
@@ -72,6 +81,7 @@ impl Mode {
             Mode::Review,
             Mode::PR,
             Mode::Changelog,
+            Mode::ReleaseNotes,
         ]
     }
 }
@@ -390,6 +400,10 @@ pub enum RefSelectorTarget {
     ChangelogFrom,
     /// Changelog to version
     ChangelogTo,
+    /// Release notes from version
+    ReleaseNotesFrom,
+    /// Release notes to version
+    ReleaseNotesTo,
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -665,6 +679,45 @@ impl Default for ChangelogState {
     }
 }
 
+/// State for Release Notes mode
+#[derive(Debug)]
+pub struct ReleaseNotesState {
+    /// Version range start (from ref)
+    pub from_ref: String,
+    /// Version range end (to ref)
+    pub to_ref: String,
+    /// Commits between refs
+    pub commits: Vec<ChangelogCommit>,
+    /// Selected commit index
+    pub selected_commit: usize,
+    /// Commit list scroll offset
+    pub commit_scroll: usize,
+    /// Diff view state
+    pub diff_view: DiffViewState,
+    /// Generated release notes content (markdown)
+    pub release_notes_content: String,
+    /// Release notes content scroll offset
+    pub release_notes_scroll: usize,
+    /// Whether release notes are being generated
+    pub generating: bool,
+}
+
+impl Default for ReleaseNotesState {
+    fn default() -> Self {
+        Self {
+            from_ref: "HEAD~10".to_string(),
+            to_ref: "HEAD".to_string(),
+            commits: Vec::new(),
+            selected_commit: 0,
+            commit_scroll: 0,
+            diff_view: DiffViewState::new(),
+            release_notes_content: String::new(),
+            release_notes_scroll: 0,
+            generating: false,
+        }
+    }
+}
+
 /// Container for all mode states
 #[derive(Debug, Default)]
 pub struct ModeStates {
@@ -673,6 +726,7 @@ pub struct ModeStates {
     pub review: ReviewState,
     pub pr: PrState,
     pub changelog: ChangelogState,
+    pub release_notes: ReleaseNotesState,
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

@@ -17,31 +17,31 @@ pub fn render_commit_panel(
 
     match panel_id {
         PanelId::Left => {
-            // Build title with style settings
-            let emoji_indicator = match &state.modes.commit.emoji_mode {
-                EmojiMode::None => "—".to_string(),
-                EmojiMode::Auto => "✨".to_string(),
-                EmojiMode::Custom(e) => e.clone(),
-            };
-            let preset_name = &state.modes.commit.preset;
-            let title = format!("Staged Files [{}/{}] [p:preset g:emoji]", preset_name, emoji_indicator);
-
             // Render staged files using FileTree component
             render_file_tree(
                 frame,
                 area,
                 &mut state.modes.commit.file_tree,
-                &title,
+                "Staged Files",
                 is_focused,
             );
         }
         PanelId::Center => {
-            // Render message editor (center panel for visibility)
+            // Build title with current style settings
+            let emoji_indicator = match &state.modes.commit.emoji_mode {
+                EmojiMode::None => "—",
+                EmojiMode::Auto => "✨",
+                EmojiMode::Custom(e) => e,
+            };
+            let preset_name = &state.modes.commit.preset;
+            let title = format!("Message · {} {}", preset_name, emoji_indicator);
+
+            // Render message editor
             render_message_editor(
                 frame,
                 area,
                 &state.modes.commit.message_editor,
-                "Commit Message [y:copy]",
+                &title,
                 is_focused,
                 state.modes.commit.generating,
             );

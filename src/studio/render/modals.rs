@@ -7,7 +7,9 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 use std::time::Instant;
 
-use crate::studio::state::{ChatRole, EmojiInfo, Modal, PresetInfo, RefSelectorTarget, StudioState};
+use crate::studio::state::{
+    ChatRole, EmojiInfo, Modal, PresetInfo, RefSelectorTarget, StudioState,
+};
 use crate::studio::theme;
 
 /// Render the currently active modal, if any
@@ -289,6 +291,8 @@ fn render_ref_selector(
         RefSelectorTarget::PrTo => " Select PR Target (To) ",
         RefSelectorTarget::ChangelogFrom => " Select Changelog From ",
         RefSelectorTarget::ChangelogTo => " Select Changelog To ",
+        RefSelectorTarget::ReleaseNotesFrom => " Select Release Notes From ",
+        RefSelectorTarget::ReleaseNotesTo => " Select Release Notes To ",
     };
 
     let block = Block::default()
@@ -491,7 +495,12 @@ fn render_emoji_selector(
     ];
 
     // Show filtered emojis with scroll offset
-    for (idx, emoji_info) in filtered.iter().enumerate().skip(scroll).take(visible_height) {
+    for (idx, emoji_info) in filtered
+        .iter()
+        .enumerate()
+        .skip(scroll)
+        .take(visible_height)
+    {
         let is_selected = idx == selected;
         let prefix = if is_selected { "▸ " } else { "  " };
         let style = if is_selected {

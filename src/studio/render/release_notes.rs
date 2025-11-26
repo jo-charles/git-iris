@@ -1,4 +1,4 @@
-//! Changelog mode rendering for Iris Studio
+//! Release Notes mode rendering for Iris Studio
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -10,8 +10,8 @@ use crate::studio::components::render_diff_view;
 use crate::studio::state::{PanelId, StudioState};
 use crate::studio::theme;
 
-/// Render a panel in Changelog mode
-pub fn render_changelog_panel(
+/// Render a panel in Release Notes mode
+pub fn render_release_notes_panel(
     state: &mut StudioState,
     frame: &mut Frame,
     area: Rect,
@@ -23,10 +23,10 @@ pub fn render_changelog_panel(
         PanelId::Left => {
             // Render commits list with ref info
             let title = format!(
-                " {} → {} ({}) [f/t] ",
-                state.modes.changelog.from_ref,
-                state.modes.changelog.to_ref,
-                state.modes.changelog.commits.len()
+                " {} → {} ({}) ",
+                state.modes.release_notes.from_ref,
+                state.modes.release_notes.to_ref,
+                state.modes.release_notes.commits.len()
             );
             let block = Block::default()
                 .title(title)
@@ -39,7 +39,7 @@ pub fn render_changelog_panel(
             let inner = block.inner(area);
             frame.render_widget(block, area);
 
-            if state.modes.changelog.commits.is_empty() {
+            if state.modes.release_notes.commits.is_empty() {
                 let text =
                     Paragraph::new("No commits to show\n\nPress 'f' for from ref, 't' for to ref")
                         .style(Style::default().fg(theme::TEXT_DIM));
@@ -47,14 +47,14 @@ pub fn render_changelog_panel(
             } else {
                 let items: Vec<ListItem> = state
                     .modes
-                    .changelog
+                    .release_notes
                     .commits
                     .iter()
                     .enumerate()
-                    .skip(state.modes.changelog.commit_scroll)
+                    .skip(state.modes.release_notes.commit_scroll)
                     .take(inner.height as usize)
                     .map(|(idx, commit)| {
-                        let is_selected = idx == state.modes.changelog.selected_commit;
+                        let is_selected = idx == state.modes.release_notes.selected_commit;
                         let prefix = if is_selected { "▸ " } else { "  " };
                         let style = if is_selected {
                             Style::default()
@@ -76,9 +76,9 @@ pub fn render_changelog_panel(
             }
         }
         PanelId::Center => {
-            // Render changelog output (generated content)
+            // Render release notes output (generated content)
             let block = Block::default()
-                .title(" Changelog ")
+                .title(" Release Notes ")
                 .borders(Borders::ALL)
                 .border_style(if is_focused {
                     theme::focused_border()
@@ -88,9 +88,9 @@ pub fn render_changelog_panel(
             let inner = block.inner(area);
             frame.render_widget(block, area);
 
-            if state.modes.changelog.changelog_content.is_empty() {
+            if state.modes.release_notes.release_notes_content.is_empty() {
                 // Show generating state or hint
-                if state.modes.changelog.generating {
+                if state.modes.release_notes.generating {
                     let spinner_frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
                     let frame_idx = (std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
@@ -114,24 +114,24 @@ pub fn render_changelog_panel(
                         ]),
                         Line::from(""),
                         Line::from(Span::styled(
-                            "Iris is crafting your changelog",
+                            "Iris is crafting your release notes",
                             Style::default().fg(theme::TEXT_DIM),
                         )),
                     ]);
                     frame.render_widget(text, inner);
                 } else {
-                    let text = Paragraph::new("Press 'r' to generate a changelog")
+                    let text = Paragraph::new("Press 'r' to generate release notes")
                         .style(Style::default().fg(theme::TEXT_DIM));
                     frame.render_widget(text, inner);
                 }
             } else {
-                // Render changelog content with scroll
+                // Render release notes content with scroll
                 let lines: Vec<Line> = state
                     .modes
-                    .changelog
-                    .changelog_content
+                    .release_notes
+                    .release_notes_content
                     .lines()
-                    .skip(state.modes.changelog.changelog_scroll)
+                    .skip(state.modes.release_notes.release_notes_scroll)
                     .take(inner.height as usize)
                     .map(|line| Line::from(line.to_string()))
                     .collect();
@@ -144,7 +144,7 @@ pub fn render_changelog_panel(
             render_diff_view(
                 frame,
                 area,
-                &state.modes.changelog.diff_view,
+                &state.modes.release_notes.diff_view,
                 "Changes",
                 is_focused,
             );

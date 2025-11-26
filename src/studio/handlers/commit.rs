@@ -89,40 +89,6 @@ fn handle_files_key(state: &mut StudioState, key: KeyEvent) -> Action {
             Action::Redraw
         }
 
-        // Stage/unstage
-        KeyCode::Char('s') => {
-            // Stage selected file
-            // TODO: Implement git staging
-            state.mark_dirty();
-            Action::Redraw
-        }
-        KeyCode::Char('U') => {
-            // Unstage selected file (capital U to avoid conflict with page up)
-            // TODO: Implement git unstaging
-            state.mark_dirty();
-            Action::Redraw
-        }
-        KeyCode::Char('a') => {
-            // Stage all
-            // TODO: Implement git stage all
-            state.mark_dirty();
-            Action::Redraw
-        }
-
-        // Style settings
-        KeyCode::Char('p') => {
-            // Open preset selector
-            let presets = state.get_commit_presets();
-            state.modal = Some(Modal::PresetSelector {
-                input: String::new(),
-                presets,
-                selected: 0,
-                scroll: 0,
-            });
-            state.mark_dirty();
-            Action::Redraw
-        }
-
         KeyCode::Enter => {
             // Toggle expand for directories, or select file and move to diff view
             if let Some(entry) = state.modes.commit.file_tree.selected_entry() {
@@ -203,6 +169,19 @@ fn handle_message_key(state: &mut StudioState, key: KeyEvent) -> Action {
             Action::Redraw
         }
 
+        // Open preset selector
+        KeyCode::Char('p') => {
+            let presets = state.get_commit_presets();
+            state.modal = Some(Modal::PresetSelector {
+                input: String::new(),
+                presets,
+                selected: 0,
+                scroll: 0,
+            });
+            state.mark_dirty();
+            Action::Redraw
+        }
+
         // Regenerate message
         KeyCode::Char('r') => {
             state.set_iris_thinking("Generating commit message...");
@@ -241,10 +220,9 @@ fn handle_message_key(state: &mut StudioState, key: KeyEvent) -> Action {
             let selected = match &state.modes.commit.emoji_mode {
                 EmojiMode::None => 0,
                 EmojiMode::Auto => 1,
-                EmojiMode::Custom(emoji) => emojis
-                    .iter()
-                    .position(|e| e.emoji == *emoji)
-                    .unwrap_or(1),
+                EmojiMode::Custom(emoji) => {
+                    emojis.iter().position(|e| e.emoji == *emoji).unwrap_or(1)
+                }
             };
             state.modal = Some(Modal::EmojiSelector {
                 input: String::new(),
@@ -287,15 +265,15 @@ fn handle_message_key(state: &mut StudioState, key: KeyEvent) -> Action {
             }
         }
 
-        // Navigate between generated messages
-        KeyCode::Char('n') | KeyCode::Right => {
+        // Navigate between generated messages (arrow keys only, n/p reserved for other uses)
+        KeyCode::Right => {
             state.modes.commit.message_editor.next_message();
             // Sync index for backward compat
             state.modes.commit.current_index = state.modes.commit.message_editor.selected_index();
             state.mark_dirty();
             Action::Redraw
         }
-        KeyCode::Char('p') | KeyCode::Left => {
+        KeyCode::Left => {
             state.modes.commit.message_editor.prev_message();
             state.modes.commit.current_index = state.modes.commit.message_editor.selected_index();
             state.mark_dirty();
