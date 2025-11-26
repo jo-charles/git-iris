@@ -14,7 +14,13 @@ use serde_json::json;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt;
-use tokio::fs;
+
+// Embed capability TOML files at compile time so they're always available
+const CAPABILITY_COMMIT: &str = include_str!("capabilities/commit.toml");
+const CAPABILITY_PR: &str = include_str!("capabilities/pr.toml");
+const CAPABILITY_REVIEW: &str = include_str!("capabilities/review.toml");
+const CAPABILITY_CHANGELOG: &str = include_str!("capabilities/changelog.toml");
+const CAPABILITY_RELEASE_NOTES: &str = include_str!("capabilities/release_notes.toml");
 
 use crate::agents::tools::{
     CodeSearch, FileAnalyzer, GitChangedFiles, GitDiff, GitLog, GitRepoInfo, GitStatus,
@@ -575,7 +581,7 @@ Guidelines:
         crate::iris_status_dynamic!(IrisPhase::Initializing, waiting_msg.text, 1, 4);
 
         // Load the capability config to get both prompt and output type
-        let (mut system_prompt, output_type) = self.load_capability_config(capability).await?;
+        let (mut system_prompt, output_type) = self.load_capability_config(capability)?;
 
         // Inject instruction preset if configured
         if let Some(config) = &self.config {
@@ -711,44 +717,49 @@ Guidelines:
                 // Fallback to regular agent for unknown types
                 let agent = self.build_agent();
                 let full_prompt = format!("{system_prompt}\n\n{user_prompt}");
-                let response = agent.prompt(&full_prompt).await?;
+                // Use multi_turn to allow tool calls even for unknown capability types
+                let response = agent.prompt(&full_prompt).multi_turn(50).await?;
                 Ok(StructuredResponse::PlainText(response))
             }
         }
     }
 
-    /// Load capability configuration from TOML file, returning both prompt and output type
-    async fn load_capability_config(&self, capability: &str) -> Result<(String, String)> {
-        let capability_file = format!("src/agents/capabilities/{capability}.toml");
-
-        match fs::read_to_string(&capability_file).await {
-            Ok(content) => {
-                // Parse TOML to extract both task_prompt and output_type
-                let parsed: toml::Value = toml::from_str(&content)?;
-
-                let task_prompt = parsed
-                    .get("task_prompt")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| anyhow::anyhow!("No task_prompt found in capability file"))?;
-
-                let output_type = parsed
-                    .get("output_type")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("PlainText") // Default to plain text if not specified
-                    .to_string();
-
-                Ok((task_prompt.to_string(), output_type))
-            }
-            Err(_) => {
-                // Return generic prompt and plain text output if capability file doesn't exist
-                Ok((
+    /// Load capability configuration from embedded TOML, returning both prompt and output type
+    fn load_capability_config(&self, capability: &str) -> Result<(String, String)> {
+        let _ = self; // Keep &self for method syntax consistency
+        // Use embedded capability strings - always available regardless of working directory
+        let content = match capability {
+            "commit" => CAPABILITY_COMMIT,
+            "pr" => CAPABILITY_PR,
+            "review" => CAPABILITY_REVIEW,
+            "changelog" => CAPABILITY_CHANGELOG,
+            "release_notes" => CAPABILITY_RELEASE_NOTES,
+            _ => {
+                // Return generic prompt for unknown capabilities
+                return Ok((
                     format!(
                         "You are helping with a {capability} task. Use the available Git tools to assist the user."
                     ),
                     "PlainText".to_string(),
-                ))
+                ));
             }
-        }
+        };
+
+        // Parse TOML to extract both task_prompt and output_type
+        let parsed: toml::Value = toml::from_str(content)?;
+
+        let task_prompt = parsed
+            .get("task_prompt")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow::anyhow!("No task_prompt found in capability file"))?;
+
+        let output_type = parsed
+            .get("output_type")
+            .and_then(|v| v.as_str())
+            .unwrap_or("PlainText")
+            .to_string();
+
+        Ok((task_prompt.to_string(), output_type))
     }
 
     /// Get the current capability being executed
