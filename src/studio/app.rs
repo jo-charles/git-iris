@@ -380,6 +380,9 @@ impl StudioApp {
                                 Action::UnstageAll => {
                                     self.unstage_all();
                                 }
+                                Action::SaveSettings => {
+                                    self.save_settings();
+                                }
                                 Action::None => {}
                             }
                         }
@@ -786,7 +789,13 @@ impl StudioApp {
     /// Auto-generate release notes on mode entry
     fn auto_generate_release_notes(&mut self) {
         // Don't regenerate if we already have content
-        if !self.state.modes.release_notes.release_notes_content.is_empty() {
+        if !self
+            .state
+            .modes
+            .release_notes
+            .release_notes_content
+            .is_empty()
+        {
             return;
         }
 
@@ -1496,6 +1505,59 @@ impl StudioApp {
             Err(e) => {
                 self.state
                     .notify(Notification::error(format!("Failed to unstage all: {}", e)));
+            }
+        }
+        self.state.mark_dirty();
+    }
+
+    /// Save settings from the settings modal to config file
+    fn save_settings(&mut self) {
+        use crate::studio::state::Modal;
+
+        let settings = if let Some(Modal::Settings(s)) = &self.state.modal {
+            s.clone()
+        } else {
+            return;
+        };
+
+        if !settings.modified {
+            self.state.notify(Notification::info("No changes to save"));
+            return;
+        }
+
+        // Update config
+        let mut config = self.state.config.clone();
+        config.default_provider.clone_from(&settings.provider);
+        config.use_gitmoji = settings.use_gitmoji;
+        config
+            .instruction_preset
+            .clone_from(&settings.instruction_preset);
+
+        // Update provider config
+        if let Some(provider_config) = config.providers.get_mut(&settings.provider) {
+            provider_config.model.clone_from(&settings.model);
+            if let Some(api_key) = &settings.api_key_actual {
+                provider_config.api_key.clone_from(api_key);
+            }
+        }
+
+        // Save to file
+        match config.save() {
+            Ok(()) => {
+                self.state.config = config;
+                // Clear the modified flag
+                if let Some(Modal::Settings(s)) = &mut self.state.modal {
+                    s.modified = false;
+                    s.error = None;
+                }
+                self.state.notify(Notification::success("Settings saved"));
+            }
+            Err(e) => {
+                if let Some(Modal::Settings(s)) = &mut self.state.modal {
+                    s.error = Some(format!("Save failed: {}", e));
+                }
+                self.state
+                    .notify(Notification::error(format!("Failed to save: {}", e)));
             }
         }
         self.state.mark_dirty();

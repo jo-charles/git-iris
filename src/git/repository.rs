@@ -795,7 +795,11 @@ impl GitRepo {
         if let Ok(entry) = head_tree.get_path(path) {
             // File exists in HEAD, reset to that state
             let blob = repo.find_blob(entry.id())?;
-            #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation, clippy::as_conversions)]
+            #[allow(
+                clippy::cast_sign_loss,
+                clippy::cast_possible_truncation,
+                clippy::as_conversions
+            )]
             let file_mode = entry.filemode() as u32;
             #[allow(clippy::cast_possible_truncation, clippy::as_conversions)]
             let file_size = blob.content().len() as u32;

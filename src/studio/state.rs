@@ -383,6 +383,260 @@ pub enum Modal {
         /// Scroll offset for long lists
         scroll: usize,
     },
+    /// Settings configuration modal
+    Settings(SettingsState),
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Settings State
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Field being edited in settings
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SettingsField {
+    Provider,
+    Model,
+    ApiKey,
+    UseGitmoji,
+    InstructionPreset,
+}
+
+impl SettingsField {
+    /// Get all fields in display order
+    pub fn all() -> &'static [SettingsField] {
+        &[
+            SettingsField::Provider,
+            SettingsField::Model,
+            SettingsField::ApiKey,
+            SettingsField::UseGitmoji,
+            SettingsField::InstructionPreset,
+        ]
+    }
+
+    /// Get field display name
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            SettingsField::Provider => "Provider",
+            SettingsField::Model => "Model",
+            SettingsField::ApiKey => "API Key",
+            SettingsField::UseGitmoji => "Use Gitmoji",
+            SettingsField::InstructionPreset => "Preset",
+        }
+    }
+}
+
+/// State for the settings modal
+#[derive(Debug, Clone)]
+pub struct SettingsState {
+    /// Currently selected field
+    pub selected_field: usize,
+    /// Currently editing a field
+    pub editing: bool,
+    /// Text input buffer for editing
+    pub input_buffer: String,
+    /// Current provider
+    pub provider: String,
+    /// Current model
+    pub model: String,
+    /// API key (masked for display)
+    pub api_key_display: String,
+    /// Actual API key (for saving)
+    pub api_key_actual: Option<String>,
+    /// Use gitmoji
+    pub use_gitmoji: bool,
+    /// Instruction preset
+    pub instruction_preset: String,
+    /// Available providers
+    pub available_providers: Vec<String>,
+    /// Available presets
+    pub available_presets: Vec<String>,
+    /// Whether config was modified
+    pub modified: bool,
+    /// Error message if any
+    pub error: Option<String>,
+}
+
+impl SettingsState {
+    /// Create settings state from current config
+    pub fn from_config(config: &Config) -> Self {
+        use crate::instruction_presets::get_instruction_preset_library;
+        use crate::providers::Provider;
+
+        let provider = config.default_provider.clone();
+        let provider_config = config.get_provider_config(&provider);
+
+        let model = provider_config.map(|p| p.model.clone()).unwrap_or_default();
+
+        let api_key_display = provider_config
+            .map(|p| Self::mask_api_key(&p.api_key))
+            .unwrap_or_default();
+
+        let available_providers: Vec<String> =
+            Provider::ALL.iter().map(|p| p.name().to_string()).collect();
+
+        let preset_library = get_instruction_preset_library();
+        let available_presets: Vec<String> = preset_library
+            .list_presets()
+            .iter()
+            .map(|(key, _)| (*key).clone())
+            .collect();
+
+        Self {
+            selected_field: 0,
+            editing: false,
+            input_buffer: String::new(),
+            provider,
+            model,
+            api_key_display,
+            api_key_actual: None, // Only set when user enters a new key
+            use_gitmoji: config.use_gitmoji,
+            instruction_preset: config.instruction_preset.clone(),
+            available_providers,
+            available_presets,
+            modified: false,
+            error: None,
+        }
+    }
+
+    /// Mask an API key for display
+    fn mask_api_key(key: &str) -> String {
+        if key.is_empty() {
+            "(not set)".to_string()
+        } else {
+            let len = key.len();
+            if len <= 8 {
+                "*".repeat(len)
+            } else {
+                format!("{}...{}", &key[..4], &key[len - 4..])
+            }
+        }
+    }
+
+    /// Get the currently selected field
+    pub fn current_field(&self) -> SettingsField {
+        SettingsField::all()[self.selected_field]
+    }
+
+    /// Move selection up
+    pub fn select_prev(&mut self) {
+        if self.selected_field > 0 {
+            self.selected_field -= 1;
+        }
+    }
+
+    /// Move selection down
+    pub fn select_next(&mut self) {
+        let max = SettingsField::all().len() - 1;
+        if self.selected_field < max {
+            self.selected_field += 1;
+        }
+    }
+
+    /// Get the current value for a field
+    pub fn get_field_value(&self, field: SettingsField) -> String {
+        match field {
+            SettingsField::Provider => self.provider.clone(),
+            SettingsField::Model => self.model.clone(),
+            SettingsField::ApiKey => self.api_key_display.clone(),
+            SettingsField::UseGitmoji => {
+                if self.use_gitmoji {
+                    "yes".to_string()
+                } else {
+                    "no".to_string()
+                }
+            }
+            SettingsField::InstructionPreset => self.instruction_preset.clone(),
+        }
+    }
+
+    /// Cycle through options for the current field
+    pub fn cycle_current_field(&mut self) {
+        let field = self.current_field();
+        match field {
+            SettingsField::Provider => {
+                if let Some(idx) = self
+                    .available_providers
+                    .iter()
+                    .position(|p| p == &self.provider)
+                {
+                    let next = (idx + 1) % self.available_providers.len();
+                    self.provider = self.available_providers[next].clone();
+                    self.modified = true;
+                }
+            }
+            SettingsField::UseGitmoji => {
+                self.use_gitmoji = !self.use_gitmoji;
+                self.modified = true;
+            }
+            SettingsField::InstructionPreset => {
+                if let Some(idx) = self
+                    .available_presets
+                    .iter()
+                    .position(|p| p == &self.instruction_preset)
+                {
+                    let next = (idx + 1) % self.available_presets.len();
+                    self.instruction_preset = self.available_presets[next].clone();
+                    self.modified = true;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Start editing the current field
+    pub fn start_editing(&mut self) {
+        let field = self.current_field();
+        match field {
+            SettingsField::Model => {
+                self.input_buffer = self.model.clone();
+                self.editing = true;
+            }
+            SettingsField::ApiKey => {
+                self.input_buffer.clear(); // Start fresh for API key
+                self.editing = true;
+            }
+            _ => {
+                // For other fields, cycle instead
+                self.cycle_current_field();
+            }
+        }
+    }
+
+    /// Cancel editing
+    pub fn cancel_editing(&mut self) {
+        self.editing = false;
+        self.input_buffer.clear();
+    }
+
+    /// Confirm editing
+    pub fn confirm_editing(&mut self) {
+        if !self.editing {
+            return;
+        }
+
+        let field = self.current_field();
+        match field {
+            SettingsField::Model => {
+                if !self.input_buffer.is_empty() {
+                    self.model = self.input_buffer.clone();
+                    self.modified = true;
+                }
+            }
+            SettingsField::ApiKey => {
+                if !self.input_buffer.is_empty() {
+                    // Store actual key, update display
+                    let key = self.input_buffer.clone();
+                    self.api_key_display = Self::mask_api_key(&key);
+                    self.api_key_actual = Some(key);
+                    self.modified = true;
+                }
+            }
+            _ => {}
+        }
+
+        self.editing = false;
+        self.input_buffer.clear();
+    }
 }
 
 /// Target for ref selector modal

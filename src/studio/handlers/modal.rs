@@ -2,7 +2,9 @@
 
 use crossterm::event::{KeyCode, KeyEvent};
 
-use crate::studio::state::{EmojiMode, Modal, Notification, RefSelectorTarget, StudioState};
+use crate::studio::state::{
+    EmojiMode, Modal, Notification, RefSelectorTarget, SettingsField, StudioState,
+};
 
 use super::{Action, IrisQueryRequest};
 
@@ -21,6 +23,7 @@ pub fn handle_modal_key(state: &mut StudioState, key: KeyEvent) -> Action {
         Some(Modal::RefSelector { .. }) => handle_ref_selector_modal(state, key),
         Some(Modal::PresetSelector { .. }) => handle_preset_selector_modal(state, key),
         Some(Modal::EmojiSelector { .. }) => handle_emoji_selector_modal(state, key),
+        Some(Modal::Settings(_)) => handle_settings_modal(state, key),
         None => Action::None,
     }
 }
@@ -570,5 +573,136 @@ fn handle_emoji_selector_modal(state: &mut StudioState, key: KeyEvent) -> Action
             Action::Redraw
         }
         _ => Action::None,
+    }
+}
+
+fn handle_settings_modal(state: &mut StudioState, key: KeyEvent) -> Action {
+    // Check if we're editing a field
+    let is_editing = if let Some(Modal::Settings(settings)) = &state.modal {
+        settings.editing
+    } else {
+        return Action::None;
+    };
+
+    if is_editing {
+        // Handle editing mode
+        match key.code {
+            KeyCode::Esc => {
+                if let Some(Modal::Settings(settings)) = &mut state.modal {
+                    settings.cancel_editing();
+                }
+                state.mark_dirty();
+                Action::Redraw
+            }
+            KeyCode::Enter => {
+                if let Some(Modal::Settings(settings)) = &mut state.modal {
+                    settings.confirm_editing();
+                }
+                state.mark_dirty();
+                Action::Redraw
+            }
+            KeyCode::Char(c) => {
+                if let Some(Modal::Settings(settings)) = &mut state.modal {
+                    settings.input_buffer.push(c);
+                }
+                state.mark_dirty();
+                Action::Redraw
+            }
+            KeyCode::Backspace => {
+                if let Some(Modal::Settings(settings)) = &mut state.modal {
+                    settings.input_buffer.pop();
+                }
+                state.mark_dirty();
+                Action::Redraw
+            }
+            _ => Action::None,
+        }
+    } else {
+        // Handle navigation mode
+        match key.code {
+            KeyCode::Esc => {
+                state.close_modal();
+                Action::Redraw
+            }
+            KeyCode::Char('s') => {
+                // Save settings
+                Action::SaveSettings
+            }
+            KeyCode::Up | KeyCode::Char('k') => {
+                if let Some(Modal::Settings(settings)) = &mut state.modal {
+                    settings.select_prev();
+                }
+                state.mark_dirty();
+                Action::Redraw
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                if let Some(Modal::Settings(settings)) = &mut state.modal {
+                    settings.select_next();
+                }
+                state.mark_dirty();
+                Action::Redraw
+            }
+            KeyCode::Enter | KeyCode::Char(' ') => {
+                if let Some(Modal::Settings(settings)) = &mut state.modal {
+                    settings.start_editing();
+                }
+                state.mark_dirty();
+                Action::Redraw
+            }
+            KeyCode::Left | KeyCode::Char('h') => {
+                // Cycle backwards for cyclable fields
+                if let Some(Modal::Settings(settings)) = &mut state.modal {
+                    let field = settings.current_field();
+                    match field {
+                        SettingsField::Provider => {
+                            if let Some(idx) = settings
+                                .available_providers
+                                .iter()
+                                .position(|p| p == &settings.provider)
+                            {
+                                let prev = if idx == 0 {
+                                    settings.available_providers.len() - 1
+                                } else {
+                                    idx - 1
+                                };
+                                settings.provider = settings.available_providers[prev].clone();
+                                settings.modified = true;
+                            }
+                        }
+                        SettingsField::UseGitmoji => {
+                            settings.use_gitmoji = !settings.use_gitmoji;
+                            settings.modified = true;
+                        }
+                        SettingsField::InstructionPreset => {
+                            if let Some(idx) = settings
+                                .available_presets
+                                .iter()
+                                .position(|p| p == &settings.instruction_preset)
+                            {
+                                let prev = if idx == 0 {
+                                    settings.available_presets.len() - 1
+                                } else {
+                                    idx - 1
+                                };
+                                settings.instruction_preset =
+                                    settings.available_presets[prev].clone();
+                                settings.modified = true;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                state.mark_dirty();
+                Action::Redraw
+            }
+            KeyCode::Right | KeyCode::Char('l') => {
+                if let Some(Modal::Settings(settings)) = &mut state.modal {
+                    settings.cycle_current_field();
+                }
+                state.mark_dirty();
+                Action::Redraw
+            }
+            _ => Action::None,
+        }
     }
 }

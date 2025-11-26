@@ -13,7 +13,7 @@ mod review;
 use arboard::Clipboard;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-use crate::studio::state::{Modal, Mode, Notification, StudioState};
+use crate::studio::state::{Modal, Mode, Notification, SettingsState, StudioState};
 
 pub use changelog::handle_changelog_key;
 pub use commit::handle_commit_key;
@@ -58,6 +58,8 @@ pub enum Action {
     StageAll,
     /// Unstage all files
     UnstageAll,
+    /// Save settings from the settings modal
+    SaveSettings,
 }
 
 /// Request to query Iris agent
@@ -154,6 +156,12 @@ fn handle_global_key(state: &mut StudioState, key: KeyEvent) -> Option<Action> {
         }
         KeyCode::Char('N') if key.modifiers.contains(KeyModifiers::SHIFT) => {
             Some(Action::SwitchMode(Mode::ReleaseNotes))
+        }
+
+        // Settings
+        KeyCode::Char('S') if key.modifiers.contains(KeyModifiers::SHIFT) => {
+            state.modal = Some(Modal::Settings(SettingsState::from_config(&state.config)));
+            Some(Action::Redraw)
         }
 
         // Panel navigation
