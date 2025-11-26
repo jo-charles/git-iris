@@ -238,3 +238,91 @@ fn apply_gradient(text: &str, gradient: &[(u8, u8, u8)]) -> String {
 
     result
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SilkCircuit Gradient Utilities for TUI
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Gradient preset: Electric Purple -> Pure Pink -> Neon Cyan (primary brand)
+pub const GRADIENT_AURORA: [(u8, u8, u8); 5] = [
+    rgb::ELECTRIC_PURPLE, // #e135ff
+    (243, 27, 255),       // midpoint toward pink
+    (255, 0, 255),        // PURE_PINK inline (not in rgb module)
+    (191, 128, 244),      // midpoint toward cyan
+    rgb::NEON_CYAN,       // #80ffea
+];
+
+/// Gradient preset: Coral -> Electric Yellow (warm accent)
+pub const GRADIENT_SUNSET: [(u8, u8, u8); 3] = [
+    rgb::CORAL,           // #ff6ac1
+    (248, 178, 130),      // midpoint
+    rgb::ELECTRIC_YELLOW, // #f1fa8c
+];
+
+/// Gradient preset: Success Green -> Neon Cyan (positive/success)
+pub const GRADIENT_EMERALD: [(u8, u8, u8); 3] = [
+    rgb::SUCCESS_GREEN, // #50fa7b
+    (104, 255, 178),    // midpoint
+    rgb::NEON_CYAN,     // #80ffea
+];
+
+/// Gradient preset: Error Red -> Coral (warning/error)
+pub const GRADIENT_EMBER: [(u8, u8, u8); 3] = [
+    rgb::ERROR_RED,  // #ff6363
+    (255, 102, 146), // midpoint
+    rgb::CORAL,      // #ff6ac1
+];
+
+/// Interpolate smoothly between two colors
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::as_conversions
+)]
+pub fn interpolate_color(start: (u8, u8, u8), end: (u8, u8, u8), t: f32) -> (u8, u8, u8) {
+    let t = t.clamp(0.0, 1.0);
+    (
+        (f32::from(start.0) + (f32::from(end.0) - f32::from(start.0)) * t) as u8,
+        (f32::from(start.1) + (f32::from(end.1) - f32::from(start.1)) * t) as u8,
+        (f32::from(start.2) + (f32::from(end.2) - f32::from(start.2)) * t) as u8,
+    )
+}
+
+/// Generate a smooth gradient of N colors from a preset
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::as_conversions
+)]
+pub fn generate_smooth_gradient(preset: &[(u8, u8, u8)], steps: usize) -> Vec<(u8, u8, u8)> {
+    if steps == 0 || preset.is_empty() {
+        return vec![];
+    }
+    if steps == 1 {
+        return vec![preset[0]];
+    }
+
+    let mut result = Vec::with_capacity(steps);
+    let preset_len = preset.len();
+
+    for i in 0..steps {
+        let t = i as f32 / (steps - 1) as f32;
+        let scaled = t * (preset_len - 1) as f32;
+        let idx = scaled.floor() as usize;
+        let local_t = scaled - scaled.floor();
+
+        if idx >= preset_len - 1 {
+            result.push(preset[preset_len - 1]);
+        } else {
+            result.push(interpolate_color(preset[idx], preset[idx + 1], local_t));
+        }
+    }
+
+    result
+}
+
+/// Convert RGB tuple to ratatui Color
+pub const fn rgb_to_color(rgb: (u8, u8, u8)) -> Color {
+    Color::Rgb(rgb.0, rgb.1, rgb.2)
+}

@@ -5,7 +5,8 @@
 use super::state::{EmojiMode, Mode, TuiState, UserInfoFocus};
 use crate::ui::{
     BRIGHT_CYAN, CORAL, DEEP_PURPLE, DIM_GRAY, ELECTRIC_PURPLE, ELECTRIC_YELLOW, ERROR_RED,
-    HIGHLIGHT, NEON_CYAN, PURE_PINK, SOFT_PINK, SOFT_WHITE, SUCCESS_GREEN, VOID,
+    GRADIENT_AURORA, GRADIENT_EMERALD, GRADIENT_SUNSET, HIGHLIGHT, NEON_CYAN, PURE_PINK, SOFT_PINK,
+    SOFT_WHITE, SUCCESS_GREEN, VOID, generate_smooth_gradient, rgb_to_color,
 };
 use ratatui::{
     Frame,
@@ -72,46 +73,34 @@ fn draw_header(f: &mut Frame, state: &TuiState, area: Rect) {
 }
 
 fn draw_title(f: &mut Frame, area: Rect) {
-    // SilkCircuit gradient: Electric Purple -> Pure Pink -> Neon Cyan
-    let gradient_colors = [
-        ELECTRIC_PURPLE,
-        Color::Rgb(243, 27, 255), // Purple-pink
-        PURE_PINK,
-        Color::Rgb(191, 128, 255), // Pink-cyan blend
-        NEON_CYAN,
-    ];
-
     let title_text = format!(" Iris v{APP_VERSION} ");
-
-    // Build gradient title
     let text_chars: Vec<char> = title_text.chars().collect();
     let text_len = text_chars.len();
-    let gradient_len = gradient_colors.len();
+
+    // Generate smooth gradient for the exact character count
+    let gradient = generate_smooth_gradient(&GRADIENT_AURORA, text_len);
 
     let gradient_spans: Vec<Span> = text_chars
         .iter()
         .enumerate()
         .map(|(i, &c)| {
-            let color_idx = if text_len > 1 {
-                i * (gradient_len - 1) / (text_len - 1)
-            } else {
-                0
-            };
             Span::styled(
                 c.to_string(),
                 Style::default()
-                    .fg(gradient_colors[color_idx])
+                    .fg(rgb_to_color(gradient[i]))
                     .add_modifier(Modifier::BOLD),
             )
         })
         .collect();
 
+    // Decorative sparkles using gradient colors
     let mut title_line = vec![
-        Span::styled("", Style::default().fg(PURE_PINK)),
+        Span::styled("✦", Style::default().fg(ELECTRIC_PURPLE)),
         Span::styled(" ", Style::default()),
     ];
     title_line.extend(gradient_spans);
-    title_line.push(Span::styled(" ", Style::default().fg(ELECTRIC_PURPLE)));
+    title_line.push(Span::styled(" ", Style::default()));
+    title_line.push(Span::styled("✦", Style::default().fg(NEON_CYAN)));
     title_line.push(Span::styled(
         " electric commits",
         Style::default()
@@ -205,15 +194,34 @@ fn draw_main_content(f: &mut Frame, state: &mut TuiState, area: Rect) {
 fn draw_commit_message(f: &mut Frame, state: &mut TuiState, area: Rect) {
     let is_editing = state.mode == Mode::EditingMessage;
 
-    // Build colorful title with counter and emoji indicator
-    let title_spans = vec![
-        Span::styled(" ", Style::default().fg(NEON_CYAN)),
-        Span::styled(
-            " commit ",
+    // Build gradient title with counter and emoji indicator
+    let commit_text = " commit ";
+    let commit_gradient = if is_editing {
+        generate_smooth_gradient(&GRADIENT_EMERALD, commit_text.len())
+    } else {
+        generate_smooth_gradient(&GRADIENT_AURORA, commit_text.len())
+    };
+
+    let mut title_spans: Vec<Span> = vec![Span::styled(
+        if is_editing { "✎" } else { "◈" },
+        Style::default().fg(if is_editing {
+            NEON_CYAN
+        } else {
+            ELECTRIC_PURPLE
+        }),
+    )];
+
+    // Add gradient "commit" text
+    for (i, c) in commit_text.chars().enumerate() {
+        title_spans.push(Span::styled(
+            c.to_string(),
             Style::default()
-                .fg(if is_editing { SOFT_WHITE } else { NEON_CYAN })
+                .fg(rgb_to_color(commit_gradient[i]))
                 .add_modifier(Modifier::BOLD),
-        ),
+        ));
+    }
+
+    title_spans.extend(vec![
         Span::styled(
             format!("{}", state.current_index + 1),
             Style::default().fg(PURE_PINK).add_modifier(Modifier::BOLD),
@@ -228,7 +236,7 @@ fn draw_commit_message(f: &mut Frame, state: &mut TuiState, area: Rect) {
             Style::default().fg(ELECTRIC_YELLOW),
         ),
         Span::styled(" ", Style::default()),
-    ];
+    ]);
 
     let border_color = if is_editing { NEON_CYAN } else { DEEP_PURPLE };
 
@@ -256,19 +264,26 @@ fn draw_commit_message(f: &mut Frame, state: &mut TuiState, area: Rect) {
             .get_current_emoji()
             .map_or(String::new(), |e| format!("{e} "));
 
-        // Title line in bright cyan, body in soft white
         let mut lines: Vec<Line> = Vec::new();
 
-        // Title with emoji - bright and bold
-        lines.push(Line::from(vec![
-            Span::styled(&emoji_prefix, Style::default().fg(ELECTRIC_YELLOW)),
-            Span::styled(
-                &current_message.title,
+        // Title with emoji - apply gradient to the title text
+        let title_chars: Vec<char> = current_message.title.chars().collect();
+        let title_gradient = generate_smooth_gradient(&GRADIENT_AURORA, title_chars.len().max(1));
+
+        let mut title_line_spans = vec![Span::styled(
+            &emoji_prefix,
+            Style::default().fg(ELECTRIC_YELLOW),
+        )];
+
+        for (i, c) in title_chars.iter().enumerate() {
+            title_line_spans.push(Span::styled(
+                c.to_string(),
                 Style::default()
-                    .fg(BRIGHT_CYAN)
+                    .fg(rgb_to_color(title_gradient[i]))
                     .add_modifier(Modifier::BOLD),
-            ),
-        ]));
+            ));
+        }
+        lines.push(Line::from(title_line_spans));
 
         // Empty line
         lines.push(Line::from(""));
@@ -291,15 +306,36 @@ fn draw_commit_message(f: &mut Frame, state: &mut TuiState, area: Rect) {
 fn draw_instructions(f: &mut Frame, state: &mut TuiState, area: Rect) {
     let is_editing = state.mode == Mode::EditingInstructions;
 
-    let title_spans = vec![
-        Span::styled(" ", Style::default().fg(DEEP_PURPLE)),
-        Span::styled(
-            " instructions ",
+    // Build gradient title for instructions
+    let instr_text = " instructions ";
+    let instr_gradient = if is_editing {
+        generate_smooth_gradient(&GRADIENT_AURORA, instr_text.len())
+    } else {
+        // Dimmer gradient when not editing
+        vec![(98, 114, 164); instr_text.len()] // DIM_GRAY repeated
+    };
+
+    let mut title_spans: Vec<Span> = vec![Span::styled(
+        if is_editing { "✎" } else { "◇" },
+        Style::default().fg(if is_editing {
+            ELECTRIC_PURPLE
+        } else {
+            DIM_GRAY
+        }),
+    )];
+
+    for (i, c) in instr_text.chars().enumerate() {
+        title_spans.push(Span::styled(
+            c.to_string(),
             Style::default()
-                .fg(if is_editing { SOFT_WHITE } else { DEEP_PURPLE })
-                .add_modifier(Modifier::BOLD),
-        ),
-    ];
+                .fg(rgb_to_color(instr_gradient[i]))
+                .add_modifier(if is_editing {
+                    Modifier::BOLD
+                } else {
+                    Modifier::empty()
+                }),
+        ));
+    }
 
     let border_color = if is_editing {
         ELECTRIC_PURPLE
@@ -366,21 +402,49 @@ fn draw_info_bar(f: &mut Frame, state: &TuiState, area: Rect) {
         EmojiMode::Custom(emoji) => emoji.clone(),
     };
 
-    // Vibrant info bar with colored icons and labels
-    let info_spans = vec![
-        // User name
-        Span::styled(" ", Style::default().fg(SUCCESS_GREEN)),
-        Span::styled(
-            format!(" {}", state.user_name),
-            Style::default().fg(SUCCESS_GREEN),
-        ),
-        Span::styled(format!(" {DOT} "), Style::default().fg(DIM_GRAY)),
-        // Email
-        Span::styled(" ", Style::default().fg(CORAL)),
-        Span::styled(format!(" {}", state.user_email), Style::default().fg(CORAL)),
-        Span::styled(format!(" {DOT} "), Style::default().fg(DIM_GRAY)),
-        // Emoji mode
-        Span::styled(" ", Style::default().fg(ELECTRIC_YELLOW)),
+    // Generate gradient for user name
+    let name_gradient = generate_smooth_gradient(&GRADIENT_EMERALD, state.user_name.len().max(1));
+    let mut name_spans: Vec<Span> = vec![
+        Span::styled("", Style::default().fg(SUCCESS_GREEN)),
+        Span::styled(" ", Style::default()),
+    ];
+    for (i, c) in state.user_name.chars().enumerate() {
+        name_spans.push(Span::styled(
+            c.to_string(),
+            Style::default().fg(rgb_to_color(name_gradient[i.min(name_gradient.len() - 1)])),
+        ));
+    }
+
+    // Generate gradient for email
+    let email_gradient = generate_smooth_gradient(&GRADIENT_SUNSET, state.user_email.len().max(1));
+    let mut email_spans: Vec<Span> = vec![
+        Span::styled("", Style::default().fg(CORAL)),
+        Span::styled(" ", Style::default()),
+    ];
+    for (i, c) in state.user_email.chars().enumerate() {
+        email_spans.push(Span::styled(
+            c.to_string(),
+            Style::default().fg(rgb_to_color(
+                email_gradient[i.min(email_gradient.len() - 1)],
+            )),
+        ));
+    }
+
+    // Build complete info bar
+    let mut info_spans: Vec<Span> = name_spans;
+    info_spans.push(Span::styled(
+        format!(" {DOT} "),
+        Style::default().fg(DIM_GRAY),
+    ));
+    info_spans.extend(email_spans);
+    info_spans.push(Span::styled(
+        format!(" {DOT} "),
+        Style::default().fg(DIM_GRAY),
+    ));
+
+    // Emoji mode
+    info_spans.extend(vec![
+        Span::styled("", Style::default().fg(ELECTRIC_YELLOW)),
         Span::styled(" emoji:", Style::default().fg(DIM_GRAY)),
         Span::styled(
             emoji_display,
@@ -389,10 +453,20 @@ fn draw_info_bar(f: &mut Frame, state: &TuiState, area: Rect) {
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled(format!(" {DOT} "), Style::default().fg(DIM_GRAY)),
-        // Preset
-        Span::styled(" ", Style::default().fg(PURE_PINK)),
-        Span::styled(format!(" {preset_display}"), Style::default().fg(PURE_PINK)),
-    ];
+    ]);
+
+    // Preset with gradient
+    let preset_gradient = generate_smooth_gradient(&GRADIENT_AURORA, preset_display.len().max(1));
+    info_spans.push(Span::styled("", Style::default().fg(PURE_PINK)));
+    info_spans.push(Span::styled(" ", Style::default()));
+    for (i, c) in preset_display.chars().enumerate() {
+        info_spans.push(Span::styled(
+            c.to_string(),
+            Style::default().fg(rgb_to_color(
+                preset_gradient[i.min(preset_gradient.len() - 1)],
+            )),
+        ));
+    }
 
     let info_bar = Paragraph::new(Line::from(info_spans)).alignment(Alignment::Center);
     f.render_widget(info_bar, area);
@@ -447,32 +521,17 @@ pub fn draw_status(f: &mut Frame, state: &mut TuiState, area: Rect) {
 // Visual Elements
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/// Draw a gradient separator line (purple -> cyan)
+/// Draw a gradient separator line with smooth interpolation
 fn draw_gradient_separator(f: &mut Frame, area: Rect) {
     #[allow(clippy::as_conversions)]
     let width = area.width as usize;
 
-    // Create gradient from Electric Purple -> Pure Pink -> Neon Cyan
-    let gradient_colors = [
-        Color::Rgb(225, 53, 255),  // Electric Purple
-        Color::Rgb(243, 27, 255),  // Purple-pink
-        Color::Rgb(255, 0, 255),   // Pure Pink
-        Color::Rgb(191, 128, 255), // Pink-cyan
-        Color::Rgb(128, 255, 234), // Neon Cyan
-    ];
+    // Generate smooth gradient for the exact width
+    let gradient = generate_smooth_gradient(&GRADIENT_AURORA, width);
 
-    let spans: Vec<Span> = (0..width)
-        .map(|i| {
-            let color_idx = if width > 1 {
-                i * (gradient_colors.len() - 1) / (width - 1)
-            } else {
-                0
-            };
-            Span::styled(
-                SEPARATOR_CHAR,
-                Style::default().fg(gradient_colors[color_idx]),
-            )
-        })
+    let spans: Vec<Span> = gradient
+        .iter()
+        .map(|&color| Span::styled(SEPARATOR_CHAR, Style::default().fg(rgb_to_color(color))))
         .collect();
 
     let separator = Paragraph::new(Line::from(spans));
@@ -494,16 +553,23 @@ fn get_emoji_indicator(state: &TuiState) -> String {
 fn draw_emoji_popup(f: &mut Frame, state: &mut TuiState) {
     let area = centered_rect(50, 60, f.area());
 
+    // Build gradient title for emoji popup
+    let title_text = " select emoji ";
+    let title_gradient = generate_smooth_gradient(&GRADIENT_SUNSET, title_text.len());
+
+    let mut title_spans: Vec<Span> = vec![Span::styled("✧", Style::default().fg(ELECTRIC_YELLOW))];
+
+    for (i, c) in title_text.chars().enumerate() {
+        title_spans.push(Span::styled(
+            c.to_string(),
+            Style::default()
+                .fg(rgb_to_color(title_gradient[i]))
+                .add_modifier(Modifier::BOLD),
+        ));
+    }
+
     let popup_block = Block::default()
-        .title(Line::from(vec![
-            Span::styled(" ", Style::default().fg(ELECTRIC_YELLOW)),
-            Span::styled(
-                " select emoji ",
-                Style::default()
-                    .fg(ELECTRIC_YELLOW)
-                    .add_modifier(Modifier::BOLD),
-            ),
-        ]))
+        .title(Line::from(title_spans))
         .borders(Borders::ALL)
         .border_style(Style::default().fg(ELECTRIC_YELLOW))
         .border_type(ratatui::widgets::BorderType::Rounded)
@@ -534,14 +600,23 @@ fn draw_emoji_popup(f: &mut Frame, state: &mut TuiState) {
 fn draw_preset_popup(f: &mut Frame, state: &mut TuiState) {
     let area = centered_rect(70, 70, f.area());
 
+    // Build gradient title for preset popup
+    let title_text = " select preset ";
+    let title_gradient = generate_smooth_gradient(&GRADIENT_AURORA, title_text.len());
+
+    let mut title_spans: Vec<Span> = vec![Span::styled("◆", Style::default().fg(CORAL))];
+
+    for (i, c) in title_text.chars().enumerate() {
+        title_spans.push(Span::styled(
+            c.to_string(),
+            Style::default()
+                .fg(rgb_to_color(title_gradient[i]))
+                .add_modifier(Modifier::BOLD),
+        ));
+    }
+
     let popup_block = Block::default()
-        .title(Line::from(vec![
-            Span::styled(" ", Style::default().fg(CORAL)),
-            Span::styled(
-                " select preset ",
-                Style::default().fg(CORAL).add_modifier(Modifier::BOLD),
-            ),
-        ]))
+        .title(Line::from(title_spans))
         .borders(Borders::ALL)
         .border_style(Style::default().fg(CORAL))
         .border_type(ratatui::widgets::BorderType::Rounded)
@@ -576,16 +651,23 @@ fn draw_preset_popup(f: &mut Frame, state: &mut TuiState) {
 fn draw_user_info_popup(f: &mut Frame, state: &mut TuiState) {
     let area = centered_rect(50, 30, f.area());
 
+    // Build gradient title for user info popup
+    let title_text = " edit user info ";
+    let title_gradient = generate_smooth_gradient(&GRADIENT_EMERALD, title_text.len());
+
+    let mut title_spans: Vec<Span> = vec![Span::styled("◉", Style::default().fg(SUCCESS_GREEN))];
+
+    for (i, c) in title_text.chars().enumerate() {
+        title_spans.push(Span::styled(
+            c.to_string(),
+            Style::default()
+                .fg(rgb_to_color(title_gradient[i]))
+                .add_modifier(Modifier::BOLD),
+        ));
+    }
+
     let popup_block = Block::default()
-        .title(Line::from(vec![
-            Span::styled(" ", Style::default().fg(SUCCESS_GREEN)),
-            Span::styled(
-                " edit user info ",
-                Style::default()
-                    .fg(SUCCESS_GREEN)
-                    .add_modifier(Modifier::BOLD),
-            ),
-        ]))
+        .title(Line::from(title_spans))
         .borders(Borders::ALL)
         .border_style(Style::default().fg(SUCCESS_GREEN))
         .border_type(ratatui::widgets::BorderType::Rounded)
@@ -601,26 +683,58 @@ fn draw_user_info_popup(f: &mut Frame, state: &mut TuiState) {
     let name_active = state.user_info_focus == UserInfoFocus::Name;
     let email_active = state.user_info_focus == UserInfoFocus::Email;
 
+    // Build gradient label for name field
+    let name_label = " name ";
+    let name_gradient = if name_active {
+        generate_smooth_gradient(&GRADIENT_EMERALD, name_label.len())
+    } else {
+        vec![(98, 114, 164); name_label.len()]
+    };
+
+    let mut name_title: Vec<Span> = vec![Span::styled(
+        "",
+        Style::default().fg(if name_active { NEON_CYAN } else { DIM_GRAY }),
+    )];
+    for (i, c) in name_label.chars().enumerate() {
+        name_title.push(Span::styled(
+            c.to_string(),
+            Style::default().fg(rgb_to_color(name_gradient[i])),
+        ));
+    }
+
     state.user_name_textarea.set_block(
         Block::default()
             .borders(Borders::ALL)
             .border_style(Style::default().fg(if name_active { NEON_CYAN } else { DIM_GRAY }))
             .border_type(ratatui::widgets::BorderType::Rounded)
-            .title(Span::styled(
-                "  name ",
-                Style::default().fg(if name_active { NEON_CYAN } else { DIM_GRAY }),
-            )),
+            .title(Line::from(name_title)),
     );
+
+    // Build gradient label for email field
+    let email_label = " email ";
+    let email_gradient = if email_active {
+        generate_smooth_gradient(&GRADIENT_SUNSET, email_label.len())
+    } else {
+        vec![(98, 114, 164); email_label.len()]
+    };
+
+    let mut email_title: Vec<Span> = vec![Span::styled(
+        "",
+        Style::default().fg(if email_active { CORAL } else { DIM_GRAY }),
+    )];
+    for (i, c) in email_label.chars().enumerate() {
+        email_title.push(Span::styled(
+            c.to_string(),
+            Style::default().fg(rgb_to_color(email_gradient[i])),
+        ));
+    }
 
     state.user_email_textarea.set_block(
         Block::default()
             .borders(Borders::ALL)
             .border_style(Style::default().fg(if email_active { CORAL } else { DIM_GRAY }))
             .border_type(ratatui::widgets::BorderType::Rounded)
-            .title(Span::styled(
-                "  email ",
-                Style::default().fg(if email_active { CORAL } else { DIM_GRAY }),
-            )),
+            .title(Line::from(email_title)),
     );
 
     if name_active {
