@@ -2,7 +2,7 @@ use git_iris::config::Config;
 use git_iris::context::{ChangeType, CommitContext, RecentCommit, StagedFile};
 use git_iris::git::GitRepo;
 use git_iris::providers::ProviderConfig;
-use git_iris::types::{ChangeMetrics, GeneratedPullRequest};
+use git_iris::types::{ChangeMetrics, MarkdownPullRequest};
 use git2::Repository;
 
 use anyhow::Result;
@@ -433,22 +433,47 @@ impl MockDataBuilder {
         }
     }
 
-    /// Create a mock `GeneratedPullRequest`
-    pub fn generated_pull_request() -> GeneratedPullRequest {
-        GeneratedPullRequest {
-            emoji: None,
-            title: "Add JWT authentication with user registration".to_string(),
-            summary: "Implements comprehensive JWT-based authentication system with user registration, login, and middleware for protected routes.".to_string(),
-            description: "This PR introduces a complete authentication system:\n\n**Features Added:**\n- JWT token generation and validation\n- User registration endpoint\n- Authentication middleware for protected routes\n- Password hashing with bcrypt\n\n**Technical Details:**\n- Uses industry-standard JWT libraries\n- Implements secure password storage\n- Includes comprehensive error handling".to_string(),
-            commits: vec![
-                "abc1234: Add JWT authentication middleware".to_string(),
-                "def5678: Implement user registration endpoint".to_string(),
-            ],
-            breaking_changes: vec![
-                "All protected endpoints now require authentication headers".to_string(),
-            ],
-            testing_notes: Some("Test user registration flow and verify JWT tokens are properly validated on protected routes.".to_string()),
-            notes: Some("Requires JWT_SECRET environment variable to be set before deployment.".to_string()),
+    /// Create a mock `MarkdownPullRequest`
+    pub fn generated_pull_request() -> MarkdownPullRequest {
+        MarkdownPullRequest {
+            content: r#"# Add JWT authentication with user registration
+
+## Summary
+
+Implements comprehensive JWT-based authentication system with user registration, login, and middleware for protected routes.
+
+## Description
+
+This PR introduces a complete authentication system:
+
+**Features Added:**
+- JWT token generation and validation
+- User registration endpoint
+- Authentication middleware for protected routes
+- Password hashing with bcrypt
+
+**Technical Details:**
+- Uses industry-standard JWT libraries
+- Implements secure password storage
+- Includes comprehensive error handling
+
+## Commits
+
+- `abc1234`: Add JWT authentication middleware
+- `def5678`: Implement user registration endpoint
+
+## Breaking Changes
+
+- All protected endpoints now require authentication headers
+
+## Testing
+
+Test user registration flow and verify JWT tokens are properly validated on protected routes.
+
+## Notes
+
+Requires JWT_SECRET environment variable to be set before deployment.
+"#.to_string(),
         }
     }
 

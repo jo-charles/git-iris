@@ -2,7 +2,7 @@ use anyhow::Result;
 use git_iris::config::Config;
 use git_iris::context::ChangeType;
 use git_iris::git::GitRepo;
-use git_iris::types::{GeneratedPullRequest, format_pull_request};
+use git_iris::types::MarkdownPullRequest;
 use std::sync::Arc;
 use tempfile::TempDir;
 
@@ -11,7 +11,7 @@ use tempfile::TempDir;
 mod test_utils;
 use test_utils::{MockDataBuilder, setup_git_repo_with_commits};
 
-fn create_mock_generated_pr() -> GeneratedPullRequest {
+fn create_mock_generated_pr() -> MarkdownPullRequest {
     MockDataBuilder::generated_pull_request()
 }
 
@@ -24,46 +24,53 @@ fn setup_test_repo_with_commits_arc() -> Result<(TempDir, Arc<GitRepo>)> {
 #[test]
 fn test_format_pull_request() {
     let pr = create_mock_generated_pr();
-    let formatted = format_pull_request(&pr);
+    let formatted = pr.format();
 
-    assert!(formatted.contains("# Add JWT authentication with user registration"));
-    assert!(formatted.contains("## Summary"));
-    assert!(formatted.contains("## Description"));
-    assert!(formatted.contains("## Commits"));
-    assert!(formatted.contains("- abc1234: Add JWT authentication middleware"));
-    assert!(formatted.contains("- def5678: Implement user registration endpoint"));
-    assert!(formatted.contains("## Breaking Changes"));
-    assert!(formatted.contains("- All protected endpoints now require authentication headers"));
-    assert!(formatted.contains("## Testing"));
-    assert!(formatted.contains("Test user registration flow"));
-    assert!(formatted.contains("## Notes"));
-    assert!(formatted.contains("Requires JWT_SECRET environment variable"));
+    // Check that markdown content is rendered with terminal styling
+    assert!(!formatted.is_empty());
+    // The format() method renders markdown for terminal display
+    // Check raw content for actual markdown structure
+    let raw = pr.raw_content();
+    assert!(raw.contains("# Add JWT authentication with user registration"));
+    assert!(raw.contains("## Summary"));
+    assert!(raw.contains("## Description"));
+    assert!(raw.contains("## Commits"));
+    assert!(raw.contains("abc1234"));
+    assert!(raw.contains("def5678"));
+    assert!(raw.contains("## Breaking Changes"));
+    assert!(raw.contains("## Testing"));
+    assert!(raw.contains("## Notes"));
 }
 
 #[test]
 fn test_format_pull_request_minimal() {
-    let pr = GeneratedPullRequest {
-        emoji: None,
-        title: "Fix bug in user authentication".to_string(),
-        summary: "Fixes a critical bug in the authentication flow".to_string(),
-        description: "This PR fixes an issue where users couldn't log in properly.".to_string(),
-        commits: vec!["abc1234: Fix authentication bug".to_string()],
-        breaking_changes: vec![],
-        testing_notes: None,
-        notes: None,
+    let pr = MarkdownPullRequest {
+        content: r#"# Fix bug in user authentication
+
+## Summary
+
+Fixes a critical bug in the authentication flow.
+
+## Description
+
+This PR fixes an issue where users couldn't log in properly.
+
+## Commits
+
+- `abc1234`: Fix authentication bug
+"#.to_string(),
     };
 
-    let formatted = format_pull_request(&pr);
-
-    assert!(formatted.contains("# Fix bug in user authentication"));
-    assert!(formatted.contains("## Summary"));
-    assert!(formatted.contains("## Description"));
-    assert!(formatted.contains("## Commits"));
-    assert!(formatted.contains("- abc1234: Fix authentication bug"));
-    // Should not contain empty sections
-    assert!(!formatted.contains("## Breaking Changes"));
-    assert!(!formatted.contains("## Testing"));
-    assert!(!formatted.contains("## Notes"));
+    let raw = pr.raw_content();
+    assert!(raw.contains("# Fix bug in user authentication"));
+    assert!(raw.contains("## Summary"));
+    assert!(raw.contains("## Description"));
+    assert!(raw.contains("## Commits"));
+    assert!(raw.contains("abc1234"));
+    // Should not contain sections that weren't included
+    assert!(!raw.contains("## Breaking Changes"));
+    assert!(!raw.contains("## Testing"));
+    assert!(!raw.contains("## Notes"));
 }
 
 // Tests for Git operations (using public API)
@@ -157,27 +164,47 @@ async fn test_git_repo_pr_methods() -> Result<()> {
 
 #[test]
 fn test_format_pull_request_with_unicode() {
-    let pr = GeneratedPullRequest {
-        emoji: None,
-        title: "Add 🚀 deployment automation".to_string(),
-        summary: "Implements automated deployment with emojis 🎉".to_string(),
-        description: "This PR adds deployment automation:\n\n• Feature 1\n• Feature 2 ✅"
-            .to_string(),
-        commits: vec!["abc1234: Add 🔧 configuration".to_string()],
-        breaking_changes: vec!["⚠️ Configuration format changed".to_string()],
-        testing_notes: Some("Test with 🧪 test suite".to_string()),
-        notes: Some("Deployment requires 🔑 secrets".to_string()),
+    let pr = MarkdownPullRequest {
+        content: r#"# 🚀 Add deployment automation
+
+## Summary
+
+Implements automated deployment with emojis 🎉
+
+## Description
+
+This PR adds deployment automation:
+
+• Feature 1
+• Feature 2 ✅
+
+## Commits
+
+- `abc1234`: Add 🔧 configuration
+
+## Breaking Changes
+
+- ⚠️ Configuration format changed
+
+## Testing
+
+Test with 🧪 test suite
+
+## Notes
+
+Deployment requires 🔑 secrets
+"#.to_string(),
     };
 
-    let formatted = format_pull_request(&pr);
+    let raw = pr.raw_content();
 
-    assert!(formatted.contains("🚀 deployment automation"));
-    assert!(formatted.contains("🎉"));
-    assert!(formatted.contains("✅"));
-    assert!(formatted.contains("🔧"));
-    assert!(formatted.contains("⚠️"));
-    assert!(formatted.contains("🧪"));
-    assert!(formatted.contains("🔑"));
+    assert!(raw.contains("🚀 Add deployment automation"));
+    assert!(raw.contains("🎉"));
+    assert!(raw.contains("✅"));
+    assert!(raw.contains("🔧"));
+    assert!(raw.contains("⚠️"));
+    assert!(raw.contains("🧪"));
+    assert!(raw.contains("🔑"));
 }
 
 #[cfg(test)]

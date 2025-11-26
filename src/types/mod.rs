@@ -17,13 +17,13 @@ mod review;
 pub use self::commit::{GeneratedMessage, format_commit_message};
 
 // PR types
-pub use pr::{GeneratedPullRequest, format_pull_request};
+pub use pr::MarkdownPullRequest;
 
 // Review types
 pub use review::{MarkdownReview, render_markdown_for_terminal};
 
 // Changelog types
-pub use changelog::{BreakingChange, ChangeEntry, ChangeMetrics, ChangelogResponse, ChangelogType};
+pub use changelog::{ChangeEntry, ChangeMetrics, ChangelogType, MarkdownChangelog};
 
 // Release notes types
-pub use release_notes::{Highlight, ReleaseNotesResponse, Section, SectionItem};
+pub use release_notes::MarkdownReleaseNotes;

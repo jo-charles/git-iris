@@ -848,7 +848,6 @@ async fn handle_pr_with_agent(
 ) -> anyhow::Result<()> {
     use crate::agents::{IrisAgentService, StructuredResponse, TaskContext};
     use crate::instruction_presets::PresetType;
-    use crate::types::format_pull_request;
 
     // Check if the preset is appropriate for PR descriptions
     if !common.is_valid_preset_for_type(PresetType::Review)
@@ -879,10 +878,10 @@ async fn handle_pr_with_agent(
     };
 
     if print {
-        println!("{}", format_pull_request(&generated_pr));
+        println!("{}", generated_pr.format());
     } else {
         ui::print_success("PR description generated successfully");
-        println!("{}", format_pull_request(&generated_pr));
+        println!("{}", generated_pr.format());
     }
 
     Ok(())

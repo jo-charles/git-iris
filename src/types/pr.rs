@@ -1,83 +1,27 @@
 //! Pull request types and formatting
+//!
+//! This module provides markdown-based PR output that lets the LLM drive
+//! the structure while we beautify it for terminal display.
 
+use crate::types::review::render_markdown_for_terminal;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::fmt::Write;
 
-/// Model for pull request description generation results
-#[derive(Serialize, Deserialize, JsonSchema, Debug, Clone)]
-pub struct GeneratedPullRequest {
-    /// Optional emoji for the pull request title
-    pub emoji: Option<String>,
-    /// Pull request title
-    pub title: String,
-    /// Brief summary of the changes
-    pub summary: String,
-    /// Detailed description of what was changed and why
-    pub description: String,
-    /// List of commit messages included in this PR
-    pub commits: Vec<String>,
-    /// Breaking changes if any
-    pub breaking_changes: Vec<String>,
-    /// Testing instructions for reviewers
-    pub testing_notes: Option<String>,
-    /// Additional notes or context
-    pub notes: Option<String>,
+/// Markdown-based pull request that lets the LLM determine structure
+#[derive(Serialize, Deserialize, Debug, Clone, JsonSchema)]
+pub struct MarkdownPullRequest {
+    /// The full markdown content of the PR description
+    pub content: String,
 }
 
-/// Formats a pull request description from a `GeneratedPullRequest`
-pub fn format_pull_request(response: &GeneratedPullRequest) -> String {
-    let mut message = String::new();
-
-    // Title with optional emoji
-    if let Some(emoji) = &response.emoji {
-        writeln!(&mut message, "# {emoji} {}", response.title)
-            .expect("write to string should not fail");
-    } else {
-        writeln!(&mut message, "# {}", response.title).expect("write to string should not fail");
-    }
-    message.push('\n');
-
-    // Summary - no word wrapping for web UI display
-    writeln!(&mut message, "## Summary").expect("write to string should not fail");
-    writeln!(&mut message, "{}", response.summary).expect("write to string should not fail");
-    message.push('\n');
-
-    // Description - no word wrapping for web UI display
-    writeln!(&mut message, "## Description").expect("write to string should not fail");
-    writeln!(&mut message, "{}", response.description).expect("write to string should not fail");
-    message.push('\n');
-
-    // Commits
-    if !response.commits.is_empty() {
-        writeln!(&mut message, "## Commits").expect("write to string should not fail");
-        for commit in &response.commits {
-            writeln!(&mut message, "- {commit}").expect("write to string should not fail");
-        }
-        message.push('\n');
+impl MarkdownPullRequest {
+    /// Render the markdown content with terminal styling
+    pub fn format(&self) -> String {
+        render_markdown_for_terminal(&self.content)
     }
 
-    // Breaking changes
-    if !response.breaking_changes.is_empty() {
-        writeln!(&mut message, "## Breaking Changes").expect("write to string should not fail");
-        for change in &response.breaking_changes {
-            writeln!(&mut message, "- {change}").expect("write to string should not fail");
-        }
-        message.push('\n');
+    /// Get the raw markdown content (for GitHub/GitLab, etc.)
+    pub fn raw_content(&self) -> &str {
+        &self.content
     }
-
-    // Testing notes - no word wrapping for web UI display
-    if let Some(testing) = &response.testing_notes {
-        writeln!(&mut message, "## Testing").expect("write to string should not fail");
-        writeln!(&mut message, "{testing}").expect("write to string should not fail");
-        message.push('\n');
-    }
-
-    // Additional notes - no word wrapping for web UI display
-    if let Some(notes) = &response.notes {
-        writeln!(&mut message, "## Notes").expect("write to string should not fail");
-        writeln!(&mut message, "{notes}").expect("write to string should not fail");
-    }
-
-    message
 }

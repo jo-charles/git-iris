@@ -1,137 +1,28 @@
 //! Release notes types and formatting
+//!
+//! This module provides markdown-based release notes output that lets the LLM drive
+//! the structure while we beautify it for terminal display.
 
-use super::changelog::{BreakingChange, ChangeMetrics};
-use crate::log_debug;
+use crate::types::review::render_markdown_for_terminal;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-/// Represents the structured response for release notes
-#[derive(Clone, Serialize, Deserialize, JsonSchema, Debug)]
-pub struct ReleaseNotesResponse {
-    /// The version number of the release
-    pub version: Option<String>,
-    /// The date of the release
-    pub release_date: Option<String>,
-    /// A brief summary of the release
-    pub summary: String,
-    /// List of highlighted changes or features in this release
-    pub highlights: Vec<Highlight>,
-    /// Detailed sections of changes
-    pub sections: Vec<Section>,
-    /// List of breaking changes in this release
-    pub breaking_changes: Vec<BreakingChange>,
-    /// Notes for upgrading to this version
-    pub upgrade_notes: Vec<String>,
-    /// Metrics summarizing the changes in this release
-    pub metrics: ChangeMetrics,
+/// Markdown-based release notes that lets the LLM determine structure
+#[derive(Serialize, Deserialize, Debug, Clone, JsonSchema)]
+pub struct MarkdownReleaseNotes {
+    /// The full markdown content of the release notes
+    pub content: String,
 }
 
-/// Represents a highlight in the release notes
-#[derive(Clone, Serialize, Deserialize, JsonSchema, Debug)]
-pub struct Highlight {
-    /// Title of the highlight
-    pub title: String,
-    /// Detailed description of the highlight
-    pub description: String,
-}
+impl MarkdownReleaseNotes {
+    /// Render the markdown content with terminal styling
+    pub fn format(&self) -> String {
+        render_markdown_for_terminal(&self.content)
+    }
 
-/// Represents a section in the release notes
-#[derive(Clone, Serialize, Deserialize, JsonSchema, Debug)]
-pub struct Section {
-    /// Title of the section
-    pub title: String,
-    /// List of items in this section
-    pub items: Vec<SectionItem>,
-}
-
-/// Represents an item in a section of the release notes
-#[derive(Clone, Serialize, Deserialize, JsonSchema, Debug)]
-pub struct SectionItem {
-    /// Description of the change
-    pub description: String,
-    /// List of issue numbers associated with this change
-    pub associated_issues: Vec<String>,
-    /// Pull request number associated with this change, if any
-    pub pull_request: Option<String>,
-}
-
-impl ReleaseNotesResponse {
-    /// Generate the content string for display
-    pub fn content(&self) -> String {
-        let mut output = String::new();
-
-        if let Some(version) = &self.version {
-            output.push_str(&format!("# Release Notes - {version}\n\n"));
-        } else {
-            output.push_str("# Release Notes\n\n");
-        }
-
-        if let Some(date) = &self.release_date {
-            output.push_str(&format!("Released: {date}\n\n"));
-        }
-
-        if !self.summary.is_empty() {
-            output.push_str(&format!("{}\n\n", self.summary));
-        }
-
-        if !self.highlights.is_empty() {
-            output.push_str("## Highlights\n\n");
-            for highlight in &self.highlights {
-                output.push_str(&format!(
-                    "### {}\n\n{}\n\n",
-                    highlight.title, highlight.description
-                ));
-            }
-        }
-
-        for section in &self.sections {
-            output.push_str(&format!("## {}\n\n", section.title));
-            for item in &section.items {
-                output.push_str(&format!("- {}\n", item.description));
-            }
-            output.push('\n');
-        }
-
-        if !self.breaking_changes.is_empty() {
-            output.push_str("## Breaking Changes\n\n");
-            for change in &self.breaking_changes {
-                output.push_str(&format!("- {}\n", change.description));
-            }
-            output.push('\n');
-        }
-
-        if !self.upgrade_notes.is_empty() {
-            output.push_str("## Upgrade Notes\n\n");
-            for note in &self.upgrade_notes {
-                output.push_str(&format!("- {note}\n"));
-            }
-        }
-
-        output
+    /// Get the raw markdown content (for file output, etc.)
+    pub fn raw_content(&self) -> &str {
+        &self.content
     }
 }
 
-impl From<String> for ReleaseNotesResponse {
-    /// Converts a JSON string to a `ReleaseNotesResponse`
-    fn from(value: String) -> Self {
-        serde_json::from_str(&value).unwrap_or_else(|e| {
-            log_debug!("Failed to parse ReleaseNotesResponse: {}", e);
-            Self {
-                version: Some("Error".to_string()),
-                release_date: Some("Error".to_string()),
-                summary: format!("Error parsing response: {e}"),
-                highlights: Vec::new(),
-                sections: Vec::new(),
-                breaking_changes: Vec::new(),
-                upgrade_notes: Vec::new(),
-                metrics: ChangeMetrics {
-                    total_commits: 0,
-                    files_changed: 0,
-                    insertions: 0,
-                    deletions: 0,
-                    total_lines_changed: 0,
-                },
-            }
-        })
-    }
-}

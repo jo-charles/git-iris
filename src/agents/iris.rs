@@ -56,9 +56,9 @@ pub trait StreamingCallback: Send + Sync {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum StructuredResponse {
     CommitMessage(crate::types::GeneratedMessage),
-    PullRequest(crate::types::GeneratedPullRequest),
-    Changelog(crate::types::ChangelogResponse),
-    ReleaseNotes(crate::types::ReleaseNotesResponse),
+    PullRequest(crate::types::MarkdownPullRequest),
+    Changelog(crate::types::MarkdownChangelog),
+    ReleaseNotes(crate::types::MarkdownReleaseNotes),
     /// Markdown-based review (LLM-driven structure)
     MarkdownReview(crate::types::MarkdownReview),
     PlainText(String),
@@ -71,13 +71,13 @@ impl fmt::Display for StructuredResponse {
                 write!(f, "{}", crate::types::format_commit_message(msg))
             }
             StructuredResponse::PullRequest(pr) => {
-                write!(f, "{}", crate::types::format_pull_request(pr))
+                write!(f, "{}", pr.raw_content())
             }
             StructuredResponse::Changelog(cl) => {
-                write!(f, "{}", cl.content())
+                write!(f, "{}", cl.raw_content())
             }
             StructuredResponse::ReleaseNotes(rn) => {
-                write!(f, "{}", rn.content())
+                write!(f, "{}", rn.raw_content())
             }
             StructuredResponse::MarkdownReview(review) => {
                 write!(f, "{}", review.format())
@@ -702,27 +702,27 @@ Guidelines:
                     .await?;
                 Ok(StructuredResponse::CommitMessage(response))
             }
-            "GeneratedPullRequest" => {
+            "MarkdownPullRequest" => {
                 let response = self
-                    .execute_with_agent::<crate::types::GeneratedPullRequest>(
+                    .execute_with_agent::<crate::types::MarkdownPullRequest>(
                         &system_prompt,
                         user_prompt,
                     )
                     .await?;
                 Ok(StructuredResponse::PullRequest(response))
             }
-            "ChangelogResponse" => {
+            "MarkdownChangelog" => {
                 let response = self
-                    .execute_with_agent::<crate::types::ChangelogResponse>(
+                    .execute_with_agent::<crate::types::MarkdownChangelog>(
                         &system_prompt,
                         user_prompt,
                     )
                     .await?;
                 Ok(StructuredResponse::Changelog(response))
             }
-            "ReleaseNotesResponse" => {
+            "MarkdownReleaseNotes" => {
                 let response = self
-                    .execute_with_agent::<crate::types::ReleaseNotesResponse>(
+                    .execute_with_agent::<crate::types::MarkdownReleaseNotes>(
                         &system_prompt,
                         user_prompt,
                     )

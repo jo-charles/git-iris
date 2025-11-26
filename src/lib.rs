@@ -38,6 +38,6 @@ pub use providers::{Provider, ProviderConfig};
 
 // Re-exports from types module
 pub use types::{
-    GeneratedMessage, GeneratedPullRequest, MarkdownReview, format_commit_message,
-    format_pull_request,
+    GeneratedMessage, MarkdownPullRequest, MarkdownReleaseNotes, MarkdownReview,
+    format_commit_message,
 };

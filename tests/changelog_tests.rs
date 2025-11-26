@@ -1,12 +1,8 @@
 #![allow(clippy::unwrap_used)]
 
 use anyhow::Result;
-use git_iris::types::{
-    ChangeEntry, ChangeMetrics, ChangelogResponse, ChangelogType, ReleaseNotesResponse,
-};
+use git_iris::types::MarkdownChangelog;
 use git2::Repository;
-
-use std::fmt::Write as FmtWrite;
 use tempfile::TempDir;
 
 // Use our centralized test infrastructure
@@ -21,70 +17,48 @@ fn setup_test_repo() -> Result<(TempDir, Repository)> {
 }
 
 #[test]
-fn test_changelog_response_structure() {
-    let changelog_response = ChangelogResponse {
-        version: Some("1.0.0".to_string()),
-        release_date: Some("2023-06-01".to_string()),
-        summary: Some("This release adds new features and fixes bugs.".to_string()),
-        sections: {
-            let mut sections = std::collections::HashMap::new();
-            sections.insert(
-                ChangelogType::Added,
-                vec![ChangeEntry {
-                    description: "New feature added".to_string(),
-                    commit_hashes: vec!["abc123".to_string()],
-                    associated_issues: vec!["#123".to_string()],
-                    pull_request: Some("PR #456".to_string()),
-                }],
-            );
-            sections
-        },
-        breaking_changes: vec![],
-        metrics: ChangeMetrics {
-            total_commits: 1,
-            files_changed: 1,
-            insertions: 10,
-            deletions: 5,
-            total_lines_changed: 15,
-        },
+fn test_markdown_changelog_format() {
+    let changelog = MarkdownChangelog {
+        content: r#"## [1.0.0] - 2023-06-01
+
+This release adds new features and fixes bugs.
+
+### Added
+
+- Add `new_feature` module for enhanced functionality (abc1234)
+- Add support for custom configurations #123
+
+### Changed
+
+- Update `config` module to use TOML format
+
+### Fixed
+
+- Fix memory leak in `cache_handler` (def5678)
+
+### Metrics
+
+- Total Commits: 5
+- Files Changed: 12
+- Insertions: +245
+- Deletions: -87
+"#
+        .to_string(),
     };
 
-    assert!(changelog_response.version.is_some());
-    assert!(changelog_response.release_date.is_some());
-    assert!(!changelog_response.sections.is_empty());
-    assert!(
-        changelog_response
-            .sections
-            .contains_key(&ChangelogType::Added)
-    );
-    assert!(changelog_response.metrics.total_commits > 0);
-    assert!(changelog_response.metrics.files_changed > 0);
-}
+    // Test raw content
+    let raw = changelog.raw_content();
+    assert!(raw.contains("## [1.0.0] - 2023-06-01"));
+    assert!(raw.contains("### Added"));
+    assert!(raw.contains("### Changed"));
+    assert!(raw.contains("### Fixed"));
+    assert!(raw.contains("### Metrics"));
+    assert!(raw.contains("`new_feature`"));
+    assert!(raw.contains("abc1234"));
 
-#[test]
-fn test_release_notes_response_structure() {
-    let release_notes_response = ReleaseNotesResponse {
-        version: Some("1.0.0".to_string()),
-        release_date: Some("2023-06-01".to_string()),
-        summary: "This release includes new features and bug fixes.".to_string(),
-        highlights: vec![],
-        sections: vec![],
-        breaking_changes: vec![],
-        upgrade_notes: vec![],
-        metrics: ChangeMetrics {
-            total_commits: 1,
-            files_changed: 1,
-            insertions: 10,
-            deletions: 5,
-            total_lines_changed: 1000,
-        },
-    };
-
-    assert!(release_notes_response.version.is_some());
-    assert!(release_notes_response.release_date.is_some());
-    assert!(!release_notes_response.summary.is_empty());
-    assert!(release_notes_response.metrics.total_commits > 0);
-    assert!(release_notes_response.metrics.files_changed > 0);
+    // Test formatted output (terminal rendering)
+    let formatted = changelog.format();
+    assert!(!formatted.is_empty());
 }
 
 /// Test that the `version_name` parameter correctly overrides the changelog version
@@ -135,73 +109,39 @@ fn test_update_changelog_file_with_version_name() -> Result<()> {
     Ok(())
 }
 
-/// Test that the `version_name` parameter is used in formatted release notes
 #[test]
-fn test_release_notes_with_version_name() {
-    // Create a simple release notes response for testing
-    let release_notes_response = ReleaseNotesResponse {
-        version: Some("1.0.0".to_string()),
-        release_date: Some("2023-06-01".to_string()),
-        summary: "This release includes new features and bug fixes.".to_string(),
-        highlights: vec![],
-        sections: vec![],
-        breaking_changes: vec![],
-        upgrade_notes: vec![],
-        metrics: ChangeMetrics {
-            total_commits: 1,
-            files_changed: 1,
-            insertions: 10,
-            deletions: 5,
-            total_lines_changed: 1000,
-        },
+fn test_markdown_release_notes_format() {
+    use git_iris::types::MarkdownReleaseNotes;
+
+    let release_notes = MarkdownReleaseNotes {
+        content: r#"# Release Notes v1.0.0
+
+**Released:** 2023-06-01
+
+This release includes new features and bug fixes.
+
+## Highlights
+
+### New Feature
+A great new feature was added.
+
+## Changes
+
+- Added new capability
+- Fixed critical bug
+
+## Breaking Changes
+
+- API endpoint changed
+"#.to_string(),
     };
 
-    // Test the format_release_notes_response function directly - we need to access this through a wrapper
-    // since it's not publicly exported
+    // Test raw content
+    assert!(release_notes.raw_content().contains("# Release Notes v1.0.0"));
+    assert!(release_notes.raw_content().contains("## Highlights"));
+    assert!(release_notes.raw_content().contains("## Breaking Changes"));
 
-    // Instead, verify that the expected version name appears in the formatted output
-    // This is effectively testing the function using an integration approach
-    let wrapper = ReleaseNotesWrapper(release_notes_response);
-    let custom_version = "2.0.0-beta";
-    let formatted = wrapper.format_with_version(Some(custom_version.to_string()));
-
-    assert!(
-        formatted.contains(&format!("Release Notes - v{custom_version}")),
-        "Release notes should contain the custom version name"
-    );
-
-    // Also verify that the original version is not used when a custom one is provided
-    assert!(
-        !formatted.contains("Release Notes - v1.0.0"),
-        "Release notes should not contain the original version name when a custom one is provided"
-    );
-}
-
-/// Wrapper struct to test release notes formatting with a custom version name
-#[allow(dead_code)]
-struct ReleaseNotesWrapper(ReleaseNotesResponse);
-
-impl ReleaseNotesWrapper {
-    /// Format the contained response with an optional custom version name
-    fn format_with_version(&self, version_name: Option<String>) -> String {
-        let mut formatted = String::new();
-
-        // Add header with either custom version or original version
-        let version = version_name.unwrap_or_else(|| self.0.version.clone().unwrap_or_default());
-
-        write!(formatted, "# Release Notes - v{version}\n\n").unwrap();
-
-        // Add release date (minimal implementation for test purposes)
-        write!(
-            formatted,
-            "Release Date: {}\n\n",
-            self.0.release_date.clone().unwrap_or_default()
-        )
-        .unwrap();
-
-        // Add summary (minimal implementation for test purposes)
-        write!(formatted, "{}\n\n", self.0.summary).unwrap();
-
-        formatted
-    }
+    // Test formatted output (terminal rendering)
+    let formatted = release_notes.format();
+    assert!(!formatted.is_empty());
 }

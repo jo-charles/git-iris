@@ -46,6 +46,61 @@ impl FileRead {
             .iter()
             .any(|ext| path_lower.ends_with(ext))
     }
+
+    /// List directory contents when user accidentally reads a directory
+    #[allow(clippy::cast_precision_loss, clippy::as_conversions)] // Fine for human-readable file sizes
+    fn list_directory(dir_path: &Path, display_path: &str) -> Result<String, FileReadError> {
+        let mut output = String::new();
+        output.push_str(&format!(
+            "=== {} is a directory ===\n\n",
+            display_path
+        ));
+        output.push_str("Contents:\n\n");
+
+        let mut entries: Vec<_> = fs::read_dir(dir_path)
+            .map_err(|e| FileReadError(format!("Cannot read directory: {e}")))?
+            .filter_map(std::result::Result::ok)
+            .collect();
+
+        // Sort: directories first, then files, alphabetically within each group
+        entries.sort_by(|a, b| {
+            let a_is_dir = a.path().is_dir();
+            let b_is_dir = b.path().is_dir();
+            match (a_is_dir, b_is_dir) {
+                (true, false) => std::cmp::Ordering::Less,
+                (false, true) => std::cmp::Ordering::Greater,
+                _ => a.file_name().cmp(&b.file_name()),
+            }
+        });
+
+        for entry in entries {
+            let name = entry.file_name();
+            let name_str = name.to_string_lossy();
+            let path = entry.path();
+
+            if path.is_dir() {
+                output.push_str(&format!("  📁 {}/\n", name_str));
+            } else {
+                // Get file size if available
+                let size_str = if let Ok(meta) = path.metadata() {
+                    let size = meta.len();
+                    if size < 1024 {
+                        format!("{} B", size)
+                    } else if size < 1024 * 1024 {
+                        format!("{:.1} KB", size as f64 / 1024.0)
+                    } else {
+                        format!("{:.1} MB", size as f64 / (1024.0 * 1024.0))
+                    }
+                } else {
+                    String::new()
+                };
+                output.push_str(&format!("  📄 {}  ({})\n", name_str, size_str));
+            }
+        }
+
+        output.push_str("\nUse file_read with a specific file path to read contents.\n");
+        Ok(output)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
@@ -104,6 +159,11 @@ impl Tool for FileRead {
         // Security: verify resolved path is within repository bounds
         if !canonical_file.starts_with(&canonical_repo) {
             return Err(FileReadError("Path escapes repository boundaries".into()));
+        }
+
+        // If it's a directory, return a helpful listing instead of an error
+        if canonical_file.is_dir() {
+            return Self::list_directory(&canonical_file, &args.path);
         }
 
         if !canonical_file.is_file() {

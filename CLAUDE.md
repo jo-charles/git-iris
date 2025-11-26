@@ -30,10 +30,10 @@ src/
 │       └── parallel_analyze.rs # Concurrent subagent processing
 ├── types/                  # Response type definitions
 │   ├── commit.rs          # GeneratedMessage
-│   ├── pr.rs              # GeneratedPullRequest
-│   ├── review.rs          # GeneratedReview, CodeIssue
-│   ├── changelog.rs       # ChangelogResponse, ChangeEntry
-│   └── release_notes.rs   # ReleaseNotesResponse
+│   ├── pr.rs              # MarkdownPullRequest
+│   ├── review.rs          # MarkdownReview
+│   ├── changelog.rs       # MarkdownChangelog
+│   └── release_notes.rs   # MarkdownReleaseNotes
 ├── services/               # Pure operations (no LLM)
 │   └── git_commit.rs      # GitCommitService for git operations
 ├── cli.rs                 # CLI entry point
@@ -88,11 +88,14 @@ Capabilities define:
 
 Iris produces structured JSON matching these schemas (all in `src/types/`):
 
-- `GeneratedMessage` - Commit message (emoji, title, body)
-- `GeneratedPullRequest` - PR description with sections
-- `GeneratedReview` - Code review with dimension analysis
-- `ChangelogResponse` - Changelog sections (Added, Changed, Fixed, etc.)
-- `ReleaseNotesResponse` - Release notes with highlights
+- `GeneratedMessage` - Commit message (emoji, title, body) - structured JSON
+- `MarkdownPullRequest` - PR description as free-form markdown
+- `MarkdownReview` - Code review as LLM-driven markdown
+- `MarkdownChangelog` - Changelog in Keep a Changelog format as markdown
+- `MarkdownReleaseNotes` - Release notes as free-form markdown
+
+The `Markdown*` types use a simple `{ content: String }` structure, letting the LLM drive
+the format while capability TOMLs provide guidelines. This produces more natural, flexible output.
 
 ## Adding a New Capability
 
