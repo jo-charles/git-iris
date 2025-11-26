@@ -52,7 +52,8 @@ Adapt the structure based on what makes sense for this specific release. Let the
 - Use **bold** for key concepts and emphasis
 - Be direct and specific — every sentence should communicate signal
 - Avoid cliché words: "enhance", "streamline", "leverage", "utilize", "robust"
-- DO NOT speculate — only describe what's evident from the diffs and commits
+- **NEVER use uncertain language**: Avoid "likely", "probably", "possibly", "might", "may", "seems", "appears to", "presumably", "could be". You have full code access—investigate until you can state facts definitively.
+- Only describe what's evident from the diffs and commits
 
 ## Example Format
 

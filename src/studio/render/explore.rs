@@ -5,7 +5,7 @@ use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::widgets::{Block, Borders, Paragraph};
 
-use crate::studio::components::render_file_tree;
+use crate::studio::components::{render_code_view, render_file_tree};
 use crate::studio::state::{PanelId, StudioState};
 use crate::studio::theme;
 
@@ -30,26 +30,24 @@ pub fn render_explore_panel(
             );
         }
         PanelId::Center => {
-            // Code view (placeholder for now - will be CodeView component)
-            let block = Block::default()
-                .title(" Code ")
-                .borders(Borders::ALL)
-                .border_style(if is_focused {
-                    theme::focused_border()
-                } else {
-                    theme::unfocused_border()
-                });
-            let inner = block.inner(area);
-            frame.render_widget(block, area);
-
-            let file_name = state.modes.explore.current_file.as_ref().map_or_else(
-                || "No file selected".to_string(),
-                |p| p.display().to_string(),
+            // Code view - display actual file content
+            let title = state.modes.explore.code_view.current_file().map_or_else(
+                || "Code".to_string(),
+                |p| {
+                    p.file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .to_string()
+                },
             );
 
-            let text = Paragraph::new(format!("{}\n\nSelect a file from the tree", file_name))
-                .style(Style::default().fg(theme::TEXT_PRIMARY));
-            frame.render_widget(text, inner);
+            render_code_view(
+                frame,
+                area,
+                &state.modes.explore.code_view,
+                &title,
+                is_focused,
+            );
         }
         PanelId::Right => {
             // Context panel

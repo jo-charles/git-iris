@@ -51,6 +51,8 @@ pub enum IrisTaskResult {
     ReviewContent(String),
     /// Generated PR description (markdown)
     PRContent(String),
+    /// Generated changelog (markdown)
+    ChangelogContent(String),
     /// Chat response from Iris
     ChatResponse(String),
     /// Error from the task
@@ -307,17 +309,25 @@ impl StudioApp {
                                     // Trigger mode-specific data loading
                                     match mode {
                                         Mode::PR => self.update_pr_data(),
+                                        Mode::Review => self.update_review_data(),
+                                        Mode::Changelog => self.update_changelog_data(),
                                         Mode::Commit => {
                                             if self.state.git_status.has_staged() {
                                                 self.auto_generate_commit();
                                             }
                                         }
-                                        _ => {}
+                                        Mode::Explore => {}
                                     }
                                     self.state.mark_dirty();
                                 }
                                 Action::ReloadPrData => {
                                     self.update_pr_data();
+                                }
+                                Action::ReloadReviewData => {
+                                    self.update_review_data();
+                                }
+                                Action::ReloadChangelogData => {
+                                    self.update_changelog_data();
                                 }
                                 Action::None => {}
                             }
@@ -378,6 +388,15 @@ impl StudioApp {
                         .notify(Notification::success("PR description generated"));
                     self.state.mark_dirty();
                 }
+                IrisTaskResult::ChangelogContent(content) => {
+                    self.state.set_iris_idle();
+                    self.state.modes.changelog.changelog_content = content;
+                    self.state.modes.changelog.changelog_scroll = 0;
+                    self.state.modes.changelog.generating = false;
+                    self.state
+                        .notify(Notification::success("Changelog generated"));
+                    self.state.mark_dirty();
+                }
                 IrisTaskResult::ChatResponse(response) => {
                     // Add response to chat state
                     if let Some(Modal::Chat(chat)) = &mut self.state.modal {
@@ -391,6 +410,7 @@ impl StudioApp {
                     self.state.modes.commit.generating = false;
                     self.state.modes.review.generating = false;
                     self.state.modes.pr.generating = false;
+                    self.state.modes.changelog.generating = false;
                     // If we're in chat, add error as Iris response
                     if let Some(Modal::Chat(chat)) = &mut self.state.modal {
                         chat.is_responding = false;
@@ -416,6 +436,9 @@ impl StudioApp {
             }
             IrisQueryRequest::GeneratePR => {
                 self.spawn_pr_generation();
+            }
+            IrisQueryRequest::GenerateChangelog { from_ref, to_ref } => {
+                self.spawn_changelog_generation(from_ref, to_ref);
             }
             IrisQueryRequest::SemanticBlame {
                 file,
@@ -549,6 +572,41 @@ impl StudioApp {
                 }
                 Err(e) => {
                     let _ = tx.send(IrisTaskResult::Error(format!("PR error: {}", e)));
+                }
+            }
+        });
+    }
+
+    /// Spawn a task for changelog generation
+    fn spawn_changelog_generation(&self, from_ref: String, to_ref: String) {
+        use crate::agents::{StructuredResponse, TaskContext};
+
+        let Some(agent) = self.agent_service.clone() else {
+            let tx = self.iris_result_tx.clone();
+            let _ = tx.send(IrisTaskResult::Error(
+                "Agent service not available".to_string(),
+            ));
+            return;
+        };
+
+        let tx = self.iris_result_tx.clone();
+
+        tokio::spawn(async move {
+            // Build context for changelog (comparing two refs)
+            let context = TaskContext::for_changelog(from_ref, Some(to_ref));
+
+            // Execute the changelog capability
+            match agent.execute_task("changelog", context).await {
+                Ok(response) => {
+                    let changelog_text = match response {
+                        StructuredResponse::Changelog(cl) => cl.content,
+                        StructuredResponse::PlainText(text) => text,
+                        other => other.to_string(),
+                    };
+                    let _ = tx.send(IrisTaskResult::ChangelogContent(changelog_text));
+                }
+                Err(e) => {
+                    let _ = tx.send(IrisTaskResult::Error(format!("Changelog error: {}", e)));
                 }
             }
         });
@@ -958,10 +1016,94 @@ impl StudioApp {
                 self.state.modes.pr.diff_view.set_diffs(diffs);
             }
             Err(e) => {
+                self.state
+                    .notify(Notification::warning(format!("Could not load diff: {}", e)));
+            }
+        }
+
+        self.state.mark_dirty();
+    }
+
+    /// Update Review mode data - load diff between `from_ref` and `to_ref`
+    pub fn update_review_data(&mut self) {
+        // Clone the Arc to avoid borrow conflicts with self.state mutations
+        let Some(repo) = self.state.repo.clone() else {
+            return;
+        };
+
+        let from = self.state.modes.review.from_ref.clone();
+        let to = self.state.modes.review.to_ref.clone();
+
+        // Load diff between the refs
+        match repo.get_ref_diff_full(&from, &to) {
+            Ok(diff_text) => {
+                let diffs = parse_diff(&diff_text);
+                self.state.modes.review.diff_view.set_diffs(diffs.clone());
+
+                // Also update file tree from the diff files
+                let files: Vec<std::path::PathBuf> = diffs
+                    .iter()
+                    .map(|d| std::path::PathBuf::from(&d.path))
+                    .collect();
+                let statuses: Vec<_> = files
+                    .iter()
+                    .map(|p| (p.clone(), FileGitStatus::Modified))
+                    .collect();
+                let tree_state = super::components::FileTreeState::from_paths(&files, &statuses);
+                self.state.modes.review.file_tree = tree_state;
+                self.state.modes.review.file_tree.expand_all();
+            }
+            Err(e) => {
+                self.state
+                    .notify(Notification::warning(format!("Could not load diff: {}", e)));
+            }
+        }
+
+        self.state.mark_dirty();
+    }
+
+    /// Update Changelog mode data - load commits and diff between `from_ref` and `to_ref`
+    pub fn update_changelog_data(&mut self) {
+        use super::state::ChangelogCommit;
+
+        // Clone the Arc to avoid borrow conflicts with self.state mutations
+        let Some(repo) = self.state.repo.clone() else {
+            return;
+        };
+
+        let from = self.state.modes.changelog.from_ref.clone();
+        let to = self.state.modes.changelog.to_ref.clone();
+
+        // Load commits between the refs
+        match repo.get_commits_between_with_callback(&from, &to, |commit| {
+            Ok(ChangelogCommit {
+                hash: commit.hash[..7.min(commit.hash.len())].to_string(),
+                message: commit.message.lines().next().unwrap_or("").to_string(),
+                author: commit.author.clone(),
+            })
+        }) {
+            Ok(commits) => {
+                self.state.modes.changelog.commits = commits;
+                self.state.modes.changelog.selected_commit = 0;
+                self.state.modes.changelog.commit_scroll = 0;
+            }
+            Err(e) => {
                 self.state.notify(Notification::warning(format!(
-                    "Could not load diff: {}",
+                    "Could not load commits: {}",
                     e
                 )));
+            }
+        }
+
+        // Load diff between the refs
+        match repo.get_ref_diff_full(&from, &to) {
+            Ok(diff_text) => {
+                let diffs = parse_diff(&diff_text);
+                self.state.modes.changelog.diff_view.set_diffs(diffs);
+            }
+            Err(e) => {
+                self.state
+                    .notify(Notification::warning(format!("Could not load diff: {}", e)));
             }
         }
 
@@ -1055,12 +1197,12 @@ pub fn run_studio(
     if let Some(from) = from_ref {
         app.state.modes.review.from_ref = from.clone();
         app.state.modes.pr.base_branch = from.clone();
-        app.state.modes.changelog.from_version = from;
+        app.state.modes.changelog.from_ref = from;
     }
     if let Some(to) = to_ref {
         app.state.modes.review.to_ref = to.clone();
         app.state.modes.pr.to_ref = to.clone();
-        app.state.modes.changelog.to_version = to;
+        app.state.modes.changelog.to_ref = to;
     }
 
     // Run the app

@@ -31,4 +31,7 @@ The user is working in Iris Studio. Based on the mode they're in:
 ## Response Format
 Respond naturally in plain text. Keep responses focused and actionable.
 No JSON wrapping needed - just respond directly.
+
+## Certainty Standard
+**NEVER use uncertain language** in your responses. Avoid "likely", "probably", "possibly", "might", "may", "seems", "appears to", "presumably", "could be". You have full access to the code through your tools—use them to investigate until you can state facts definitively. If you're unsure, gather more context before responding.
 """

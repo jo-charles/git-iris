@@ -11,7 +11,7 @@ use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use super::components::{DiffViewState, FileTreeState, MessageEditorState};
+use super::components::{CodeViewState, DiffViewState, FileTreeState, MessageEditorState};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Mode Enum
@@ -58,7 +58,10 @@ impl Mode {
 
     /// Check if this mode is available (implemented)
     pub fn is_available(&self) -> bool {
-        matches!(self, Mode::Explore | Mode::Commit | Mode::Review | Mode::PR)
+        matches!(
+            self,
+            Mode::Explore | Mode::Commit | Mode::Review | Mode::PR | Mode::Changelog
+        )
     }
 
     /// Get all modes in order
@@ -387,6 +390,8 @@ pub struct ExploreState {
     pub show_heat_map: bool,
     /// File tree state
     pub file_tree: FileTreeState,
+    /// Code view state
+    pub code_view: CodeViewState,
 }
 
 impl std::fmt::Debug for ExploreState {
@@ -547,13 +552,54 @@ impl std::fmt::Debug for PrState {
     }
 }
 
-/// State for Changelog mode (placeholder)
-#[derive(Debug, Default)]
+/// A commit for display in changelog mode
+#[derive(Debug, Clone)]
+pub struct ChangelogCommit {
+    /// Short commit hash
+    pub hash: String,
+    /// Commit message (first line)
+    pub message: String,
+    /// Author name
+    pub author: String,
+}
+
+/// State for Changelog mode
+#[derive(Debug)]
 pub struct ChangelogState {
-    /// Version range start
-    pub from_version: String,
-    /// Version range end
-    pub to_version: String,
+    /// Version range start (from ref)
+    pub from_ref: String,
+    /// Version range end (to ref)
+    pub to_ref: String,
+    /// Commits between refs
+    pub commits: Vec<ChangelogCommit>,
+    /// Selected commit index
+    pub selected_commit: usize,
+    /// Commit list scroll offset
+    pub commit_scroll: usize,
+    /// Diff view state
+    pub diff_view: DiffViewState,
+    /// Generated changelog content (markdown)
+    pub changelog_content: String,
+    /// Changelog content scroll offset
+    pub changelog_scroll: usize,
+    /// Whether changelog is being generated
+    pub generating: bool,
+}
+
+impl Default for ChangelogState {
+    fn default() -> Self {
+        Self {
+            from_ref: "HEAD~10".to_string(),
+            to_ref: "HEAD".to_string(),
+            commits: Vec::new(),
+            selected_commit: 0,
+            commit_scroll: 0,
+            diff_view: DiffViewState::new(),
+            changelog_content: String::new(),
+            changelog_scroll: 0,
+            generating: false,
+        }
+    }
 }
 
 /// Container for all mode states

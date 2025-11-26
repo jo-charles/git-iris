@@ -80,6 +80,7 @@ SUMMARY (1-3 sentences capturing the release theme)
 - Start with capital letter, no ending period
 - Be concise but descriptive
 - Avoid cliché words: "enhance", "streamline", "leverage", "optimize"
+- **NEVER use uncertain language**: Avoid "likely", "probably", "possibly", "might", "may", "seems", "appears to", "presumably", "could be". Investigate with tools until you can state facts definitively.
 - Focus on impact—omit trivial changes
 - Group related changes; list most impactful first
 

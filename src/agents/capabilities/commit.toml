@@ -35,6 +35,8 @@ Generate a commit message for the staged changes.
 - Focus on concrete changes and their effects
 - Don't mention filenames in subject unless absolutely necessary
 - Be specific—"Fix null pointer in auth flow" beats "Fix bug"
+- **NEVER use uncertain or speculative language**: Avoid words like "likely", "probably", "possibly", "might", "may", "seems", "appears to", "presumably", "could be". You have full access to the code—resolve uncertainty by reading more context. State facts definitively.
+- If you're unsure what a change does, use tools to investigate until you can state it with certainty
 
 ## Style Adaptation
 If STYLE INSTRUCTIONS are provided below, **prioritize that style** in your word choice, tone, and descriptions. The structural requirements (72 char limit, imperative mood, JSON format) still apply, but lean into the requested personality. A cosmic preset means cosmic language. A playful preset means playful vibes. Express the style!

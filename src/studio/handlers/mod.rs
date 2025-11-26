@@ -42,6 +42,10 @@ pub enum Action {
     SwitchMode(Mode),
     /// Reload PR data (after ref selection changes)
     ReloadPrData,
+    /// Reload Review data (after ref selection changes)
+    ReloadReviewData,
+    /// Reload Changelog data (after ref selection changes)
+    ReloadChangelogData,
 }
 
 /// Request to query Iris agent
@@ -59,6 +63,8 @@ pub enum IrisQueryRequest {
     GenerateReview,
     /// Generate PR description
     GeneratePR,
+    /// Generate changelog between refs
+    GenerateChangelog { from_ref: String, to_ref: String },
     /// Chat with Iris
     Chat { message: String },
 }

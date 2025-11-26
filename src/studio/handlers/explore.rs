@@ -2,9 +2,12 @@
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-use crate::studio::state::{PanelId, StudioState};
+use crate::studio::state::{Notification, PanelId, StudioState};
 
 use super::{Action, IrisQueryRequest};
+
+/// Default visible height for code view navigation (will be adjusted by actual render)
+const DEFAULT_VISIBLE_HEIGHT: usize = 30;
 
 /// Handle key events in Explore mode
 pub fn handle_explore_key(state: &mut StudioState, key: KeyEvent) -> Action {
@@ -15,27 +18,30 @@ pub fn handle_explore_key(state: &mut StudioState, key: KeyEvent) -> Action {
     }
 }
 
+/// Load the selected file into the code view
+fn load_selected_file(state: &mut StudioState) {
+    if let Some(entry) = state.modes.explore.file_tree.selected_entry()
+        && !entry.is_dir
+    {
+        state.modes.explore.current_file = Some(entry.path.clone());
+        if let Err(e) = state.modes.explore.code_view.load_file(&entry.path) {
+            state.notify(Notification::warning(format!("Could not load file: {}", e)));
+        }
+    }
+}
+
 fn handle_file_tree_key(state: &mut StudioState, key: KeyEvent) -> Action {
     match key.code {
         // Navigation
         KeyCode::Char('j') | KeyCode::Down => {
             state.modes.explore.file_tree.select_next();
-            // Update current file from selection
-            if let Some(entry) = state.modes.explore.file_tree.selected_entry()
-                && !entry.is_dir
-            {
-                state.modes.explore.current_file = Some(entry.path);
-            }
+            load_selected_file(state);
             state.mark_dirty();
             Action::Redraw
         }
         KeyCode::Char('k') | KeyCode::Up => {
             state.modes.explore.file_tree.select_prev();
-            if let Some(entry) = state.modes.explore.file_tree.selected_entry()
-                && !entry.is_dir
-            {
-                state.modes.explore.current_file = Some(entry.path);
-            }
+            load_selected_file(state);
             state.mark_dirty();
             Action::Redraw
         }
@@ -55,7 +61,7 @@ fn handle_file_tree_key(state: &mut StudioState, key: KeyEvent) -> Action {
                 if entry.is_dir {
                     state.modes.explore.file_tree.toggle_expand();
                 } else {
-                    state.modes.explore.current_file = Some(entry.path);
+                    load_selected_file(state);
                     state.focus_next_panel(); // Move to code view
                 }
             }
@@ -65,22 +71,26 @@ fn handle_file_tree_key(state: &mut StudioState, key: KeyEvent) -> Action {
         KeyCode::Char('g') => {
             // Go to first
             state.modes.explore.file_tree.select_first();
+            load_selected_file(state);
             state.mark_dirty();
             Action::Redraw
         }
         KeyCode::Char('G') => {
             // Go to last
             state.modes.explore.file_tree.select_last();
+            load_selected_file(state);
             state.mark_dirty();
             Action::Redraw
         }
         KeyCode::PageDown | KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             state.modes.explore.file_tree.page_down(10);
+            load_selected_file(state);
             state.mark_dirty();
             Action::Redraw
         }
         KeyCode::PageUp | KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             state.modes.explore.file_tree.page_up(10);
+            load_selected_file(state);
             state.mark_dirty();
             Action::Redraw
         }
@@ -91,24 +101,63 @@ fn handle_file_tree_key(state: &mut StudioState, key: KeyEvent) -> Action {
 
 fn handle_code_view_key(state: &mut StudioState, key: KeyEvent) -> Action {
     match key.code {
-        // Navigation
+        // Navigation - single line
         KeyCode::Char('j') | KeyCode::Down => {
-            state.modes.explore.current_line = state.modes.explore.current_line.saturating_add(1);
+            state
+                .modes
+                .explore
+                .code_view
+                .move_down(1, DEFAULT_VISIBLE_HEIGHT);
+            state.modes.explore.current_line = state.modes.explore.code_view.selected_line();
             state.mark_dirty();
             Action::Redraw
         }
         KeyCode::Char('k') | KeyCode::Up => {
-            state.modes.explore.current_line = state.modes.explore.current_line.saturating_sub(1);
+            state
+                .modes
+                .explore
+                .code_view
+                .move_up(1, DEFAULT_VISIBLE_HEIGHT);
+            state.modes.explore.current_line = state.modes.explore.code_view.selected_line();
+            state.mark_dirty();
+            Action::Redraw
+        }
+        // Page navigation
+        KeyCode::PageDown | KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            state
+                .modes
+                .explore
+                .code_view
+                .move_down(20, DEFAULT_VISIBLE_HEIGHT);
+            state.modes.explore.current_line = state.modes.explore.code_view.selected_line();
+            state.mark_dirty();
+            Action::Redraw
+        }
+        KeyCode::PageUp | KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            state
+                .modes
+                .explore
+                .code_view
+                .move_up(20, DEFAULT_VISIBLE_HEIGHT);
+            state.modes.explore.current_line = state.modes.explore.code_view.selected_line();
             state.mark_dirty();
             Action::Redraw
         }
         KeyCode::Char('g') => {
-            // Go to line (TODO: show input)
-            Action::None
+            // Go to first line
+            state.modes.explore.code_view.goto_first();
+            state.modes.explore.current_line = 1;
+            state.mark_dirty();
+            Action::Redraw
         }
         KeyCode::Char('G') => {
-            // Go to end
-            // TODO: Set to last line
+            // Go to last line
+            state
+                .modes
+                .explore
+                .code_view
+                .goto_last(DEFAULT_VISIBLE_HEIGHT);
+            state.modes.explore.current_line = state.modes.explore.code_view.selected_line();
             state.mark_dirty();
             Action::Redraw
         }
@@ -123,8 +172,13 @@ fn handle_code_view_key(state: &mut StudioState, key: KeyEvent) -> Action {
         // Ask "why" about current line
         KeyCode::Char('w') => {
             if let Some(file) = &state.modes.explore.current_file {
-                let line = state.modes.explore.current_line;
-                let (start, end) = state.modes.explore.selection.unwrap_or((line, line));
+                let line = state.modes.explore.code_view.selected_line();
+                let (start, end) = state
+                    .modes
+                    .explore
+                    .code_view
+                    .selection()
+                    .unwrap_or((line, line));
 
                 return Action::IrisQuery(IrisQueryRequest::SemanticBlame {
                     file: file.clone(),

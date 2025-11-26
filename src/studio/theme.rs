@@ -57,6 +57,12 @@ pub const TEXT_DIM: Color = Color::Rgb(98, 114, 164);
 /// Muted text for borders and less important elements
 pub const TEXT_MUTED: Color = Color::Rgb(68, 71, 90);
 
+/// Secondary text - slightly dimmed
+pub const TEXT_SECONDARY: Color = Color::Rgb(188, 188, 202);
+
+/// Selection background for multi-line selections
+pub const SELECTION_BG: Color = Color::Rgb(60, 60, 80);
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // Semantic Styles
 // ═══════════════════════════════════════════════════════════════════════════════

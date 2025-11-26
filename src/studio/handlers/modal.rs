@@ -192,44 +192,53 @@ fn handle_ref_selector_modal(state: &mut StudioState, key: KeyEvent) -> Action {
             Action::Redraw
         }
         KeyCode::Enter => {
-            // Apply selection and determine if we need to reload data
-            let needs_pr_reload = if let Some(selected_ref) = filtered.get(selected) {
+            // Apply selection and determine which data reload action is needed
+            #[derive(Clone, Copy)]
+            enum ReloadType {
+                None,
+                Pr,
+                Review,
+                Changelog,
+            }
+
+            let reload_type = if let Some(selected_ref) = filtered.get(selected) {
                 let (label, reload) = match target {
                     RefSelectorTarget::ReviewFrom => {
                         state.modes.review.from_ref.clone_from(selected_ref);
-                        ("Review from", false)
+                        ("Review from", ReloadType::Review)
                     }
                     RefSelectorTarget::ReviewTo => {
                         state.modes.review.to_ref.clone_from(selected_ref);
-                        ("Review to", false)
+                        ("Review to", ReloadType::Review)
                     }
                     RefSelectorTarget::PrFrom => {
                         state.modes.pr.base_branch.clone_from(selected_ref);
-                        ("PR base", true)
+                        ("PR base", ReloadType::Pr)
                     }
                     RefSelectorTarget::PrTo => {
                         state.modes.pr.to_ref.clone_from(selected_ref);
-                        ("PR target", true)
+                        ("PR target", ReloadType::Pr)
                     }
                     RefSelectorTarget::ChangelogFrom => {
-                        state.modes.changelog.from_version.clone_from(selected_ref);
-                        ("Changelog from", false)
+                        state.modes.changelog.from_ref.clone_from(selected_ref);
+                        ("Changelog from", ReloadType::Changelog)
                     }
                     RefSelectorTarget::ChangelogTo => {
-                        state.modes.changelog.to_version.clone_from(selected_ref);
-                        ("Changelog to", false)
+                        state.modes.changelog.to_ref.clone_from(selected_ref);
+                        ("Changelog to", ReloadType::Changelog)
                     }
                 };
                 state.notify(Notification::info(format!("{label} set to {selected_ref}")));
                 reload
             } else {
-                false
+                ReloadType::None
             };
             state.close_modal();
-            if needs_pr_reload {
-                Action::ReloadPrData
-            } else {
-                Action::Redraw
+            match reload_type {
+                ReloadType::Pr => Action::ReloadPrData,
+                ReloadType::Review => Action::ReloadReviewData,
+                ReloadType::Changelog => Action::ReloadChangelogData,
+                ReloadType::None => Action::Redraw,
             }
         }
         KeyCode::Up | KeyCode::Char('k') if key.modifiers.contains(KeyModifiers::CONTROL) => {

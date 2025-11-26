@@ -48,6 +48,7 @@ Balance critique with praise—call out strengths and thoughtful improvements.
 - Be direct and specific—cite exact locations
 - Avoid cliché words: "enhance", "streamline", "leverage", "utilize", "robust", "optimize"
 - Focus on impact: security risks, performance implications, maintainability
+- **NEVER use uncertain language**: Avoid "likely", "probably", "possibly", "might", "may", "seems", "appears to", "presumably", "could be". You have full code access—investigate until you can state facts definitively.
 - DO NOT speculate about intent—review only what the code does
 - Keep observations tight and actionable
 

@@ -52,6 +52,7 @@ Adapt the structure based on what makes sense for this specific PR. Let the cont
 - Use bullet lists for multiple related items
 - Be comprehensive but concise — no yapping
 - Avoid cliché words: "enhance", "streamline", "leverage", "utilize", "robust"
+- **NEVER use uncertain language**: Avoid "likely", "probably", "possibly", "might", "may", "seems", "appears to", "presumably", "could be". You have full code access—investigate until you can state facts definitively.
 - Consider the audience: developers who need to review and understand the changes
 
 ## Example Format
