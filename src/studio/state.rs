@@ -537,7 +537,6 @@ impl std::fmt::Debug for CommitState {
 }
 
 /// State for Review mode
-#[derive(Default)]
 pub struct ReviewState {
     /// File tree for changed files
     pub file_tree: FileTreeState,
@@ -549,10 +548,24 @@ pub struct ReviewState {
     pub review_scroll: usize,
     /// Whether a review is being generated
     pub generating: bool,
-    /// From ref for comparison
+    /// From ref for comparison (defaults to HEAD~1 for most recent commit)
     pub from_ref: String,
     /// To ref for comparison (defaults to HEAD)
     pub to_ref: String,
+}
+
+impl Default for ReviewState {
+    fn default() -> Self {
+        Self {
+            file_tree: FileTreeState::default(),
+            diff_view: DiffViewState::default(),
+            review_content: String::new(),
+            review_scroll: 0,
+            generating: false,
+            from_ref: "HEAD~1".to_string(),
+            to_ref: "HEAD".to_string(),
+        }
+    }
 }
 
 impl std::fmt::Debug for ReviewState {
@@ -666,7 +679,7 @@ pub struct ChangelogState {
 impl Default for ChangelogState {
     fn default() -> Self {
         Self {
-            from_ref: "HEAD~10".to_string(),
+            from_ref: "HEAD~1".to_string(),
             to_ref: "HEAD".to_string(),
             commits: Vec::new(),
             selected_commit: 0,
@@ -705,7 +718,7 @@ pub struct ReleaseNotesState {
 impl Default for ReleaseNotesState {
     fn default() -> Self {
         Self {
-            from_ref: "HEAD~10".to_string(),
+            from_ref: "HEAD~1".to_string(),
             to_ref: "HEAD".to_string(),
             commits: Vec::new(),
             selected_commit: 0,

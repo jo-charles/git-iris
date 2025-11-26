@@ -275,9 +275,30 @@ impl StudioApp {
             suggested_mode
         };
 
-        // Auto-generate commit message if entering Commit mode with staged changes
-        if current_mode == Mode::Commit && self.state.git_status.has_staged() {
-            self.auto_generate_commit();
+        // Auto-generate content based on initial mode
+        match current_mode {
+            Mode::Commit => {
+                if self.state.git_status.has_staged() {
+                    self.auto_generate_commit();
+                }
+            }
+            Mode::PR => {
+                self.update_pr_data();
+                self.auto_generate_pr();
+            }
+            Mode::Review => {
+                self.update_review_data();
+                self.auto_generate_review();
+            }
+            Mode::Changelog => {
+                self.update_changelog_data();
+                self.auto_generate_changelog();
+            }
+            Mode::ReleaseNotes => {
+                self.update_release_notes_data();
+                self.auto_generate_release_notes();
+            }
+            Mode::Explore => {}
         }
 
         loop {
@@ -308,12 +329,24 @@ impl StudioApp {
                                 }
                                 Action::SwitchMode(mode) => {
                                     self.state.switch_mode(mode);
-                                    // Trigger mode-specific data loading
+                                    // Trigger mode-specific data loading and auto-generation
                                     match mode {
-                                        Mode::PR => self.update_pr_data(),
-                                        Mode::Review => self.update_review_data(),
-                                        Mode::Changelog => self.update_changelog_data(),
-                                        Mode::ReleaseNotes => self.update_release_notes_data(),
+                                        Mode::PR => {
+                                            self.update_pr_data();
+                                            self.auto_generate_pr();
+                                        }
+                                        Mode::Review => {
+                                            self.update_review_data();
+                                            self.auto_generate_review();
+                                        }
+                                        Mode::Changelog => {
+                                            self.update_changelog_data();
+                                            self.auto_generate_changelog();
+                                        }
+                                        Mode::ReleaseNotes => {
+                                            self.update_release_notes_data();
+                                            self.auto_generate_release_notes();
+                                        }
                                         Mode::Commit => {
                                             if self.state.git_status.has_staged() {
                                                 self.auto_generate_commit();
@@ -694,6 +727,80 @@ impl StudioApp {
         let preset = self.state.modes.commit.preset.clone();
         let use_gitmoji = self.state.modes.commit.use_gitmoji;
         self.spawn_commit_generation(None, preset, use_gitmoji);
+    }
+
+    /// Auto-generate code review on mode entry
+    fn auto_generate_review(&mut self) {
+        // Don't regenerate if we already have content
+        if !self.state.modes.review.review_content.is_empty() {
+            return;
+        }
+
+        // Need diffs to review
+        if self.state.modes.review.diff_view.file_paths().is_empty() {
+            return;
+        }
+
+        self.state.set_iris_thinking("Reviewing code changes...");
+        self.state.modes.review.generating = true;
+        self.spawn_review_generation();
+    }
+
+    /// Auto-generate PR description on mode entry
+    fn auto_generate_pr(&mut self) {
+        // Don't regenerate if we already have content
+        if !self.state.modes.pr.pr_content.is_empty() {
+            return;
+        }
+
+        // Need commits to describe
+        if self.state.modes.pr.commits.is_empty() {
+            return;
+        }
+
+        self.state.set_iris_thinking("Drafting PR description...");
+        self.state.modes.pr.generating = true;
+        self.spawn_pr_generation();
+    }
+
+    /// Auto-generate changelog on mode entry
+    fn auto_generate_changelog(&mut self) {
+        // Don't regenerate if we already have content
+        if !self.state.modes.changelog.changelog_content.is_empty() {
+            return;
+        }
+
+        // Need commits to generate from
+        if self.state.modes.changelog.commits.is_empty() {
+            return;
+        }
+
+        let from_ref = self.state.modes.changelog.from_ref.clone();
+        let to_ref = self.state.modes.changelog.to_ref.clone();
+
+        self.state.set_iris_thinking("Generating changelog...");
+        self.state.modes.changelog.generating = true;
+        self.spawn_changelog_generation(from_ref, to_ref);
+    }
+
+    /// Auto-generate release notes on mode entry
+    fn auto_generate_release_notes(&mut self) {
+        // Don't regenerate if we already have content
+        if !self.state.modes.release_notes.release_notes_content.is_empty() {
+            return;
+        }
+
+        // Need commits to generate from
+        if self.state.modes.release_notes.commits.is_empty() {
+            return;
+        }
+
+        let from_ref = self.state.modes.release_notes.from_ref.clone();
+        let to_ref = self.state.modes.release_notes.to_ref.clone();
+
+        self.state.set_iris_thinking("Generating release notes...");
+        self.state.modes.release_notes.generating = true;
+        self.spawn_release_notes_generation(from_ref, to_ref);
     }
 
     /// Handle mouse events for panel focus and scrolling
@@ -1503,16 +1610,18 @@ pub fn run_studio(
         app.set_initial_mode(mode);
     }
 
-    // Set comparison refs if specified (applies to Review, PR, and Changelog modes)
+    // Set comparison refs if specified (applies to Review, PR, Changelog, and Release Notes modes)
     if let Some(from) = from_ref {
         app.state.modes.review.from_ref = from.clone();
         app.state.modes.pr.base_branch = from.clone();
-        app.state.modes.changelog.from_ref = from;
+        app.state.modes.changelog.from_ref = from.clone();
+        app.state.modes.release_notes.from_ref = from;
     }
     if let Some(to) = to_ref {
         app.state.modes.review.to_ref = to.clone();
         app.state.modes.pr.to_ref = to.clone();
-        app.state.modes.changelog.to_ref = to;
+        app.state.modes.changelog.to_ref = to.clone();
+        app.state.modes.release_notes.to_ref = to;
     }
 
     // Run the app

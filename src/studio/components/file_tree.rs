@@ -11,6 +11,7 @@ use ratatui::widgets::{
 };
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use unicode_width::UnicodeWidthStr;
 
 use crate::studio::theme;
 
@@ -575,19 +576,27 @@ pub fn render_file_tree(
 fn render_entry(entry: &FlatEntry, is_selected: bool, width: usize) -> Line<'static> {
     let indent = "  ".repeat(entry.depth);
 
-    // Icon
+    // Icon (use ASCII for consistent width)
     let icon = if entry.is_dir {
-        if entry.is_expanded { "▼" } else { "▶" }
+        if entry.is_expanded { "v" } else { ">" }
     } else {
         get_file_icon(&entry.name)
     };
 
-    // Git status indicator
-    let status_indicator = entry.git_status.indicator();
+    // Git status indicator (use ASCII for consistent width)
+    let status_indicator = match entry.git_status {
+        FileGitStatus::Staged => "+",
+        FileGitStatus::Modified => "*",
+        FileGitStatus::Untracked => "?",
+        FileGitStatus::Deleted => "x",
+        FileGitStatus::Renamed => "r",
+        FileGitStatus::Conflict => "!",
+        FileGitStatus::Normal => " ",
+    };
     let status_style = entry.git_status.style();
 
     // Selection marker
-    let marker = if is_selected { "▶" } else { " " };
+    let marker = if is_selected { ">" } else { " " };
     let marker_style = if is_selected {
         Style::default().fg(theme::ELECTRIC_PURPLE)
     } else {
@@ -605,14 +614,13 @@ fn render_entry(entry: &FlatEntry, is_selected: bool, width: usize) -> Line<'sta
         Style::default().fg(theme::TEXT_PRIMARY)
     };
 
-    // Build the line
-    let content = format!("{}{} {} {}", indent, icon, entry.name, status_indicator);
-    let display_width = content.chars().count() + 2; // +2 for marker
-    let padding = if display_width < width {
-        " ".repeat(width - display_width)
-    } else {
-        String::new()
-    };
+    // Calculate available width for name using unicode width
+    // Format: ">" (1) + " " (1) + indent + icon (1) + " " (1) + name + " " (1) + status (1)
+    let fixed_width = 1 + 1 + indent.width() + 1 + 1 + 1 + 1;
+    let max_name_width = width.saturating_sub(fixed_width);
+
+    // Truncate name if needed (using unicode width)
+    let display_name = truncate_to_width(&entry.name, max_name_width);
 
     Line::from(vec![
         Span::styled(marker, marker_style),
@@ -626,30 +634,62 @@ fn render_entry(entry: &FlatEntry, is_selected: bool, width: usize) -> Line<'sta
                 Style::default().fg(theme::TEXT_DIM)
             },
         ),
-        Span::styled(entry.name.clone(), name_style),
+        Span::styled(display_name, name_style),
         Span::raw(" "),
         Span::styled(status_indicator, status_style),
-        Span::raw(padding),
     ])
 }
 
-/// Get icon for file based on extension
+/// Truncate a string to fit within the given display width
+fn truncate_to_width(s: &str, max_width: usize) -> String {
+    if max_width == 0 {
+        return String::new();
+    }
+
+    let s_width = s.width();
+    if s_width <= max_width {
+        return s.to_string();
+    }
+
+    if max_width <= 1 {
+        return ".".to_string();
+    }
+
+    // Find the longest prefix that fits
+    let mut result = String::new();
+    let mut current_width = 0;
+    let target_width = max_width - 1; // Reserve 1 for ellipsis
+
+    for c in s.chars() {
+        let char_width = c.to_string().width();
+        if current_width + char_width > target_width {
+            break;
+        }
+        result.push(c);
+        current_width += char_width;
+    }
+
+    result.push('…');
+    result
+}
+
+/// Get icon for file based on extension (ASCII-only for consistent width)
 fn get_file_icon(name: &str) -> &'static str {
     let ext = name.rsplit('.').next().unwrap_or("");
     match ext.to_lowercase().as_str() {
-        "rs" => "◆",
-        "toml" => "◇",
-        "md" => "▪",
-        "json" => "◈",
-        "yaml" | "yml" => "◈",
-        "js" | "jsx" => "◎",
-        "ts" | "tsx" => "◉",
-        "py" => "○",
-        "go" => "●",
-        "sh" | "bash" | "zsh" => "▸",
-        "lock" => "◌",
-        "gitignore" => "◦",
-        "dockerfile" => "▣",
-        _ => "·",
+        "rs" => "#",
+        "toml" => "=",
+        "md" => "m",
+        "json" => "j",
+        "yaml" | "yml" => "y",
+        "js" | "jsx" => "J",
+        "ts" | "tsx" => "T",
+        "py" => "p",
+        "go" => "g",
+        "sh" | "bash" | "zsh" => "$",
+        "lock" => "L",
+        "gitignore" => ".",
+        "dockerfile" => "D",
+        _ => "-",
     }
 }

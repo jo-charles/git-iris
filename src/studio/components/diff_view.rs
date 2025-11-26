@@ -10,6 +10,7 @@ use ratatui::widgets::{
     Block, Borders, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState,
 };
 use std::path::PathBuf;
+use unicode_width::UnicodeWidthStr;
 
 use crate::studio::theme;
 
@@ -533,6 +534,36 @@ pub fn parse_diff(diff_text: &str) -> Vec<FileDiff> {
 // Rendering
 // ═══════════════════════════════════════════════════════════════════════════════
 
+/// Truncate a line to fit within the given display width (accounting for unicode)
+fn truncate_line(content: &str, max_width: usize) -> String {
+    if max_width == 0 {
+        return String::new();
+    }
+
+    let content_width = content.width();
+    if content_width <= max_width {
+        content.to_string()
+    } else if max_width <= 1 {
+        ".".to_string()
+    } else {
+        // Build string char by char until we hit width limit
+        let mut result = String::new();
+        let mut current_width = 0;
+        let target_width = max_width - 1; // Leave room for ellipsis
+
+        for c in content.chars() {
+            let char_width = c.to_string().width();
+            if current_width + char_width > target_width {
+                break;
+            }
+            result.push(c);
+            current_width += char_width;
+        }
+        result.push('…');
+        result
+    }
+}
+
 /// Render the diff view widget
 pub fn render_diff_view(
     frame: &mut Frame,
@@ -592,20 +623,28 @@ pub fn render_diff_view(
 }
 
 /// Render a single diff line
-fn render_diff_line(line: &DiffLine, line_num_width: usize, _width: usize) -> Line<'static> {
+fn render_diff_line(line: &DiffLine, line_num_width: usize, width: usize) -> Line<'static> {
     let style = line.line_type.style();
 
     match line.line_type {
         DiffLineType::FileHeader => {
-            Line::from(vec![Span::styled(format!("━━━ {} ", line.content), style)])
+            let content = format!("━━━ {} ", line.content);
+            let truncated = truncate_line(&content, width);
+            Line::from(vec![Span::styled(truncated, style)])
         }
-        DiffLineType::HunkHeader => Line::from(vec![
-            Span::styled(
-                format!("{:>width$} ", "", width = line_num_width * 2 + 3),
-                Style::default(),
-            ),
-            Span::styled(line.content.clone(), style),
-        ]),
+        DiffLineType::HunkHeader => {
+            // "     " prefix takes line_num_width * 2 + 3
+            let prefix_width = line_num_width * 2 + 4;
+            let max_content = width.saturating_sub(prefix_width);
+            let truncated = truncate_line(&line.content, max_content);
+            Line::from(vec![
+                Span::styled(
+                    format!("{:>width$} ", "", width = line_num_width * 2 + 3),
+                    Style::default(),
+                ),
+                Span::styled(truncated, style),
+            ])
+        }
         DiffLineType::Added | DiffLineType::Removed | DiffLineType::Context => {
             let old_num = line.old_line_num.map_or_else(
                 || " ".repeat(line_num_width),
@@ -628,13 +667,19 @@ fn render_diff_line(line: &DiffLine, line_num_width: usize, _width: usize) -> Li
                 _ => theme::dimmed(),
             };
 
+            // Calculate available width for content
+            // Format: "XXXX │ XXXX +content"
+            let fixed_width = line_num_width * 2 + 6; // " │ " (3) + " " (1) + prefix (1) + padding (1)
+            let max_content = width.saturating_sub(fixed_width);
+            let truncated = truncate_line(&line.content, max_content);
+
             Line::from(vec![
                 Span::styled(old_num, theme::dimmed()),
                 Span::styled(" │ ", theme::dimmed()),
                 Span::styled(new_num, theme::dimmed()),
                 Span::raw(" "),
                 Span::styled(prefix, prefix_style),
-                Span::styled(line.content.clone(), style),
+                Span::styled(truncated, style),
             ])
         }
         DiffLineType::Empty => Line::from(""),
