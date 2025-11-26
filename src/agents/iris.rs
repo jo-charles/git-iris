@@ -22,10 +22,7 @@ const CAPABILITY_REVIEW: &str = include_str!("capabilities/review.toml");
 const CAPABILITY_CHANGELOG: &str = include_str!("capabilities/changelog.toml");
 const CAPABILITY_RELEASE_NOTES: &str = include_str!("capabilities/release_notes.toml");
 
-use crate::agents::tools::{
-    CodeSearch, FileRead, GitChangedFiles, GitDiff, GitLog, GitRepoInfo, GitStatus,
-    ParallelAnalyze, ProjectDocs, Workspace,
-};
+use crate::agents::tools::{GitRepoInfo, ParallelAnalyze, Workspace};
 // Added to ensure builder extension methods like `.max_tokens` are in scope
 
 /// Type alias for a dynamic agent that can work with any completion model
@@ -73,18 +70,10 @@ impl fmt::Display for StructuredResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             StructuredResponse::CommitMessage(msg) => {
-                if let Some(emoji) = &msg.emoji {
-                    write!(f, "{} {}", emoji, msg.title)?;
-                } else {
-                    write!(f, "{}", msg.title)?;
-                }
-                if !msg.message.is_empty() {
-                    write!(f, "\n\n{}", msg.message)?;
-                }
-                Ok(())
+                write!(f, "{}", crate::types::format_commit_message(msg))
             }
             StructuredResponse::PullRequest(pr) => {
-                write!(f, "# {}\n\n{}", pr.title, pr.description)
+                write!(f, "{}", crate::types::format_pull_request(pr))
             }
             StructuredResponse::Changelog(cl) => {
                 write!(f, "{}", cl.content())
@@ -338,10 +327,7 @@ pub struct IrisAgent {
 
 impl IrisAgent {
     /// Create a new Iris agent with the given provider and model
-    ///
-    /// Note: The `client_builder` parameter is accepted for API compatibility but not stored.
-    /// A fresh builder is created when needed to ensure Send safety.
-    pub fn new(_client_builder: DynClientBuilder, provider: &str, model: &str) -> Result<Self> {
+    pub fn new(provider: &str, model: &str) -> Result<Self> {
         Ok(Self {
             provider: provider.to_string(),
             model: model.to_string(),
@@ -359,10 +345,13 @@ impl IrisAgent {
     }
 
     /// Build the actual agent for execution
+    ///
+    /// Note: We create a fresh `DynClientBuilder` each time because Rig's builder is
+    /// stateless—it reads API keys from environment variables at call time. This design
+    /// ensures Send safety and allows the agent to be used across async boundaries.
     fn build_agent(&self) -> Result<Agent<impl CompletionModel + 'static>> {
         use crate::agents::debug_tool::DebugTool;
 
-        // Create a fresh client builder - this ensures Send safety
         let client_builder = DynClientBuilder::new();
 
         let agent_builder = client_builder
@@ -422,40 +411,26 @@ Guidelines:
 - Keep your response focused and concise")
             .max_tokens(4096);
         let sub_agent_builder = self.apply_reasoning_defaults(sub_agent_builder);
-        let sub_agent = sub_agent_builder
-            .tool(DebugTool::new(GitStatus))
-            .tool(DebugTool::new(GitDiff))
-            .tool(DebugTool::new(GitLog))
-            .tool(DebugTool::new(GitChangedFiles))
-            .tool(DebugTool::new(FileRead))
-            .tool(DebugTool::new(CodeSearch))
-            .tool(DebugTool::new(ProjectDocs))
-            .build();
+        // Use shared tool registry for core tools (prevents drift with subagents)
+        let sub_agent = crate::attach_core_tools!(sub_agent_builder).build();
 
-        Ok(agent_builder
-            .preamble(preamble)
-            .max_tokens(16384) // Increased for complex structured outputs like PRs and release notes
-            // Git tools - wrapped with debug observability
-            .tool(DebugTool::new(GitStatus))
-            .tool(DebugTool::new(GitDiff))
-            .tool(DebugTool::new(GitLog))
+        // Start with preamble and max_tokens, then attach core tools via registry
+        let agent_builder = agent_builder.preamble(preamble).max_tokens(16384); // Increased for complex structured outputs like PRs and release notes
+
+        // Attach core tools (shared with subagents) + GitRepoInfo (main agent only)
+        let agent_builder = crate::attach_core_tools!(agent_builder)
             .tool(DebugTool::new(GitRepoInfo))
-            .tool(DebugTool::new(GitChangedFiles))
-            // Analysis and search tools
-            .tool(DebugTool::new(FileRead))
-            .tool(DebugTool::new(CodeSearch))
-            .tool(DebugTool::new(ProjectDocs))
             // Workspace for Iris's notes and task management
             .tool(DebugTool::new(Workspace::new()))
             // Parallel analysis for distributing work across multiple subagents
-            // Uses fast model for cost efficiency
             .tool(DebugTool::new(ParallelAnalyze::new(
                 &self.provider,
                 fast_model,
             )))
             // Sub-agent delegation (Rig's built-in agent-as-tool!)
-            .tool(sub_agent)
-            .build())
+            .tool(sub_agent);
+
+        Ok(agent_builder.build())
     }
 
     fn apply_reasoning_defaults<M>(&self, builder: RigAgentBuilder<M>) -> RigAgentBuilder<M>
@@ -572,7 +547,11 @@ Guidelines:
         let response = &prompt_response.output;
         #[allow(clippy::cast_possible_truncation, clippy::as_conversions)]
         let total_tokens_usize = usage.total_tokens as usize;
-        debug::debug_llm_response(response, std::time::Duration::from_secs(0), Some(total_tokens_usize));
+        debug::debug_llm_response(
+            response,
+            std::time::Duration::from_secs(0),
+            Some(total_tokens_usize),
+        );
 
         // Update status - synthesis phase
         crate::iris_status_dynamic!(
@@ -608,10 +587,85 @@ Guidelines:
         Ok(result)
     }
 
+    /// Inject style instructions into the system prompt based on config and capability
+    ///
+    /// Handles: instruction presets, gitmoji, conventional commits, and capability-specific styling
+    fn inject_style_instructions(&self, system_prompt: &mut String, capability: &str) {
+        let Some(config) = &self.config else {
+            return;
+        };
+
+        let preset_name = config.get_effective_preset_name();
+        let is_conventional = preset_name == "conventional";
+        let gitmoji_enabled = config.use_gitmoji && !is_conventional;
+
+        // Inject instruction preset if configured
+        if !preset_name.is_empty() && preset_name != "default" {
+            let library = crate::instruction_presets::get_instruction_preset_library();
+            if let Some(preset) = library.get_preset(preset_name) {
+                tracing::info!("📋 Injecting '{}' preset style instructions", preset_name);
+                system_prompt.push_str("\n\n=== STYLE INSTRUCTIONS ===\n");
+                system_prompt.push_str(&preset.instructions);
+                system_prompt.push('\n');
+            } else {
+                tracing::warn!("⚠️ Preset '{}' not found in library", preset_name);
+            }
+        }
+
+        // Handle commit/PR specific styling
+        if capability == "commit" || capability == "pr" {
+            if gitmoji_enabled {
+                system_prompt.push_str("\n\n=== GITMOJI INSTRUCTIONS ===\n");
+                system_prompt.push_str("Set the 'emoji' field to a single relevant gitmoji. ");
+                system_prompt.push_str(
+                    "DO NOT include the emoji in the 'message' or 'title' text - only set the 'emoji' field. ",
+                );
+                system_prompt.push_str("Choose the most relevant emoji from this list:\n\n");
+                system_prompt.push_str(&crate::gitmoji::get_gitmoji_list());
+                system_prompt.push_str("\n\nThe emoji should match the primary type of change.");
+            } else if is_conventional {
+                system_prompt.push_str("\n\n=== CONVENTIONAL COMMITS FORMAT ===\n");
+                system_prompt.push_str("IMPORTANT: This uses Conventional Commits format. ");
+                system_prompt
+                    .push_str("DO NOT include any emojis in the commit message or PR title. ");
+                system_prompt.push_str("The 'emoji' field should be null.");
+            }
+        }
+
+        // Handle release_notes/changelog emoji styling
+        if gitmoji_enabled {
+            match capability {
+                "release_notes" => {
+                    system_prompt.push_str("\n\n=== EMOJI STYLING ===\n");
+                    system_prompt.push_str(
+                        "Use at most one emoji per highlight title and per section title. Do not place emojis inside bullet descriptions, upgrade notes, or metrics. ",
+                    );
+                    system_prompt.push_str(
+                        "Skip emojis entirely if they do not add clarity for a given heading. When you do use one, pick it from the approved gitmoji list so it reinforces meaning (e.g., 🌟 Highlights, 🤖 Agents, 🔧 Tooling, 🐛 Fixes, ⚡ Performance). ",
+                    );
+                    system_prompt.push_str(
+                        "Never sprinkle emojis within normal sentences or JSON keys—only the human-readable heading text may include them.\n\n",
+                    );
+                    system_prompt.push_str(&crate::gitmoji::get_gitmoji_list());
+                }
+                "changelog" => {
+                    system_prompt.push_str("\n\n=== EMOJI STYLING ===\n");
+                    system_prompt.push_str(
+                        "Section keys must remain plain text (Added/Changed/Deprecated/Removed/Fixed/Security). When helpful, you may include at most one emoji within a change description to reinforce meaning. ",
+                    );
+                    system_prompt.push_str(
+                        "Never add emojis to JSON keys, section names, metrics, or upgrade notes. If the emoji does not add clarity, omit it.\n\n",
+                    );
+                    system_prompt.push_str(&crate::gitmoji::get_gitmoji_list());
+                }
+                _ => {}
+            }
+        }
+    }
+
     /// Execute a task with the given capability and user prompt
     ///
     /// This now automatically uses structured output based on the capability type
-    #[allow(clippy::too_many_lines)]
     pub async fn execute_task(
         &mut self,
         capability: &str,
@@ -627,76 +681,8 @@ Guidelines:
         // Load the capability config to get both prompt and output type
         let (mut system_prompt, output_type) = self.load_capability_config(capability)?;
 
-        // Inject instruction preset if configured
-        if let Some(config) = &self.config {
-            let preset_name = config.get_effective_preset_name();
-            tracing::debug!("🎨 Effective preset name: '{}'", preset_name);
-            if !preset_name.is_empty() && preset_name != "default" {
-                let library = crate::instruction_presets::get_instruction_preset_library();
-                if let Some(preset) = library.get_preset(preset_name) {
-                    tracing::info!("📋 Injecting '{}' preset style instructions", preset_name);
-                    system_prompt.push_str("\n\n=== STYLE INSTRUCTIONS ===\n");
-                    system_prompt.push_str(&preset.instructions);
-                    system_prompt.push('\n');
-                } else {
-                    tracing::warn!("⚠️ Preset '{}' not found in library", preset_name);
-                }
-            }
-        }
-
-        // Inject gitmoji instructions if applicable
-        if let Some(config) = &self.config {
-            let is_conventional = config.get_effective_preset_name() == "conventional";
-            let gitmoji_enabled = config.use_gitmoji && !is_conventional;
-
-            // Add gitmoji instructions for commit/PR outputs when applicable
-            if (capability == "commit" || capability == "pr") && gitmoji_enabled {
-                system_prompt.push_str("\n\n=== GITMOJI INSTRUCTIONS ===\n");
-                system_prompt.push_str("Set the 'emoji' field to a single relevant gitmoji. ");
-                system_prompt.push_str(
-                    "DO NOT include the emoji in the 'message' or 'title' text - only set the 'emoji' field. ",
-                );
-                system_prompt.push_str("Choose the most relevant emoji from this list:\n\n");
-                system_prompt.push_str(&crate::gitmoji::get_gitmoji_list());
-                system_prompt.push_str("\n\nThe emoji should match the primary type of change.");
-            } else if is_conventional && (capability == "commit" || capability == "pr") {
-                system_prompt.push_str("\n\n=== CONVENTIONAL COMMITS FORMAT ===\n");
-                system_prompt.push_str("IMPORTANT: This uses Conventional Commits format. ");
-                system_prompt
-                    .push_str("DO NOT include any emojis in the commit message or PR title. ");
-                system_prompt.push_str("The 'emoji' field should be null.");
-            }
-
-            // Release notes and changelog entries support tasteful emoji usage in content
-            if gitmoji_enabled {
-                match capability {
-                    "release_notes" => {
-                        system_prompt.push_str("\n\n=== EMOJI STYLING ===\n");
-                        system_prompt.push_str(
-                            "Use at most one emoji per highlight title and per section title. Do not place emojis inside bullet descriptions, upgrade notes, or metrics. ",
-                        );
-                        system_prompt.push_str(
-                            "Skip emojis entirely if they do not add clarity for a given heading. When you do use one, pick it from the approved gitmoji list so it reinforces meaning (e.g., 🌟 Highlights, 🤖 Agents, 🔧 Tooling, 🐛 Fixes, ⚡ Performance). ",
-                        );
-                        system_prompt.push_str(
-                            "Never sprinkle emojis within normal sentences or JSON keys—only the human-readable heading text may include them.\n\n",
-                        );
-                        system_prompt.push_str(&crate::gitmoji::get_gitmoji_list());
-                    }
-                    "changelog" => {
-                        system_prompt.push_str("\n\n=== EMOJI STYLING ===\n");
-                        system_prompt.push_str(
-                            "Section keys must remain plain text (Added/Changed/Deprecated/Removed/Fixed/Security). When helpful, you may include at most one emoji within a change description to reinforce meaning. ",
-                        );
-                        system_prompt.push_str(
-                            "Never add emojis to JSON keys, section names, metrics, or upgrade notes. If the emoji does not add clarity, omit it.\n\n",
-                        );
-                        system_prompt.push_str(&crate::gitmoji::get_gitmoji_list());
-                    }
-                    _ => {}
-                }
-            }
-        }
+        // Inject style instructions (presets, gitmoji, conventional commits)
+        self.inject_style_instructions(&mut system_prompt, capability);
 
         // Set the current capability
         self.current_capability = Some(capability.to_string());
@@ -858,7 +844,6 @@ Guidelines:
 
 /// Builder for creating `IrisAgent` instances with different configurations
 pub struct IrisAgentBuilder {
-    client_builder: Option<DynClientBuilder>,
     provider: String,
     model: String,
     preamble: Option<String>,
@@ -868,17 +853,10 @@ impl IrisAgentBuilder {
     /// Create a new builder
     pub fn new() -> Self {
         Self {
-            client_builder: None,
             provider: "openai".to_string(),
             model: "gpt-4o".to_string(),
             preamble: None,
         }
-    }
-
-    /// Set the client builder (for provider configuration)
-    pub fn with_client(mut self, client: DynClientBuilder) -> Self {
-        self.client_builder = Some(client);
-        self
     }
 
     /// Set the provider to use
@@ -901,11 +879,7 @@ impl IrisAgentBuilder {
 
     /// Build the `IrisAgent`
     pub fn build(self) -> Result<IrisAgent> {
-        let client_builder = self
-            .client_builder
-            .ok_or_else(|| anyhow::anyhow!("Client builder is required"))?;
-
-        let mut agent = IrisAgent::new(client_builder, &self.provider, &self.model)?;
+        let mut agent = IrisAgent::new(&self.provider, &self.model)?;
 
         // Apply custom preamble if provided
         if let Some(preamble) = self.preamble {

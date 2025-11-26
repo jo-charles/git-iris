@@ -17,9 +17,7 @@ use serde_json::json;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use super::{CodeSearch, FileRead, GitChangedFiles, GitDiff, GitLog, GitStatus, ProjectDocs};
 use crate::agents::debug as agent_debug;
-use crate::agents::debug_tool::DebugTool;
 
 /// Arguments for parallel analysis
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -102,37 +100,16 @@ impl SubagentRunner {
             - Return a clear, structured summary\n\
             - Be concise but comprehensive";
 
+        // Use shared tool registry for consistent tool attachment
         let result = match self {
             Self::OpenAI { client, model } => {
-                let agent = client
-                    .agent(model)
-                    .preamble(preamble)
-                    .max_tokens(4096)
-                    .tool(DebugTool::new(GitStatus))
-                    .tool(DebugTool::new(GitDiff))
-                    .tool(DebugTool::new(GitLog))
-                    .tool(DebugTool::new(GitChangedFiles))
-                    .tool(DebugTool::new(FileRead))
-                    .tool(DebugTool::new(CodeSearch))
-                    .tool(DebugTool::new(ProjectDocs))
-                    .build();
-
+                let builder = client.agent(model).preamble(preamble).max_tokens(4096);
+                let agent = crate::attach_core_tools!(builder).build();
                 agent.prompt(task).await
             }
             Self::Anthropic { client, model } => {
-                let agent = client
-                    .agent(model)
-                    .preamble(preamble)
-                    .max_tokens(4096)
-                    .tool(DebugTool::new(GitStatus))
-                    .tool(DebugTool::new(GitDiff))
-                    .tool(DebugTool::new(GitLog))
-                    .tool(DebugTool::new(GitChangedFiles))
-                    .tool(DebugTool::new(FileRead))
-                    .tool(DebugTool::new(CodeSearch))
-                    .tool(DebugTool::new(ProjectDocs))
-                    .build();
-
+                let builder = client.agent(model).preamble(preamble).max_tokens(4096);
+                let agent = crate::attach_core_tools!(builder).build();
                 agent.prompt(task).await
             }
         };
@@ -179,9 +156,8 @@ impl ParallelAnalyze {
     }
 }
 
-#[derive(Debug, thiserror::Error)]
-#[error("Parallel analysis error: {0}")]
-pub struct ParallelAnalyzeError(String);
+// Use standard tool error macro for consistency
+crate::define_tool_error!(ParallelAnalyzeError);
 
 impl Tool for ParallelAnalyze {
     const NAME: &'static str = "parallel_analyze";
@@ -228,7 +204,10 @@ impl Tool for ParallelAnalyze {
 
         agent_debug::debug_context_management(
             "ParallelAnalyze",
-            &format!("Spawning {} subagents (fast model: {})", num_tasks, self.model),
+            &format!(
+                "Spawning {} subagents (fast model: {})",
+                num_tasks, self.model
+            ),
         );
 
         // Collect results using Arc<Mutex> for thread-safe access
@@ -268,7 +247,10 @@ impl Tool for ParallelAnalyze {
 
         agent_debug::debug_context_management(
             "ParallelAnalyze",
-            &format!("{}/{} successful in {}ms", successful, num_tasks, execution_time_ms),
+            &format!(
+                "{}/{} successful in {}ms",
+                successful, num_tasks, execution_time_ms
+            ),
         );
 
         Ok(ParallelAnalyzeResult {

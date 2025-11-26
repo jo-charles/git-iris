@@ -4,7 +4,6 @@
 //! including configuration loading, client creation, and agent setup.
 
 use anyhow::Result;
-use rig::client::builder::DynClientBuilder;
 use std::sync::Arc;
 
 use crate::agents::context::TaskContext;
@@ -19,7 +18,6 @@ use crate::providers::Provider;
 pub struct AgentSetupService {
     config: Config,
     git_repo: Option<GitRepo>,
-    client_builder: Option<DynClientBuilder>,
 }
 
 impl AgentSetupService {
@@ -28,7 +26,6 @@ impl AgentSetupService {
         Self {
             config,
             git_repo: None,
-            client_builder: None,
         }
     }
 
@@ -59,10 +56,10 @@ impl AgentSetupService {
     /// Create a configured Iris agent
     pub fn create_iris_agent(&mut self) -> Result<IrisAgent> {
         let backend = AgentBackend::from_config(&self.config)?;
-        let client_builder = self.create_client_builder(&backend)?;
+        // Validate environment (API keys etc) before creating agent
+        self.validate_provider(&backend)?;
 
         let mut agent = IrisAgentBuilder::new()
-            .with_client(client_builder)
             .with_provider(&backend.provider_name)
             .with_model(&backend.model)
             .build()?;
@@ -74,9 +71,8 @@ impl AgentSetupService {
         Ok(agent)
     }
 
-    /// Create a Rig client builder based on the backend configuration
-    fn create_client_builder(&mut self, backend: &AgentBackend) -> Result<DynClientBuilder> {
-        // Parse and validate provider
+    /// Validate provider configuration (API keys etc)
+    fn validate_provider(&self, backend: &AgentBackend) -> Result<()> {
         let provider: Provider = backend
             .provider_name
             .parse()
@@ -96,11 +92,7 @@ impl AgentSetupService {
             ));
         }
 
-        // Create client builder - Rig will read from environment variables
-        let client_builder = DynClientBuilder::new();
-        self.client_builder = Some(DynClientBuilder::new());
-
-        Ok(client_builder)
+        Ok(())
     }
 
     /// Get the git repository instance
@@ -111,11 +103,6 @@ impl AgentSetupService {
     /// Get the configuration
     pub fn config(&self) -> &Config {
         &self.config
-    }
-
-    /// Get the client builder
-    pub fn client_builder(&self) -> Option<&DynClientBuilder> {
-        self.client_builder.as_ref()
     }
 }
 
@@ -147,10 +134,7 @@ where
 
 /// Simple factory function for creating agents with minimal configuration
 pub fn create_agent_with_defaults(provider: &str, model: &str) -> Result<IrisAgent> {
-    let client_builder = DynClientBuilder::new();
-
     IrisAgentBuilder::new()
-        .with_client(client_builder)
         .with_provider(provider)
         .with_model(model)
         .build()
@@ -312,10 +296,7 @@ impl IrisAgentService {
 
     /// Create a configured Iris agent
     fn create_agent(&self) -> Result<IrisAgent> {
-        let client_builder = DynClientBuilder::new();
-
         let mut agent = IrisAgentBuilder::new()
-            .with_client(client_builder)
             .with_provider(&self.provider)
             .with_model(&self.model)
             .build()?;

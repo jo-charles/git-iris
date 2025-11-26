@@ -11,15 +11,8 @@ use std::path::PathBuf;
 
 use super::common::parameters_schema;
 
-#[derive(Debug, thiserror::Error)]
-#[error("Docs error: {0}")]
-pub struct DocsError(String);
-
-impl From<std::io::Error> for DocsError {
-    fn from(err: std::io::Error) -> Self {
-        DocsError(err.to_string())
-    }
-}
+// Use standard tool error macro for consistency
+crate::define_tool_error!(DocsError);
 
 /// Tool for fetching project documentation files
 #[derive(Debug, Clone, Serialize, Deserialize)]

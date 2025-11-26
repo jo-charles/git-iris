@@ -10,15 +10,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::{Arc, Mutex};
 
-#[derive(Debug, thiserror::Error)]
-#[error("Workspace error: {0}")]
-pub struct WorkspaceError(pub String);
+use super::common::parameters_schema;
 
-impl From<anyhow::Error> for WorkspaceError {
-    fn from(err: anyhow::Error) -> Self {
-        WorkspaceError(err.to_string())
-    }
-}
+// Use standard tool error macro for consistency
+crate::define_tool_error!(WorkspaceError);
 
 /// Workspace tool for Iris's note-taking and task management
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -33,20 +28,77 @@ struct WorkspaceData {
     tasks: Vec<WorkspaceTask>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 struct WorkspaceTask {
     description: String,
-    status: String,
-    priority: String,
+    status: TaskStatus,
+    priority: TaskPriority,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Workspace action type
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkspaceAction {
+    /// Add a note to the workspace
+    AddNote,
+    /// Add a task to track
+    AddTask,
+    /// Update an existing task's status
+    UpdateTask,
+    /// Get summary of notes and tasks
+    #[default]
+    GetSummary,
+}
+
+/// Task priority level
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum TaskPriority {
+    Low,
+    #[default]
+    Medium,
+    High,
+    Critical,
+}
+
+/// Task status
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum TaskStatus {
+    #[default]
+    Pending,
+    InProgress,
+    Completed,
+    Blocked,
+}
+
+impl std::fmt::Display for TaskStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TaskStatus::Pending => write!(f, "pending"),
+            TaskStatus::InProgress => write!(f, "in_progress"),
+            TaskStatus::Completed => write!(f, "completed"),
+            TaskStatus::Blocked => write!(f, "blocked"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct WorkspaceArgs {
-    pub action: String, // "add_note", "add_task", "update_task", "get_summary"
+    /// Action to perform
+    pub action: WorkspaceAction,
+    /// Content for note or task description
+    #[serde(default)]
     pub content: Option<String>,
-    pub priority: Option<String>,
+    /// Priority level for tasks
+    #[serde(default)]
+    pub priority: Option<TaskPriority>,
+    /// Index of task to update (0-based)
+    #[serde(default)]
     pub task_index: Option<usize>,
-    pub status: Option<String>,
+    /// New status for task updates
+    #[serde(default)]
+    pub status: Option<TaskStatus>,
 }
 
 impl Default for Workspace {
@@ -70,40 +122,11 @@ impl Tool for Workspace {
     type Output = String;
 
     async fn definition(&self, _: String) -> ToolDefinition {
-        serde_json::from_value(json!({
-            "name": "workspace",
-            "description": "Iris's personal workspace for notes and task management. Use this to track progress, take notes on findings, and manage complex workflows.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "action": {
-                        "type": "string",
-                        "enum": ["add_note", "add_task", "update_task", "get_summary"],
-                        "description": "Action to perform: add_note, add_task, update_task, or get_summary"
-                    },
-                    "content": {
-                        "type": ["string", "null"],
-                        "description": "Content for note or task description"
-                    },
-                    "priority": {
-                        "type": ["string", "null"],
-                        "enum": ["low", "medium", "high", "critical"],
-                        "description": "Priority level for tasks"
-                    },
-                    "task_index": {
-                        "type": ["integer", "null"],
-                        "description": "Index of task to update (0-based)"
-                    },
-                    "status": {
-                        "type": ["string", "null"],
-                        "enum": ["pending", "in_progress", "completed", "blocked"],
-                        "description": "New status for task updates"
-                    }
-                },
-                "required": ["action", "content", "priority", "task_index", "status"]
-            }
-        }))
-        .expect("workspace tool definition should be valid JSON")
+        ToolDefinition {
+            name: "workspace".to_string(),
+            description: "Iris's personal workspace for notes and task management. Use this to track progress, take notes on findings, and manage complex workflows.".to_string(),
+            parameters: parameters_schema::<WorkspaceArgs>(),
+        }
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -112,27 +135,27 @@ impl Tool for Workspace {
             .lock()
             .map_err(|e| WorkspaceError(e.to_string()))?;
 
-        let result = match args.action.as_str() {
-            "add_note" => {
+        let result = match args.action {
+            WorkspaceAction::AddNote => {
                 let content = args
                     .content
                     .ok_or_else(|| WorkspaceError("Content required for add_note".to_string()))?;
-                data.notes.push(content.clone());
+                data.notes.push(content);
                 json!({
                     "success": true,
                     "message": "Note added successfully",
                     "note_count": data.notes.len()
                 })
             }
-            "add_task" => {
+            WorkspaceAction::AddTask => {
                 let content = args
                     .content
                     .ok_or_else(|| WorkspaceError("Content required for add_task".to_string()))?;
-                let priority = args.priority.unwrap_or_else(|| "medium".to_string());
+                let priority = args.priority.unwrap_or_default();
 
                 data.tasks.push(WorkspaceTask {
                     description: content,
-                    status: "pending".to_string(),
+                    status: TaskStatus::Pending,
                     priority,
                 });
 
@@ -142,7 +165,7 @@ impl Tool for Workspace {
                     "task_count": data.tasks.len()
                 })
             }
-            "update_task" => {
+            WorkspaceAction::UpdateTask => {
                 let task_index = args.task_index.ok_or_else(|| {
                     WorkspaceError("task_index required for update_task".to_string())
                 })?;
@@ -156,24 +179,28 @@ impl Tool for Workspace {
                     )));
                 }
 
-                data.tasks[task_index].status.clone_from(&status);
+                data.tasks[task_index].status = status.clone();
 
                 json!({
                     "success": true,
                     "message": format!("Task {} updated to {}", task_index, status),
                 })
             }
-            "get_summary" => {
-                let pending = data.tasks.iter().filter(|t| t.status == "pending").count();
+            WorkspaceAction::GetSummary => {
+                let pending = data
+                    .tasks
+                    .iter()
+                    .filter(|t| matches!(t.status, TaskStatus::Pending))
+                    .count();
                 let in_progress = data
                     .tasks
                     .iter()
-                    .filter(|t| t.status == "in_progress")
+                    .filter(|t| matches!(t.status, TaskStatus::InProgress))
                     .count();
                 let completed = data
                     .tasks
                     .iter()
-                    .filter(|t| t.status == "completed")
+                    .filter(|t| matches!(t.status, TaskStatus::Completed))
                     .count();
 
                 json!({
@@ -186,17 +213,14 @@ impl Tool for Workspace {
                     },
                     "recent_notes": data.notes.iter().rev().take(3).collect::<Vec<_>>(),
                     "active_tasks": data.tasks.iter()
-                        .filter(|t| t.status != "completed")
+                        .filter(|t| !matches!(t.status, TaskStatus::Completed))
                         .map(|t| json!({
                             "description": t.description,
-                            "status": t.status,
-                            "priority": t.priority
+                            "status": t.status.to_string(),
+                            "priority": format!("{:?}", t.priority).to_lowercase()
                         }))
                         .collect::<Vec<_>>()
                 })
-            }
-            _ => {
-                return Err(WorkspaceError(format!("Unknown action: {}", args.action)));
             }
         };
 

@@ -11,7 +11,6 @@ use git_iris::{
     config::Config,
     git::GitRepo,
 };
-use rig::client::builder::DynClientBuilder;
 use std::env;
 use tempfile::TempDir;
 
@@ -103,9 +102,8 @@ fn test_task_result_with_execution_time() {
 
 #[test]
 fn test_iris_agent_builder() {
-    let client_builder = DynClientBuilder::new();
+    // Builder now creates client on-demand from environment
     let result = IrisAgentBuilder::new()
-        .with_client(client_builder)
         .with_provider("openai")
         .with_model("gpt-4o")
         .with_preamble("Custom preamble")
@@ -115,20 +113,10 @@ fn test_iris_agent_builder() {
 }
 
 #[test]
-fn test_iris_agent_builder_missing_client() {
-    let result = IrisAgentBuilder::new()
-        .with_provider("openai")
-        .with_model("gpt-4o")
-        .build();
-
-    assert!(result.is_err());
-    assert!(
-        result
-            .err()
-            .unwrap()
-            .to_string()
-            .contains("Client builder is required")
-    );
+fn test_iris_agent_builder_defaults() {
+    // Builder with defaults (openai/gpt-4o) should succeed
+    let result = IrisAgentBuilder::new().build();
+    assert!(result.is_ok());
 }
 
 #[tokio::test]

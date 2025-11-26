@@ -7,6 +7,10 @@
 pub mod common;
 pub use common::{get_current_repo, parameters_schema};
 
+// Tool registry for consistent attachment
+pub mod registry;
+pub use registry::CORE_TOOLS;
+
 // Tool modules with Rig-based implementations
 pub mod git;
 
