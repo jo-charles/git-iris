@@ -29,7 +29,6 @@ pub mod logger;
 pub mod messages;
 pub mod output;
 pub mod services;
-pub mod token_optimizer;
 pub mod tui;
 pub mod types;
 pub mod ui;

@@ -1,7 +1,8 @@
-use crate::token_optimizer::TokenOptimizer;
 use serde::Serialize;
 use std::fmt;
 
+/// Git context information for pre-flight checks and TUI display.
+/// The agent gathers detailed context dynamically via tools.
 #[derive(Serialize, Debug, Clone)]
 pub struct CommitContext {
     pub branch: String,
@@ -10,8 +11,6 @@ pub struct CommitContext {
     pub project_metadata: ProjectMetadata,
     pub user_name: String,
     pub user_email: String,
-    pub summary: String,
-    pub diff_stat: String,
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -99,12 +98,6 @@ impl CommitContext {
             project_metadata,
             user_name,
             user_email,
-            summary: String::new(),
-            diff_stat: String::new(),
         }
-    }
-    pub fn optimize(&mut self, max_tokens: usize) {
-        let optimizer = TokenOptimizer::new(max_tokens);
-        optimizer.optimize_context(self);
     }
 }

@@ -7,7 +7,6 @@
 pub mod context;
 pub mod core;
 pub mod iris;
-pub mod prompts;
 
 // Agent tools
 pub mod tools;
