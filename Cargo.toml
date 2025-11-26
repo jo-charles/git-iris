@@ -42,7 +42,6 @@ ratatui = "0.29.0"
 regex = "1.10.6"
 reqwest = { version = "0.12.15", features = ["json"] }
 rig-core = { version = "0.24.0", features = ["derive"] }
-rmcp = { version = "0.1.5", features = ["server", "transport-sse-server"] }
 schemars = "1.0"
 serde = { version = "1.0.209", features = ["derive"] }
 serde_json = "1.0.127"
@@ -120,6 +119,22 @@ cognitive_complexity = { level = "warn", priority = 34 }
 
 # Error handling improvements
 result_large_err = { level = "warn", priority = 35 }
+
+# Modern Rust idioms
+manual_let_else = { level = "warn", priority = 36 }
+redundant_else = { level = "warn", priority = 36 }
+semicolon_if_nothing_returned = { level = "warn", priority = 36 }
+cloned_instead_of_copied = { level = "warn", priority = 36 }
+flat_map_option = { level = "warn", priority = 36 }
+from_iter_instead_of_collect = { level = "warn", priority = 36 }
+needless_pass_by_value = { level = "warn", priority = 36 }
+trivially_copy_pass_by_ref = { level = "warn", priority = 36 }
+if_not_else = { level = "warn", priority = 36 }
+match_same_arms = { level = "warn", priority = 36 }
+needless_continue = { level = "warn", priority = 36 }
+
+# Cargo manifest linting (multiple_crate_versions disabled - transitive deps)
+multiple_crate_versions = { level = "allow", priority = 40 }
 
 # Future considerations
 #expect_used = { level = "deny", priority = 30 }
