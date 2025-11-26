@@ -36,6 +36,8 @@ pub enum IrisQueryRequest {
     },
     /// Generate commit message
     GenerateCommit { instructions: Option<String> },
+    /// Chat with Iris
+    Chat { message: String },
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -112,6 +114,94 @@ fn handle_modal_key(state: &mut StudioState, key: KeyEvent) -> Action {
                 _ => Action::None,
             }
         }
+        Some(Modal::Instructions { input }) => {
+            match key.code {
+                KeyCode::Esc => {
+                    state.close_modal();
+                    Action::Redraw
+                }
+                KeyCode::Enter => {
+                    // Generate commit with instructions
+                    let instructions = if input.is_empty() {
+                        None
+                    } else {
+                        Some(input.clone())
+                    };
+                    state.close_modal();
+                    state.set_iris_thinking("Generating commit message...");
+                    Action::IrisQuery(IrisQueryRequest::GenerateCommit { instructions })
+                }
+                KeyCode::Char(c) => {
+                    // Update input - need to get mutable reference
+                    if let Some(Modal::Instructions { input }) = &mut state.modal {
+                        input.push(c);
+                    }
+                    state.mark_dirty();
+                    Action::Redraw
+                }
+                KeyCode::Backspace => {
+                    if let Some(Modal::Instructions { input }) = &mut state.modal {
+                        input.pop();
+                    }
+                    state.mark_dirty();
+                    Action::Redraw
+                }
+                _ => Action::None,
+            }
+        }
+        Some(Modal::Chat(chat_state)) => {
+            match key.code {
+                KeyCode::Esc => {
+                    state.close_modal();
+                    Action::Redraw
+                }
+                KeyCode::Enter => {
+                    // Send message if not empty and not already responding
+                    if !chat_state.input.is_empty() && !chat_state.is_responding {
+                        let message = chat_state.input.clone();
+                        if let Some(Modal::Chat(chat)) = &mut state.modal {
+                            chat.add_user_message(&message);
+                            chat.is_responding = true;
+                        }
+                        state.mark_dirty();
+                        Action::IrisQuery(IrisQueryRequest::Chat { message })
+                    } else {
+                        Action::None
+                    }
+                }
+                KeyCode::Char(c) => {
+                    if let Some(Modal::Chat(chat)) = &mut state.modal {
+                        chat.input.push(c);
+                    }
+                    state.mark_dirty();
+                    Action::Redraw
+                }
+                KeyCode::Backspace => {
+                    if let Some(Modal::Chat(chat)) = &mut state.modal {
+                        chat.input.pop();
+                    }
+                    state.mark_dirty();
+                    Action::Redraw
+                }
+                KeyCode::Up => {
+                    // Scroll up in chat history
+                    if let Some(Modal::Chat(chat)) = &mut state.modal {
+                        chat.scroll_offset = chat.scroll_offset.saturating_add(1);
+                    }
+                    state.mark_dirty();
+                    Action::Redraw
+                }
+                KeyCode::Down => {
+                    // Scroll down in chat history
+                    if let Some(Modal::Chat(chat)) = &mut state.modal {
+                        chat.scroll_offset = chat.scroll_offset.saturating_sub(1);
+                    }
+                    state.mark_dirty();
+                    Action::Redraw
+                }
+                _ => Action::None,
+            }
+        }
         None => Action::None,
     }
 }
@@ -129,6 +219,12 @@ fn handle_global_key(state: &mut StudioState, key: KeyEvent) -> Option<Action> {
         // Help
         KeyCode::Char('?') if !is_editing(state) => {
             state.show_help();
+            Some(Action::Redraw)
+        }
+
+        // Chat with Iris
+        KeyCode::Char('/') if !is_editing(state) => {
+            state.show_chat();
             Some(Action::Redraw)
         }
 
@@ -568,10 +664,13 @@ fn handle_commit_message_key(state: &mut StudioState, key: KeyEvent) -> Action {
             Action::Redraw
         }
 
-        // Custom instructions
+        // Custom instructions - open input modal
         KeyCode::Char('i') => {
-            // TODO: Show instructions input modal
-            Action::None
+            state.modal = Some(Modal::Instructions {
+                input: state.modes.commit.custom_instructions.clone(),
+            });
+            state.mark_dirty();
+            Action::Redraw
         }
 
         // Commit - use message from editor (may have been modified)
@@ -624,6 +723,7 @@ fn handle_changelog_key(_state: &mut StudioState, _key: KeyEvent) -> Action {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /// Get keybinding descriptions for help display
+#[allow(dead_code)] // Will be used for dynamic help overlay
 pub fn get_keybindings(mode: Mode) -> Vec<(&'static str, &'static str)> {
     let mut bindings = vec![
         // Global

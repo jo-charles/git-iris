@@ -213,6 +213,79 @@ impl Notification {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// Chat State
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Role in a chat conversation
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChatRole {
+    User,
+    Iris,
+}
+
+/// A single message in the chat
+#[derive(Debug, Clone)]
+pub struct ChatMessage {
+    pub role: ChatRole,
+    pub content: String,
+}
+
+impl ChatMessage {
+    pub fn user(content: impl Into<String>) -> Self {
+        Self {
+            role: ChatRole::User,
+            content: content.into(),
+        }
+    }
+
+    pub fn iris(content: impl Into<String>) -> Self {
+        Self {
+            role: ChatRole::Iris,
+            content: content.into(),
+        }
+    }
+}
+
+/// State for the chat interface
+#[derive(Debug, Clone, Default)]
+pub struct ChatState {
+    /// Conversation history
+    pub messages: Vec<ChatMessage>,
+    /// Current input text
+    pub input: String,
+    /// Scroll offset for message display
+    pub scroll_offset: usize,
+    /// Whether Iris is currently responding
+    pub is_responding: bool,
+}
+
+impl ChatState {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Add a user message
+    pub fn add_user_message(&mut self, content: &str) {
+        self.messages.push(ChatMessage::user(content));
+        self.input.clear();
+    }
+
+    /// Add or update Iris response
+    pub fn add_iris_response(&mut self, content: &str) {
+        self.messages.push(ChatMessage::iris(content));
+        self.is_responding = false;
+    }
+
+    /// Clear the chat history
+    pub fn clear(&mut self) {
+        self.messages.clear();
+        self.input.clear();
+        self.scroll_offset = 0;
+        self.is_responding = false;
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // Modal State
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -225,6 +298,10 @@ pub enum Modal {
     Search { query: String, results: Vec<String> },
     /// Confirmation dialog
     Confirm { message: String, action: String },
+    /// Instructions input for commit message generation
+    Instructions { input: String },
+    /// Chat interface with Iris
+    Chat(ChatState),
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -292,7 +369,7 @@ impl std::fmt::Debug for ExploreState {
             .field("selection", &self.selection)
             .field("code_scroll", &self.code_scroll)
             .field("show_heat_map", &self.show_heat_map)
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 
@@ -345,7 +422,7 @@ impl std::fmt::Debug for CommitState {
             .field("selected_file_index", &self.selected_file_index)
             .field("editing_message", &self.editing_message)
             .field("generating", &self.generating)
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 
@@ -557,6 +634,12 @@ impl StudioState {
     /// Open help modal
     pub fn show_help(&mut self) {
         self.modal = Some(Modal::Help);
+        self.dirty = true;
+    }
+
+    /// Open chat modal
+    pub fn show_chat(&mut self) {
+        self.modal = Some(Modal::Chat(ChatState::new()));
         self.dirty = true;
     }
 

@@ -351,6 +351,69 @@ impl GitRepo {
         get_unstaged_file_statuses(&repo)
     }
 
+    /// Get staged diff as a full unified diff string with headers
+    ///
+    /// Returns a complete diff suitable for parsing, including:
+    /// - diff --git headers
+    /// - --- and +++ file headers
+    /// - @@ hunk headers
+    /// - +/- content lines
+    pub fn get_staged_diff_full(&self) -> Result<String> {
+        let repo = self.open_repo()?;
+
+        // Get the HEAD tree to diff against
+        let head = repo.head()?;
+        let head_tree = head.peel_to_tree()?;
+
+        // Get staged changes (index vs HEAD)
+        let diff = repo.diff_tree_to_index(Some(&head_tree), None, None)?;
+
+        // Format as unified diff
+        let mut diff_string = String::new();
+        diff.print(git2::DiffFormat::Patch, |delta, _hunk, line| {
+            // Include all line types for a complete diff
+            match line.origin() {
+                'H' => {
+                    // Hunk header - just the content
+                    diff_string.push_str(&String::from_utf8_lossy(line.content()));
+                }
+                'F' => {
+                    // File header
+                    diff_string.push_str(&String::from_utf8_lossy(line.content()));
+                }
+                '+' | '-' | ' ' => {
+                    diff_string.push(line.origin());
+                    diff_string.push_str(&String::from_utf8_lossy(line.content()));
+                }
+                '>' | '<' | '=' => {
+                    // Binary file markers
+                    diff_string.push_str(&String::from_utf8_lossy(line.content()));
+                }
+                _ => {
+                    // Any other content (context info, etc.)
+                    diff_string.push_str(&String::from_utf8_lossy(line.content()));
+                }
+            }
+
+            // Add diff --git header before each file if not present
+            if line.origin() == 'F'
+                && !diff_string.contains("diff --git")
+                && let Some(new_file) = delta.new_file().path()
+            {
+                let header = format!("diff --git a/{0} b/{0}\n", new_file.display());
+                if !diff_string.ends_with(&header) {
+                    diff_string.insert_str(
+                        diff_string.rfind("---").unwrap_or(diff_string.len()),
+                        &header,
+                    );
+                }
+            }
+            true
+        })?;
+
+        Ok(diff_string)
+    }
+
     /// Retrieves project metadata for changed files.
     /// Helper method for creating `CommitContext`
     ///

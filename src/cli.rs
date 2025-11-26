@@ -929,6 +929,7 @@ async fn handle_pr(
 }
 
 /// Handle the `Studio` command
+#[allow(clippy::unused_async)] // Will need async when agent integration is complete
 async fn handle_studio(
     common: CommonParams,
     mode: Option<String>,

@@ -397,7 +397,8 @@ impl FileTreeState {
         self.selected = 0;
     }
 
-    /// Ensure selected item is visible
+    /// Ensure selected item is visible (stub for future scroll viewport tracking)
+    #[allow(clippy::unused_self)]
     fn ensure_visible(&mut self) {
         // Will be adjusted based on render area height
     }
@@ -551,7 +552,7 @@ fn render_entry(entry: &FlatEntry, is_selected: bool, width: usize) -> Line<'sta
 
     // Icon
     let icon = if entry.is_dir {
-        if entry.is_expanded { "" } else { "" }
+        if entry.is_expanded { "▼" } else { "▶" }
     } else {
         get_file_icon(&entry.name)
     };
@@ -611,19 +612,19 @@ fn render_entry(entry: &FlatEntry, is_selected: bool, width: usize) -> Line<'sta
 fn get_file_icon(name: &str) -> &'static str {
     let ext = name.rsplit('.').next().unwrap_or("");
     match ext.to_lowercase().as_str() {
-        "rs" => "",
-        "toml" => "",
-        "md" => "",
-        "json" => "",
-        "yaml" | "yml" => "",
-        "js" | "jsx" => "",
-        "ts" | "tsx" => "",
-        "py" => "",
-        "go" => "",
-        "sh" | "bash" | "zsh" => "",
-        "lock" => "",
-        "gitignore" => "",
-        "dockerfile" => "",
-        _ => "",
+        "rs" => "◆",
+        "toml" => "◇",
+        "md" => "▪",
+        "json" => "◈",
+        "yaml" | "yml" => "◈",
+        "js" | "jsx" => "◎",
+        "ts" | "tsx" => "◉",
+        "py" => "○",
+        "go" => "●",
+        "sh" | "bash" | "zsh" => "▸",
+        "lock" => "◌",
+        "gitignore" => "◦",
+        "dockerfile" => "▣",
+        _ => "·",
     }
 }

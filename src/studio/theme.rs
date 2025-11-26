@@ -2,6 +2,8 @@
 //!
 //! Electric meets elegant - the visual identity for git-iris TUI.
 
+#![allow(dead_code)] // Theme constants/functions are scaffolded for future use
+
 use ratatui::style::{Color, Modifier, Style};
 
 // ═══════════════════════════════════════════════════════════════════════════════

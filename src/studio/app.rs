@@ -3,7 +3,10 @@
 //! Event loop and rendering coordination.
 
 use anyhow::Result;
-use crossterm::event::{self, Event, KeyEventKind};
+use crossterm::event::{
+    self, DisableMouseCapture, EnableMouseCapture, Event, KeyEventKind, MouseButton, MouseEvent,
+    MouseEventKind,
+};
 use crossterm::execute;
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
@@ -27,7 +30,8 @@ use crate::services::GitCommitService;
 use crate::types::GeneratedMessage;
 
 use super::components::{
-    FileGitStatus, parse_diff, render_diff_view, render_file_tree, render_message_editor,
+    DiffHunk, DiffLine, FileDiff, FileGitStatus, parse_diff, render_diff_view, render_file_tree,
+    render_message_editor,
 };
 use super::events::{Action, handle_key_event};
 use super::layout::{LayoutAreas, calculate_layout, get_mode_layout};
@@ -42,6 +46,8 @@ use super::theme;
 pub enum IrisTaskResult {
     /// Generated commit messages
     CommitMessages(Vec<GeneratedMessage>),
+    /// Chat response from Iris
+    ChatResponse(String),
     /// Error from the task
     Error(String),
 }
@@ -62,6 +68,8 @@ pub struct StudioApp {
     iris_result_rx: mpsc::UnboundedReceiver<IrisTaskResult>,
     /// Channel sender for async Iris results (kept for spawning tasks)
     iris_result_tx: mpsc::UnboundedSender<IrisTaskResult>,
+    /// Last calculated layout for mouse hit testing
+    last_layout: Option<LayoutAreas>,
 }
 
 impl StudioApp {
@@ -81,6 +89,7 @@ impl StudioApp {
             agent_service,
             iris_result_rx,
             iris_result_tx,
+            last_layout: None,
         }
     }
 
@@ -124,27 +133,56 @@ impl StudioApp {
             self.update_explore_file_tree();
 
             // Load diffs into diff view
-            self.load_staged_diffs(&files_info);
+            self.load_staged_diffs(files_info.as_ref());
         }
         Ok(())
     }
 
     /// Load staged file diffs into the diff view component
-    fn load_staged_diffs(&mut self, files_info: &Option<crate::git::RepoFilesInfo>) {
-        if let Some(info) = files_info {
-            // Combine all staged file diffs into a single diff string
-            let combined_diff: String = info
-                .staged_files
-                .iter()
-                .map(|f| {
-                    // Build a git-style diff header for each file
-                    let header = format!("diff --git a/{} b/{}\n", f.path, f.path);
-                    format!("{}{}\n", header, f.diff)
-                })
-                .collect();
+    fn load_staged_diffs(&mut self, files_info: Option<&crate::git::RepoFilesInfo>) {
+        let Some(info) = files_info else { return };
+        let Some(repo) = &self.state.repo else { return };
 
-            // Parse the combined diff and load into view
-            let diffs = parse_diff(&combined_diff);
+        // Get a proper unified diff with all headers using git
+        if let Ok(diff_text) = repo.get_staged_diff_full() {
+            let diffs = parse_diff(&diff_text);
+            self.state.modes.commit.diff_view.set_diffs(diffs);
+        } else {
+            // Fallback: Build synthetic diff from file info
+            let mut diffs = Vec::new();
+            for f in &info.staged_files {
+                let mut file_diff = FileDiff::new(&f.path);
+                file_diff.is_new = matches!(f.change_type, crate::context::ChangeType::Added);
+                file_diff.is_deleted = matches!(f.change_type, crate::context::ChangeType::Deleted);
+
+                // Create a synthetic hunk from the diff lines
+                if !f.diff.is_empty() && f.diff != "[Content excluded]" {
+                    let hunk = DiffHunk {
+                        header: "@@ Changes @@".to_string(),
+                        lines: f
+                            .diff
+                            .lines()
+                            .enumerate()
+                            .map(|(i, line)| {
+                                let content = line.strip_prefix(['+', '-', ' ']).unwrap_or(line);
+                                if line.starts_with('+') {
+                                    DiffLine::added(content, i + 1)
+                                } else if line.starts_with('-') {
+                                    DiffLine::removed(content, i + 1)
+                                } else {
+                                    DiffLine::context(content, i + 1, i + 1)
+                                }
+                            })
+                            .collect(),
+                        old_start: 1,
+                        old_count: 0,
+                        new_start: 1,
+                        new_count: 0,
+                    };
+                    file_diff.hunks.push(hunk);
+                }
+                diffs.push(file_diff);
+            }
             self.state.modes.commit.diff_view.set_diffs(diffs);
         }
     }
@@ -178,7 +216,7 @@ impl StudioApp {
         // Setup terminal
         enable_raw_mode()?;
         let mut stdout = io::stdout();
-        execute!(stdout, EnterAlternateScreen)?;
+        execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
         let backend = CrosstermBackend::new(stdout);
         let mut terminal = Terminal::new(backend)?;
 
@@ -187,7 +225,11 @@ impl StudioApp {
 
         // Cleanup terminal
         disable_raw_mode()?;
-        execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+        execute!(
+            terminal.backend_mut(),
+            LeaveAlternateScreen,
+            DisableMouseCapture
+        )?;
         terminal.show_cursor()?;
 
         result
@@ -214,24 +256,34 @@ impl StudioApp {
             }
 
             // Poll for events with timeout for animations
-            if event::poll(Duration::from_millis(50))?
-                && let Event::Key(key) = event::read()?
-            {
-                // Only handle key press events
-                if key.kind == KeyEventKind::Press {
-                    let action = handle_key_event(&mut self.state, key);
+            if event::poll(Duration::from_millis(50))? {
+                match event::read()? {
+                    Event::Key(key) => {
+                        // Only handle key press events
+                        if key.kind == KeyEventKind::Press {
+                            let action = handle_key_event(&mut self.state, key);
 
-                    match action {
-                        Action::Quit => return Ok(ExitResult::Quit),
-                        Action::Redraw => self.state.mark_dirty(),
-                        Action::Commit(message) => {
-                            return self.perform_commit(&message);
+                            match action {
+                                Action::Quit => return Ok(ExitResult::Quit),
+                                Action::Redraw => self.state.mark_dirty(),
+                                Action::Commit(message) => {
+                                    return Ok(self.perform_commit(&message));
+                                }
+                                Action::IrisQuery(query) => {
+                                    self.handle_iris_query(query);
+                                }
+                                Action::None => {}
+                            }
                         }
-                        Action::IrisQuery(query) => {
-                            self.handle_iris_query(query);
-                        }
-                        Action::None => {}
                     }
+                    Event::Mouse(mouse) => {
+                        self.handle_mouse_event(mouse);
+                    }
+                    Event::Resize(_, _) => {
+                        // Terminal resized, trigger redraw
+                        self.state.mark_dirty();
+                    }
+                    _ => {}
                 }
             }
 
@@ -242,12 +294,14 @@ impl StudioApp {
 
     /// Check for completed Iris task results
     fn check_iris_results(&mut self) {
+        use super::state::Modal;
+
         while let Ok(result) = self.iris_result_rx.try_recv() {
             match result {
                 IrisTaskResult::CommitMessages(messages) => {
                     self.state.set_iris_idle();
                     // Store messages in both the old location and the new component
-                    self.state.modes.commit.messages = messages.clone();
+                    self.state.modes.commit.messages.clone_from(&messages);
                     self.state.modes.commit.current_index = 0;
                     self.state
                         .modes
@@ -258,8 +312,19 @@ impl StudioApp {
                         .notify(Notification::success("Commit message generated"));
                     self.state.mark_dirty();
                 }
+                IrisTaskResult::ChatResponse(response) => {
+                    // Add response to chat state
+                    if let Some(Modal::Chat(chat)) = &mut self.state.modal {
+                        chat.add_iris_response(&response);
+                    }
+                    self.state.mark_dirty();
+                }
                 IrisTaskResult::Error(err) => {
                     self.state.set_iris_error(&err);
+                    // If we're in chat, add error as Iris response
+                    if let Some(Modal::Chat(chat)) = &mut self.state.modal {
+                        chat.is_responding = false;
+                    }
                     self.state
                         .notify(Notification::error(format!("Iris error: {}", err)));
                     self.state.mark_dirty();
@@ -284,7 +349,151 @@ impl StudioApp {
                 // TODO: Implement semantic blame
                 let _ = (file, start_line, end_line);
             }
+            IrisQueryRequest::Chat { message } => {
+                self.spawn_chat_query(message);
+            }
         }
+    }
+
+    /// Spawn a task for chat query
+    fn spawn_chat_query(&self, message: String) {
+        let tx = self.iris_result_tx.clone();
+
+        // For now, provide a placeholder response
+        // TODO: Integrate with Iris agent for real chat
+        tokio::spawn(async move {
+            // Simulate some processing time
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+            // Placeholder response
+            let response = format!(
+                "I received your message: \"{}\"\n\n\
+                Chat functionality is coming soon! For now, I can help you with:\n\
+                • Generating commit messages (press 'g' in Commit mode)\n\
+                • Providing instructions for generation (press 'i')",
+                message
+            );
+
+            let _ = tx.send(IrisTaskResult::ChatResponse(response));
+        });
+    }
+
+    /// Handle mouse events for panel focus and scrolling
+    fn handle_mouse_event(&mut self, mouse: MouseEvent) {
+        match mouse.kind {
+            MouseEventKind::Down(MouseButton::Left) => {
+                // Click to focus panel
+                if let Some(panel) = self.panel_at(mouse.column, mouse.row)
+                    && self.state.focused_panel != panel
+                {
+                    self.state.focused_panel = panel;
+                    self.state.mark_dirty();
+                }
+            }
+            MouseEventKind::ScrollUp => {
+                // Scroll up in current panel
+                self.scroll_focused_panel(-3);
+            }
+            MouseEventKind::ScrollDown => {
+                // Scroll down in current panel
+                self.scroll_focused_panel(3);
+            }
+            _ => {}
+        }
+    }
+
+    /// Determine which panel contains the given coordinates
+    fn panel_at(&self, x: u16, y: u16) -> Option<PanelId> {
+        let Some(layout) = &self.last_layout else {
+            return None;
+        };
+
+        for (i, panel_rect) in layout.panels.iter().enumerate() {
+            if x >= panel_rect.x
+                && x < panel_rect.x + panel_rect.width
+                && y >= panel_rect.y
+                && y < panel_rect.y + panel_rect.height
+            {
+                return match i {
+                    0 => Some(PanelId::Left),
+                    1 => Some(PanelId::Center),
+                    2 => Some(PanelId::Right),
+                    _ => None,
+                };
+            }
+        }
+        None
+    }
+
+    /// Scroll the focused panel by the given delta
+    fn scroll_focused_panel(&mut self, delta: i32) {
+        match self.state.active_mode {
+            Mode::Explore => {
+                match self.state.focused_panel {
+                    PanelId::Left => {
+                        // File tree scroll
+                        if delta > 0 {
+                            for _ in 0..delta {
+                                self.state.modes.explore.file_tree.select_next();
+                            }
+                        } else {
+                            for _ in 0..(-delta) {
+                                self.state.modes.explore.file_tree.select_prev();
+                            }
+                        }
+                    }
+                    PanelId::Center => {
+                        // Code view scroll
+                        let scroll = &mut self.state.modes.explore.code_scroll;
+                        if delta > 0 {
+                            *scroll = scroll.saturating_add(delta as usize);
+                        } else {
+                            *scroll = scroll.saturating_sub((-delta) as usize);
+                        }
+                    }
+                    PanelId::Right => {
+                        // Context panel - no scroll yet
+                    }
+                }
+            }
+            Mode::Commit => {
+                match self.state.focused_panel {
+                    PanelId::Left => {
+                        // Staged files tree scroll
+                        if delta > 0 {
+                            for _ in 0..delta {
+                                self.state.modes.commit.file_tree.select_next();
+                            }
+                        } else {
+                            for _ in 0..(-delta) {
+                                self.state.modes.commit.file_tree.select_prev();
+                            }
+                        }
+                    }
+                    PanelId::Center => {
+                        // Diff view scroll
+                        if delta > 0 {
+                            self.state
+                                .modes
+                                .commit
+                                .diff_view
+                                .scroll_down(delta as usize);
+                        } else {
+                            self.state
+                                .modes
+                                .commit
+                                .diff_view
+                                .scroll_up((-delta) as usize);
+                        }
+                    }
+                    PanelId::Right => {
+                        // Message editor - textarea handles scrolling
+                    }
+                }
+            }
+            _ => {}
+        }
+        self.state.mark_dirty();
     }
 
     /// Spawn a task to generate a commit message
@@ -337,19 +546,17 @@ impl StudioApp {
         let _ = task_prompt;
     }
 
-    fn perform_commit(&self, message: &str) -> Result<ExitResult> {
+    fn perform_commit(&self, message: &str) -> ExitResult {
         if let Some(service) = &self.commit_service {
             match service.perform_commit(message) {
                 Ok(result) => {
                     let output = crate::output::format_commit_result(&result, message);
-                    Ok(ExitResult::Committed(output))
+                    ExitResult::Committed(output)
                 }
-                Err(e) => Ok(ExitResult::Error(e.to_string())),
+                Err(e) => ExitResult::Error(e.to_string()),
             }
         } else {
-            Ok(ExitResult::Error(
-                "Commit service not available".to_string(),
-            ))
+            ExitResult::Error("Commit service not available".to_string())
         }
     }
 
@@ -364,6 +571,226 @@ impl StudioApp {
         self.render_tabs(frame, areas.tabs);
         self.render_panels(frame, &areas);
         self.render_status(frame, areas.status);
+
+        // Store layout for mouse hit testing
+        self.last_layout = Some(areas);
+
+        // Render modal overlay on top of everything
+        if self.state.modal.is_some() {
+            self.render_modal(frame);
+        }
+    }
+
+    fn render_modal(&self, frame: &mut Frame) {
+        use super::state::{ChatRole, Modal};
+        use ratatui::widgets::Clear;
+
+        let Some(modal) = &self.state.modal else {
+            return;
+        };
+        let area = frame.area();
+
+        // Center modal in screen - chat is larger
+        let (modal_width, modal_height) = match modal {
+            Modal::Chat(_) => (
+                80.min(area.width.saturating_sub(4)),
+                (area.height * 3 / 4).min(area.height.saturating_sub(4)),
+            ),
+            Modal::Help => (60.min(area.width.saturating_sub(4)), 20),
+            Modal::Instructions { .. } => (60.min(area.width.saturating_sub(4)), 8),
+            Modal::Search { .. } => (60.min(area.width.saturating_sub(4)), 15),
+            Modal::Confirm { .. } => (60.min(area.width.saturating_sub(4)), 6),
+        };
+        let modal_height = modal_height.min(area.height.saturating_sub(4));
+
+        let x = (area.width.saturating_sub(modal_width)) / 2;
+        let y = (area.height.saturating_sub(modal_height)) / 2;
+        let modal_area = Rect::new(x, y, modal_width, modal_height);
+
+        // Clear the area first
+        frame.render_widget(Clear, modal_area);
+
+        match modal {
+            Modal::Help => {
+                let block = Block::default()
+                    .title(" Help ")
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(theme::ELECTRIC_PURPLE));
+                let inner = block.inner(modal_area);
+                frame.render_widget(block, modal_area);
+
+                let help_text = vec![
+                    Line::from(Span::styled(
+                        "Global",
+                        Style::default().add_modifier(Modifier::BOLD),
+                    )),
+                    Line::from("  q        Quit"),
+                    Line::from("  ?        Help"),
+                    Line::from("  Tab      Next panel"),
+                    Line::from("  E/C/R    Switch mode"),
+                    Line::from(""),
+                    Line::from(Span::styled(
+                        "Commit Mode",
+                        Style::default().add_modifier(Modifier::BOLD),
+                    )),
+                    Line::from("  r        Generate message"),
+                    Line::from("  i        Custom instructions"),
+                    Line::from("  e        Edit message"),
+                    Line::from("  n/p      Cycle messages"),
+                    Line::from("  Enter    Commit"),
+                ];
+                let paragraph = Paragraph::new(help_text);
+                frame.render_widget(paragraph, inner);
+            }
+            Modal::Instructions { input } => {
+                let block = Block::default()
+                    .title(" Instructions for Iris ")
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(theme::NEON_CYAN));
+                let inner = block.inner(modal_area);
+                frame.render_widget(block, modal_area);
+
+                let lines = vec![
+                    Line::from(Span::styled(
+                        "Enter instructions for commit message generation:",
+                        theme::dimmed(),
+                    )),
+                    Line::from(""),
+                    Line::from(vec![
+                        Span::styled("> ", Style::default().fg(theme::ELECTRIC_PURPLE)),
+                        Span::styled(input.as_str(), Style::default().fg(theme::TEXT_PRIMARY)),
+                        Span::styled("█", Style::default().fg(theme::NEON_CYAN)),
+                    ]),
+                    Line::from(""),
+                    Line::from(Span::styled(
+                        "Press Enter to generate, Esc to cancel",
+                        theme::dimmed(),
+                    )),
+                ];
+                let paragraph = Paragraph::new(lines);
+                frame.render_widget(paragraph, inner);
+            }
+            Modal::Search { query, .. } => {
+                let block = Block::default()
+                    .title(" Search ")
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(theme::NEON_CYAN));
+                let inner = block.inner(modal_area);
+                frame.render_widget(block, modal_area);
+
+                let text = Paragraph::new(format!("Search: {}", query))
+                    .style(Style::default().fg(theme::TEXT_PRIMARY));
+                frame.render_widget(text, inner);
+            }
+            Modal::Confirm { message, .. } => {
+                let block = Block::default()
+                    .title(" Confirm ")
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(theme::ELECTRIC_YELLOW));
+                let inner = block.inner(modal_area);
+                frame.render_widget(block, modal_area);
+
+                let lines = vec![
+                    Line::from(message.as_str()),
+                    Line::from(""),
+                    Line::from("Press y/n to confirm"),
+                ];
+                let paragraph = Paragraph::new(lines);
+                frame.render_widget(paragraph, inner);
+            }
+            Modal::Chat(chat_state) => {
+                let block = Block::default()
+                    .title(" ◈ Chat with Iris ")
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(theme::ELECTRIC_PURPLE));
+                let inner = block.inner(modal_area);
+                frame.render_widget(block, modal_area);
+
+                // Split inner area: messages area and input area
+                let input_height = 3u16;
+                let messages_height = inner.height.saturating_sub(input_height);
+
+                let messages_area = Rect::new(inner.x, inner.y, inner.width, messages_height);
+                let input_area = Rect::new(
+                    inner.x,
+                    inner.y + messages_height,
+                    inner.width,
+                    input_height,
+                );
+
+                // Render messages
+                let mut lines: Vec<Line> = Vec::new();
+                for msg in &chat_state.messages {
+                    let (prefix, style) = match msg.role {
+                        ChatRole::User => ("You: ", Style::default().fg(theme::NEON_CYAN)),
+                        ChatRole::Iris => ("Iris: ", Style::default().fg(theme::ELECTRIC_PURPLE)),
+                    };
+
+                    // Add each line of the message with proper wrapping
+                    for (i, content_line) in msg.content.lines().enumerate() {
+                        if i == 0 {
+                            lines.push(Line::from(vec![
+                                Span::styled(prefix, style.add_modifier(Modifier::BOLD)),
+                                Span::styled(
+                                    content_line,
+                                    Style::default().fg(theme::TEXT_PRIMARY),
+                                ),
+                            ]));
+                        } else {
+                            lines.push(Line::from(Span::styled(
+                                format!("      {}", content_line),
+                                Style::default().fg(theme::TEXT_PRIMARY),
+                            )));
+                        }
+                    }
+                    lines.push(Line::from("")); // Spacing between messages
+                }
+
+                // Show typing indicator if Iris is responding
+                if chat_state.is_responding {
+                    let spinner =
+                        theme::SPINNER_BRAILLE[self.state.last_render.elapsed().as_millis()
+                            as usize
+                            / 80
+                            % theme::SPINNER_BRAILLE.len()];
+                    lines.push(Line::from(vec![
+                        Span::styled(
+                            format!("{} ", spinner),
+                            Style::default().fg(theme::ELECTRIC_PURPLE),
+                        ),
+                        Span::styled("Iris is thinking...", theme::dimmed()),
+                    ]));
+                }
+
+                // Empty state
+                if chat_state.messages.is_empty() && !chat_state.is_responding {
+                    lines.push(Line::from(Span::styled(
+                        "Ask Iris anything about your code...",
+                        theme::dimmed(),
+                    )));
+                }
+
+                let messages_paragraph =
+                    Paragraph::new(lines).scroll((chat_state.scroll_offset as u16, 0));
+                frame.render_widget(messages_paragraph, messages_area);
+
+                // Render input box
+                let input_block = Block::default()
+                    .borders(Borders::TOP)
+                    .border_style(Style::default().fg(theme::TEXT_DIM));
+
+                let input_inner = input_block.inner(input_area);
+                frame.render_widget(input_block, input_area);
+
+                let input_line = Line::from(vec![
+                    Span::styled("> ", Style::default().fg(theme::ELECTRIC_PURPLE)),
+                    Span::styled(&chat_state.input, Style::default().fg(theme::TEXT_PRIMARY)),
+                    Span::styled("█", Style::default().fg(theme::NEON_CYAN)),
+                ]);
+                let input_paragraph = Paragraph::new(input_line);
+                frame.render_widget(input_paragraph, input_inner);
+            }
+        }
     }
 
     fn render_header(&self, frame: &mut Frame, area: Rect) {

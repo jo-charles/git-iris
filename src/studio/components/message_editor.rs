@@ -66,7 +66,7 @@ impl MessageEditorState {
     /// Load a message into the editor
     fn load_message(&mut self, msg: &GeneratedMessage) {
         let full_message = format_message(msg);
-        self.original_message = full_message.clone();
+        self.original_message.clone_from(&full_message);
 
         // Clear and set new content
         self.textarea = TextArea::from(full_message.lines().map(String::from).collect::<Vec<_>>());

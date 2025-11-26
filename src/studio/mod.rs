@@ -7,6 +7,14 @@
 //! - **PR**: Pull request creation (future)
 //! - **Changelog**: Release documentation (future)
 
+// TUI code commonly uses these patterns - allow at module level
+#![allow(clippy::cast_possible_truncation)] // u16 terminal dimensions
+#![allow(clippy::cast_sign_loss)] // scroll delta conversions
+#![allow(clippy::as_conversions)] // ratatui uses u16 extensively
+#![allow(clippy::too_many_lines)] // render functions are naturally long
+#![allow(clippy::match_same_arms)] // icon mappings share defaults
+#![allow(clippy::trivially_copy_pass_by_ref)] // consistency with ratatui APIs
+
 mod app;
 mod events;
 mod layout;

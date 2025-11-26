@@ -2,6 +2,8 @@
 //!
 //! Panel layout calculations and constraints.
 
+#![allow(dead_code)] // Layout helpers are scaffolded for responsive features
+
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 
 use super::state::{Mode, PanelId};
