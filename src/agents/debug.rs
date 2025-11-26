@@ -273,6 +273,21 @@ pub fn debug_llm_request(prompt: &str, max_tokens: Option<usize>) {
                 .italic()
         );
     }
+
+    // Save full prompt to debug artifact
+    match write_debug_artifact("iris_last_prompt.txt", prompt) {
+        Ok(path) => {
+            println!(
+                "  {}",
+                format!("Full prompt saved to: {}", path.display())
+                    .truecolor(NEON_CYAN.0, NEON_CYAN.1, NEON_CYAN.2)
+                    .italic()
+            );
+        }
+        Err(e) => {
+            eprintln!("Failed to save prompt artifact: {}", e);
+        }
+    }
 }
 
 /// Print streaming chunk

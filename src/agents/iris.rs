@@ -305,9 +305,11 @@ where
 }
 
 /// The unified Iris agent that can handle any Git-Iris task
+///
+/// Note: This struct is Send + Sync safe - we don't store the client builder,
+/// instead we create it fresh when needed. This allows the agent to be used
+/// across async boundaries with `tokio::spawn`.
 pub struct IrisAgent {
-    /// The underlying Rig client builder - we'll store the builder components instead
-    client_builder: DynClientBuilder,
     provider: String,
     model: String,
     /// Current capability/task being executed
@@ -321,10 +323,12 @@ pub struct IrisAgent {
 }
 
 impl IrisAgent {
-    /// Create a new Iris agent with the given `DynClientBuilder` and provider configuration
-    pub fn new(client_builder: DynClientBuilder, provider: &str, model: &str) -> Result<Self> {
+    /// Create a new Iris agent with the given provider and model
+    ///
+    /// Note: The `client_builder` parameter is accepted for API compatibility but not stored.
+    /// A fresh builder is created when needed to ensure Send safety.
+    pub fn new(_client_builder: DynClientBuilder, provider: &str, model: &str) -> Result<Self> {
         Ok(Self {
-            client_builder,
             provider: provider.to_string(),
             model: model.to_string(),
             current_capability: None,
@@ -338,8 +342,10 @@ impl IrisAgent {
     fn build_agent(&self) -> Agent<impl CompletionModel + 'static> {
         use crate::agents::debug_tool::DebugTool;
 
-        let agent_builder = self
-            .client_builder
+        // Create a fresh client builder - this ensures Send safety
+        let client_builder = DynClientBuilder::new();
+
+        let agent_builder = client_builder
             .agent(&self.provider, &self.model)
             .unwrap_or_else(|_| {
                 panic!(
@@ -373,8 +379,8 @@ You have access to Git tools, code analysis tools, and powerful sub-agent capabi
 
         // Build a simple sub-agent that can be delegated to
         // This sub-agent has tools but cannot spawn more sub-agents (prevents recursion)
-        let sub_agent_builder = self
-            .client_builder
+        let client_builder = DynClientBuilder::new();
+        let sub_agent_builder = client_builder
             .agent(&self.provider, &self.model)
             .expect("Failed to create sub-agent")
             .name("analyze_subagent")
@@ -573,20 +579,24 @@ Guidelines:
 
         // Inject instruction preset if configured
         if let Some(config) = &self.config {
-            let preset_name = &config.instruction_preset;
+            let preset_name = config.get_effective_preset_name();
+            tracing::debug!("🎨 Effective preset name: '{}'", preset_name);
             if !preset_name.is_empty() && preset_name != "default" {
                 let library = crate::instruction_presets::get_instruction_preset_library();
                 if let Some(preset) = library.get_preset(preset_name) {
+                    tracing::info!("📋 Injecting '{}' preset style instructions", preset_name);
                     system_prompt.push_str("\n\n=== STYLE INSTRUCTIONS ===\n");
                     system_prompt.push_str(&preset.instructions);
                     system_prompt.push('\n');
+                } else {
+                    tracing::warn!("⚠️ Preset '{}' not found in library", preset_name);
                 }
             }
         }
 
         // Inject gitmoji instructions if applicable
         if let Some(config) = &self.config {
-            let is_conventional = config.instruction_preset == "conventional";
+            let is_conventional = config.get_effective_preset_name() == "conventional";
             let gitmoji_enabled = config.use_gitmoji && !is_conventional;
 
             // Add gitmoji instructions for commit/PR outputs when applicable

@@ -25,23 +25,15 @@ Generate a commit message for the staged changes.
 - **Subject line**: Imperative mood ("Add", not "Added"), max 72 chars, no period, capitalize first word
 - **Body** (if needed): Explain WHY, not what. Wrap at 72 chars. Separate from subject with blank line.
 - **Plain text only**: No markdown, no code fences, no headers, no emojis in text fields
-- Be concise. Most commits need only a good subject line.
 
 ## Writing Guidelines
-- Focus on concrete changes and their effects—no speculation about intent
+- Focus on concrete changes and their effects
 - Don't mention filenames in subject unless absolutely necessary
-- Avoid cliché words: "enhance", "streamline", "leverage", "utilize", "optimize", "robust"
-- Never use: "seems to", "appears to", "might be"—state only what is certain
-- If purpose is unclear from context, describe the change itself without inferring intent
 - Be specific—"Fix null pointer in auth flow" beats "Fix bug"
-- NO YAPPING! Keep it tight.
+
+## Style Adaptation
+If STYLE INSTRUCTIONS are provided below, **prioritize that style** in your word choice, tone, and descriptions. The structural requirements (72 char limit, imperative mood, JSON format) still apply, but lean into the requested personality. A cosmic preset means cosmic language. A playful preset means playful vibes. Express the style!
 
 ## JSON Output
 Return a `GeneratedMessage` with: `emoji` (string or null), `title` (subject line), `message` (body or empty)
-
-## Examples of Good Subjects
-- "Add user authentication via OAuth"
-- "Fix memory leak in connection pool"
-- "Refactor payment module for clarity"
-- "Update dependencies to latest versions"
 """

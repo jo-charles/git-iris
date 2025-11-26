@@ -302,6 +302,13 @@ impl Config {
         self.temp_preset = preset;
     }
 
+    /// Get the effective preset name, preferring `temp_preset` over `instruction_preset`
+    pub fn get_effective_preset_name(&self) -> &str {
+        self.temp_preset
+            .as_deref()
+            .unwrap_or(&self.instruction_preset)
+    }
+
     pub fn get_effective_instructions(&self) -> String {
         let preset_library = get_instruction_preset_library();
         let preset_instructions = self

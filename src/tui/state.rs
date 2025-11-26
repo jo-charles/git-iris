@@ -101,11 +101,18 @@ impl TuiState {
             .split('\n')
             .map(|line| {
                 let parts: Vec<&str> = line.split(" - ").collect();
+                // parts[0] is like "[B] cosmic" - extract just the key after the type indicator
+                let key_with_type = parts[0];
+                let key = key_with_type
+                    .split_whitespace()
+                    .nth(1)
+                    .unwrap_or(key_with_type)
+                    .to_string();
                 (
-                    parts[0].to_string(),
-                    parts[1].to_string(),
-                    parts[2].to_string(),
-                    parts[3].to_string(),
+                    key,                  // preset key (e.g., "cosmic")
+                    parts[1].to_string(), // emoji
+                    parts[2].to_string(), // name
+                    parts[3].to_string(), // description
                 )
             })
             .collect();

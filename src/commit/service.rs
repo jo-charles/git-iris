@@ -3,7 +3,7 @@ use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::{RwLock, mpsc};
 
-use super::prompt::{create_system_prompt, create_user_prompt, process_commit_message};
+use super::prompt::process_commit_message;
 use super::review::GeneratedReview;
 use super::types::GeneratedMessage;
 use crate::config::Config;
@@ -213,7 +213,7 @@ impl IrisCommitService {
         (context, final_user_prompt)
     }
 
-    /// Generate a commit message using AI
+    /// Generate a commit message using AI (via agent framework)
     ///
     /// # Arguments
     ///
@@ -228,56 +228,75 @@ impl IrisCommitService {
         preset: &str,
         instructions: &str,
     ) -> anyhow::Result<GeneratedMessage> {
-        let mut config_clone = self.config.clone();
+        use crate::agents::{AgentBackend, IrisAgentBuilder};
+        use rig::client::builder::DynClientBuilder;
 
-        // Check if the preset exists and is valid for commits
-        let effective_preset = if preset.is_empty() {
-            config_clone.instruction_preset = "default".to_string();
-            "default"
-        } else {
+        log_debug!(
+            "generate_message called with preset='{}', instructions='{}'",
+            preset,
+            instructions
+        );
+
+        // Build config with preset and instructions applied
+        let mut config = self.config.clone();
+
+        // Apply preset via temp_preset for agent framework
+        if !preset.is_empty() && preset != "default" {
             let library = get_instruction_preset_library();
-            if let Some(preset_info) = library.get_preset(preset) {
-                if preset_info.preset_type == PresetType::Review {
-                    log_debug!(
-                        "Warning: Preset '{}' is review-specific, not ideal for commits",
-                        preset
-                    );
-                }
-                config_clone.instruction_preset = preset.to_string();
-                preset
+            if library.get_preset(preset).is_some() {
+                log_debug!("Setting temp_preset to '{}'", preset);
+                config.set_temp_preset(Some(preset.to_string()));
             } else {
-                log_debug!("Preset '{}' not found, using default", preset);
-                config_clone.instruction_preset = "default".to_string();
-                "default"
+                log_debug!("Preset '{}' not found in library!", preset);
             }
-        };
-
-        config_clone.instructions = instructions.to_string();
-
-        let context = self.get_git_info().await?;
-
-        // Create system prompt
-        let system_prompt = create_system_prompt(&config_clone)?;
-
-        // Use the shared optimization logic
-        let (_, final_user_prompt) =
-            self.optimize_prompt(&config_clone, &system_prompt, context, create_user_prompt);
-
-        let mut generated_message = llm::get_message::<GeneratedMessage>(
-            &config_clone,
-            &self.provider_name,
-            &system_prompt,
-            &final_user_prompt,
-        )
-        .await?;
-
-        // Apply gitmoji setting - automatically disable for conventional commits
-        let should_use_gitmoji = self.use_gitmoji && effective_preset != "conventional";
-        if !should_use_gitmoji {
-            generated_message.emoji = None;
+        } else {
+            log_debug!("Preset empty or default, not setting temp_preset");
         }
 
-        Ok(generated_message)
+        // Apply custom instructions
+        if !instructions.is_empty() {
+            config.set_temp_instructions(Some(instructions.to_string()));
+        }
+
+        // Create agent using the same backend as config
+        let backend = AgentBackend::from_config(&config)?;
+        let client_builder = DynClientBuilder::new();
+
+        let mut agent = IrisAgentBuilder::new()
+            .with_client(client_builder)
+            .with_provider(&backend.provider_name)
+            .with_model(&backend.model)
+            .build()?;
+
+        // Pass config to agent for preset/gitmoji handling
+        agent.set_config(config.clone());
+
+        // Determine task prompt based on gitmoji setting
+        let effective_preset = config.get_effective_preset_name();
+        let should_use_gitmoji = self.use_gitmoji && effective_preset != "conventional";
+
+        let task_prompt = if should_use_gitmoji {
+            "Generate a commit message using gitmoji and following best practices"
+        } else {
+            "Generate a commit message following best practices"
+        };
+
+        // Execute via agent framework
+        let result = agent.execute_task("commit", task_prompt).await?;
+
+        // Extract commit message from response
+        match result {
+            crate::agents::iris::StructuredResponse::CommitMessage(mut msg) => {
+                // Apply gitmoji setting - disable if needed
+                if !should_use_gitmoji {
+                    msg.emoji = None;
+                }
+                Ok(msg)
+            }
+            _ => Err(anyhow::anyhow!(
+                "Expected commit message response from agent"
+            )),
+        }
     }
 
     /// Generate a review for unstaged changes
