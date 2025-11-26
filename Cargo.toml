@@ -24,6 +24,7 @@ integration = []
 
 [dependencies]
 anyhow = "1.0.86"
+arboard = "3.4"
 async-trait = "0.1.88"
 chrono = { version = "0.4.38", features = ["serde"] }
 clap = { version = "4.5.36", features = ["derive", "cargo"] }

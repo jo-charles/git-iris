@@ -9,9 +9,10 @@ mod modal;
 mod pr;
 mod review;
 
+use arboard::Clipboard;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-use crate::studio::state::{Modal, Mode, StudioState};
+use crate::studio::state::{Modal, Mode, Notification, StudioState};
 
 pub use changelog::handle_changelog_key;
 pub use commit::handle_commit_key;
@@ -220,4 +221,29 @@ pub fn get_keybindings(mode: Mode) -> Vec<(&'static str, &'static str)> {
     }
 
     bindings
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Clipboard Utilities
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Copy text to the system clipboard and notify the user
+pub fn copy_to_clipboard(state: &mut StudioState, content: &str, description: &str) -> Action {
+    match Clipboard::new() {
+        Ok(mut clipboard) => match clipboard.set_text(content) {
+            Ok(()) => {
+                state.notify(Notification::success(format!(
+                    "{description} copied to clipboard"
+                )));
+            }
+            Err(e) => {
+                state.notify(Notification::error(format!("Failed to copy: {e}")));
+            }
+        },
+        Err(e) => {
+            state.notify(Notification::error(format!("Clipboard unavailable: {e}")));
+        }
+    }
+    state.mark_dirty();
+    Action::Redraw
 }

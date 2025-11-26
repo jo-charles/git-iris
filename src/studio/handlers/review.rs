@@ -4,14 +4,14 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::studio::state::{Modal, PanelId, RefSelectorTarget, StudioState};
 
-use super::{Action, IrisQueryRequest};
+use super::{Action, IrisQueryRequest, copy_to_clipboard};
 
 /// Handle key events in Review mode
 pub fn handle_review_key(state: &mut StudioState, key: KeyEvent) -> Action {
     match state.focused_panel {
         PanelId::Left => handle_files_key(state, key),
-        PanelId::Center => handle_diff_key(state, key),
-        PanelId::Right => handle_output_key(state, key),
+        PanelId::Center => handle_output_key(state, key),
+        PanelId::Right => handle_diff_key(state, key),
     }
 }
 
@@ -64,7 +64,7 @@ fn handle_files_key(state: &mut StudioState, key: KeyEvent) -> Action {
                     state.modes.review.file_tree.toggle_expand();
                 } else {
                     sync_file_selection(state);
-                    state.focused_panel = PanelId::Center;
+                    state.focused_panel = PanelId::Right; // Diff is now in the right panel
                 }
             }
             state.mark_dirty();
@@ -193,6 +193,15 @@ fn handle_output_key(state: &mut StudioState, key: KeyEvent) -> Action {
             state.modes.review.review_scroll = 0;
             state.mark_dirty();
             Action::Redraw
+        }
+        // Copy to clipboard
+        KeyCode::Char('y') => {
+            if state.modes.review.review_content.is_empty() {
+                Action::None
+            } else {
+                let content = state.modes.review.review_content.clone();
+                copy_to_clipboard(state, &content, "Review")
+            }
         }
         _ => Action::None,
     }

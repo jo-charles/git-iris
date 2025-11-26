@@ -2,16 +2,16 @@
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-use crate::studio::state::{Modal, Notification, PanelId, RefSelectorTarget, StudioState};
+use crate::studio::state::{Modal, PanelId, RefSelectorTarget, StudioState};
 
-use super::{Action, IrisQueryRequest};
+use super::{Action, IrisQueryRequest, copy_to_clipboard};
 
 /// Handle key events in PR mode
 pub fn handle_pr_key(state: &mut StudioState, key: KeyEvent) -> Action {
     match state.focused_panel {
         PanelId::Left => handle_commits_key(state, key),
-        PanelId::Center => handle_diff_key(state, key),
-        PanelId::Right => handle_output_key(state, key),
+        PanelId::Center => handle_output_key(state, key),
+        PanelId::Right => handle_diff_key(state, key),
     }
 }
 
@@ -168,13 +168,14 @@ fn handle_output_key(state: &mut StudioState, key: KeyEvent) -> Action {
             state.modes.pr.generating = true;
             Action::IrisQuery(IrisQueryRequest::GeneratePR)
         }
-        // Copy to clipboard (placeholder)
+        // Copy to clipboard
         KeyCode::Char('y') => {
-            if !state.modes.pr.pr_content.is_empty() {
-                state.notify(Notification::info("PR description copied to clipboard"));
-                state.mark_dirty();
+            if state.modes.pr.pr_content.is_empty() {
+                Action::None
+            } else {
+                let content = state.modes.pr.pr_content.clone();
+                copy_to_clipboard(state, &content, "PR description")
             }
-            Action::Redraw
         }
         // Reset
         KeyCode::Char('R') => {

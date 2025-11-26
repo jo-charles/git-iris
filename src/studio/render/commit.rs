@@ -32,7 +32,7 @@ pub fn render_commit_panel(
                 frame,
                 area,
                 &state.modes.commit.message_editor,
-                "Commit Message",
+                "Commit Message [y:copy]",
                 is_focused,
                 state.modes.commit.generating,
             );

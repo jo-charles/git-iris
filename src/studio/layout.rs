@@ -127,21 +127,21 @@ fn review_layout() -> ModeLayout {
             },
             PanelConfig {
                 id: PanelId::Center,
-                title: "Diff",
+                title: "Review",
                 focusable: true,
                 min_width: 40,
             },
             PanelConfig {
                 id: PanelId::Right,
-                title: "Review",
+                title: "Diff",
                 focusable: true,
                 min_width: 25,
             },
         ],
         constraints: vec![
-            Constraint::Percentage(20),
-            Constraint::Percentage(50),
-            Constraint::Percentage(30),
+            Constraint::Percentage(18),
+            Constraint::Percentage(42),
+            Constraint::Percentage(40),
         ],
     }
 }
@@ -157,21 +157,21 @@ fn pr_layout() -> ModeLayout {
             },
             PanelConfig {
                 id: PanelId::Center,
-                title: "Diff",
+                title: "PR",
                 focusable: true,
                 min_width: 40,
             },
             PanelConfig {
                 id: PanelId::Right,
-                title: "PR",
+                title: "Diff",
                 focusable: true,
                 min_width: 25,
             },
         ],
         constraints: vec![
-            Constraint::Percentage(20),
-            Constraint::Percentage(45),
-            Constraint::Percentage(35),
+            Constraint::Percentage(18),
+            Constraint::Percentage(42),
+            Constraint::Percentage(40),
         ],
     }
 }

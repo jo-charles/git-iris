@@ -31,23 +31,9 @@ pub fn render_review_panel(
             );
         }
         PanelId::Center => {
-            // Render diff view for selected file
-            let title = state.modes.review.file_tree.selected_path().map_or_else(
-                || "Diff".to_string(),
-                |p| format!("◈ {}", p.file_name().unwrap_or_default().to_string_lossy()),
-            );
-            render_diff_view(
-                frame,
-                area,
-                &state.modes.review.diff_view,
-                &title,
-                is_focused,
-            );
-        }
-        PanelId::Right => {
-            // Render review output
+            // Render review output (center panel - main content)
             let block = Block::default()
-                .title(" Review ")
+                .title(" Review [y:copy] ")
                 .borders(Borders::ALL)
                 .border_style(if is_focused {
                     theme::focused_border()
@@ -79,6 +65,20 @@ pub fn render_review_panel(
                 let paragraph = Paragraph::new(lines);
                 frame.render_widget(paragraph, inner);
             }
+        }
+        PanelId::Right => {
+            // Render diff view for selected file
+            let title = state.modes.review.file_tree.selected_path().map_or_else(
+                || "Diff".to_string(),
+                |p| format!("◈ {}", p.file_name().unwrap_or_default().to_string_lossy()),
+            );
+            render_diff_view(
+                frame,
+                area,
+                &state.modes.review.diff_view,
+                &title,
+                is_focused,
+            );
         }
     }
 }

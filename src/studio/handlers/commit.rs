@@ -4,7 +4,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::studio::state::{Modal, PanelId, StudioState};
 
-use super::{Action, IrisQueryRequest};
+use super::{Action, IrisQueryRequest, copy_to_clipboard};
 
 /// Handle key events in Commit mode
 pub fn handle_commit_key(state: &mut StudioState, key: KeyEvent) -> Action {
@@ -241,6 +241,16 @@ fn handle_message_key(state: &mut StudioState, key: KeyEvent) -> Action {
             state.modes.commit.current_index = state.modes.commit.message_editor.selected_index();
             state.mark_dirty();
             Action::Redraw
+        }
+
+        // Copy to clipboard
+        KeyCode::Char('y') => {
+            let message = state.modes.commit.message_editor.get_message();
+            if message.is_empty() {
+                Action::None
+            } else {
+                copy_to_clipboard(state, &message, "Commit message")
+            }
         }
 
         _ => Action::None,

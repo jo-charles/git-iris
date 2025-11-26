@@ -70,18 +70,9 @@ pub fn render_pr_panel(state: &mut StudioState, frame: &mut Frame, area: Rect, p
             }
         }
         PanelId::Center => {
-            // Render diff view for selected commit or all changes
-            let title = if state.modes.pr.commits.is_empty() {
-                "Changes".to_string()
-            } else {
-                format!("Changes ({} → {})", state.modes.pr.base_branch, "HEAD")
-            };
-            render_diff_view(frame, area, &state.modes.pr.diff_view, &title, is_focused);
-        }
-        PanelId::Right => {
-            // Render PR description
+            // Render PR description (center panel - main content)
             let block = Block::default()
-                .title(" PR Description ")
+                .title(" PR Description [y:copy] ")
                 .borders(Borders::ALL)
                 .border_style(if is_focused {
                     theme::focused_border()
@@ -141,6 +132,15 @@ pub fn render_pr_panel(state: &mut StudioState, frame: &mut Frame, area: Rect, p
                 let paragraph = Paragraph::new(lines);
                 frame.render_widget(paragraph, inner);
             }
+        }
+        PanelId::Right => {
+            // Render diff view for selected commit or all changes
+            let title = if state.modes.pr.commits.is_empty() {
+                "Changes".to_string()
+            } else {
+                format!("Changes ({} → {})", state.modes.pr.base_branch, "HEAD")
+            };
+            render_diff_view(frame, area, &state.modes.pr.diff_view, &title, is_focused);
         }
     }
 }
