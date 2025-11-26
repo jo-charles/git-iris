@@ -9,19 +9,28 @@ use crate::git::GitRepo;
 #[derive(Debug, Clone)]
 pub struct AgentBackend {
     pub provider_name: String,
+    /// Primary model for complex tasks
     pub model: String,
+    /// Fast model for simple/bounded tasks (subagents, parsing, etc.)
+    pub fast_model: String,
 }
 
 impl AgentBackend {
-    pub fn new(provider_name: String, model: String) -> Self {
+    pub fn new(provider_name: String, model: String, fast_model: String) -> Self {
         Self {
             provider_name,
             model,
+            fast_model,
         }
     }
 
     /// Create backend from Git-Iris configuration
     pub fn from_config(config: &Config) -> Result<Self> {
+        let provider: crate::providers::Provider = config
+            .default_provider
+            .parse()
+            .map_err(|_| anyhow::anyhow!("Invalid provider: {}", config.default_provider))?;
+
         let provider_config = config
             .get_provider_config(&config.default_provider)
             .ok_or_else(|| {
@@ -30,7 +39,8 @@ impl AgentBackend {
 
         Ok(Self {
             provider_name: config.default_provider.clone(),
-            model: provider_config.model.clone(),
+            model: provider_config.effective_model(provider).to_string(),
+            fast_model: provider_config.effective_fast_model(provider).to_string(),
         })
     }
 }

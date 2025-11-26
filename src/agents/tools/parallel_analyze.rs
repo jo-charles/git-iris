@@ -18,6 +18,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use super::{CodeSearch, FileRead, GitChangedFiles, GitDiff, GitLog, GitStatus, ProjectDocs};
+use crate::agents::debug as agent_debug;
 use crate::agents::debug_tool::DebugTool;
 
 /// Arguments for parallel analysis
@@ -157,6 +158,7 @@ impl SubagentRunner {
 /// Spawns multiple subagents to analyze different aspects concurrently
 pub struct ParallelAnalyze {
     runner: SubagentRunner,
+    model: String,
 }
 
 impl ParallelAnalyze {
@@ -170,7 +172,10 @@ impl ParallelAnalyze {
             SubagentRunner::new("openai", "gpt-4o").expect("OpenAI fallback should work")
         });
 
-        Self { runner }
+        Self {
+            runner,
+            model: model.to_string(),
+        }
     }
 }
 
@@ -221,9 +226,9 @@ impl Tool for ParallelAnalyze {
         let tasks = args.tasks;
         let num_tasks = tasks.len();
 
-        tracing::info!(
-            "🔀 ParallelAnalyze: Spawning {} subagents for parallel analysis",
-            num_tasks
+        agent_debug::debug_context_management(
+            "ParallelAnalyze",
+            &format!("Spawning {} subagents (fast model: {})", num_tasks, self.model),
         );
 
         // Collect results using Arc<Mutex> for thread-safe access
@@ -236,15 +241,7 @@ impl Tool for ParallelAnalyze {
             let results = Arc::clone(&results);
 
             let handle = tokio::spawn(async move {
-                tracing::debug!("🔹 Subagent starting: {}", &task[..task.len().min(50)]);
-
                 let result = runner.run_task(&task).await;
-
-                tracing::debug!(
-                    "🔹 Subagent completed: {} (success: {})",
-                    &task[..task.len().min(50)],
-                    result.success
-                );
 
                 let mut guard = results.lock().await;
                 guard.push(result);
@@ -256,7 +253,7 @@ impl Tool for ParallelAnalyze {
         // Wait for all tasks to complete
         for handle in handles {
             if let Err(e) = handle.await {
-                tracing::warn!("Subagent task panicked: {}", e);
+                agent_debug::debug_warning(&format!("Subagent task panicked: {}", e));
             }
         }
 
@@ -269,11 +266,9 @@ impl Tool for ParallelAnalyze {
         let successful = final_results.iter().filter(|r| r.success).count();
         let failed = final_results.iter().filter(|r| !r.success).count();
 
-        tracing::info!(
-            "🔀 ParallelAnalyze complete: {}/{} successful in {}ms",
-            successful,
-            num_tasks,
-            execution_time_ms
+        agent_debug::debug_context_management(
+            "ParallelAnalyze",
+            &format!("{}/{} successful in {}ms", successful, num_tasks, execution_time_ms),
         );
 
         Ok(ParallelAnalyzeResult {

@@ -35,9 +35,14 @@ fn create_test_context() -> (AgentContext, TempDir) {
 
 #[test]
 fn test_agent_backend_creation() {
-    let backend = AgentBackend::new("openai".to_string(), "gpt-4o".to_string());
+    let backend = AgentBackend::new(
+        "openai".to_string(),
+        "gpt-4o".to_string(),
+        "gpt-4o-mini".to_string(),
+    );
     assert_eq!(backend.provider_name, "openai");
     assert_eq!(backend.model, "gpt-4o");
+    assert_eq!(backend.fast_model, "gpt-4o-mini");
 }
 
 #[test]
@@ -49,6 +54,7 @@ fn test_agent_backend_from_config() {
     let backend = backend.unwrap();
     assert!(!backend.provider_name.is_empty());
     assert!(!backend.model.is_empty());
+    assert!(!backend.fast_model.is_empty());
 }
 
 #[test]

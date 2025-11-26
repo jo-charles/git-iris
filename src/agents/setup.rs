@@ -67,8 +67,9 @@ impl AgentSetupService {
             .with_model(&backend.model)
             .build()?;
 
-        // Pass config to agent for gitmoji and other features
+        // Pass config and fast model to agent
         agent.set_config(self.config.clone());
+        agent.set_fast_model(backend.fast_model);
 
         Ok(agent)
     }
@@ -190,16 +191,18 @@ pub struct IrisAgentService {
     git_repo: Option<Arc<GitRepo>>,
     provider: String,
     model: String,
+    fast_model: String,
 }
 
 impl IrisAgentService {
     /// Create a new service with explicit provider configuration
-    pub fn new(config: Config, provider: String, model: String) -> Self {
+    pub fn new(config: Config, provider: String, model: String, fast_model: String) -> Self {
         Self {
             config,
             git_repo: None,
             provider,
             model,
+            fast_model,
         }
     }
 
@@ -219,7 +222,12 @@ impl IrisAgentService {
         // Determine backend (provider/model) from config
         let backend = AgentBackend::from_config(&config)?;
 
-        let mut service = Self::new(config, backend.provider_name, backend.model);
+        let mut service = Self::new(
+            config,
+            backend.provider_name,
+            backend.model,
+            backend.fast_model,
+        );
 
         // Setup git repo
         if let Some(repo_url) = repository_url {
@@ -312,8 +320,9 @@ impl IrisAgentService {
             .with_model(&self.model)
             .build()?;
 
-        // Pass config to agent for gitmoji and other features
+        // Pass config and fast model to agent
         agent.set_config(self.config.clone());
+        agent.set_fast_model(self.fast_model.clone());
 
         Ok(agent)
     }
@@ -341,5 +350,10 @@ impl IrisAgentService {
     /// Get the model name
     pub fn model(&self) -> &str {
         &self.model
+    }
+
+    /// Get the fast model name (for subagents and simple tasks)
+    pub fn fast_model(&self) -> &str {
+        &self.fast_model
     }
 }

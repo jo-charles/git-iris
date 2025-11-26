@@ -324,6 +324,8 @@ where
 pub struct IrisAgent {
     provider: String,
     model: String,
+    /// Fast model for subagents and simple tasks
+    fast_model: Option<String>,
     /// Current capability/task being executed
     current_capability: Option<String>,
     /// Provider configuration
@@ -343,11 +345,17 @@ impl IrisAgent {
         Ok(Self {
             provider: provider.to_string(),
             model: model.to_string(),
+            fast_model: None,
             current_capability: None,
             provider_config: HashMap::new(),
             preamble: None,
             config: None,
         })
+    }
+
+    /// Get the effective fast model (configured or same as main model)
+    fn effective_fast_model(&self) -> &str {
+        self.fast_model.as_deref().unwrap_or(&self.model)
     }
 
     /// Build the actual agent for execution
@@ -396,9 +404,11 @@ You have access to Git tools, code analysis tools, and powerful sub-agent capabi
 
         // Build a simple sub-agent that can be delegated to
         // This sub-agent has tools but cannot spawn more sub-agents (prevents recursion)
+        // Uses fast model for cost efficiency since subagent tasks are focused/bounded
+        let fast_model = self.effective_fast_model();
         let client_builder = DynClientBuilder::new();
         let sub_agent_builder = client_builder
-            .agent(&self.provider, &self.model)
+            .agent(&self.provider, fast_model)
             .map_err(|e| anyhow::anyhow!("Failed to create sub-agent: {}", e))?
             .name("analyze_subagent")
             .description("Delegate focused analysis tasks to a sub-agent with its own context window. Use for analyzing specific files, commits, or code sections independently. The sub-agent has access to Git tools (diff, log, status) and file analysis tools.")
@@ -438,9 +448,10 @@ Guidelines:
             // Workspace for Iris's notes and task management
             .tool(DebugTool::new(Workspace::new()))
             // Parallel analysis for distributing work across multiple subagents
+            // Uses fast model for cost efficiency
             .tool(DebugTool::new(ParallelAnalyze::new(
                 &self.provider,
-                &self.model,
+                fast_model,
             )))
             // Sub-agent delegation (Rig's built-in agent-as-tool!)
             .tool(sub_agent)
@@ -490,7 +501,12 @@ Guidelines:
         let agent = self.build_agent()?;
         debug::debug_context_management(
             "Agent built with tools",
-            &format!("Provider: {}, Model: {}", self.provider, self.model),
+            &format!(
+                "Provider: {}, Model: {} (fast: {})",
+                self.provider,
+                self.model,
+                self.effective_fast_model()
+            ),
         );
 
         // Create JSON schema for the response type
@@ -815,6 +831,11 @@ Guidelines:
     /// Set configuration
     pub fn set_config(&mut self, config: crate::config::Config) {
         self.config = Some(config);
+    }
+
+    /// Set fast model for subagents
+    pub fn set_fast_model(&mut self, fast_model: String) {
+        self.fast_model = Some(fast_model);
     }
 }
 

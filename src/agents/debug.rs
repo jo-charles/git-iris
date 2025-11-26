@@ -181,7 +181,7 @@ pub fn debug_tool_call(tool_name: &str, args: &str) {
 
     if !args.is_empty() {
         let truncated = if args.len() > 200 {
-            format!("{}...", &args[..200])
+            format!("{}...", truncate_at_char_boundary(args, 200))
         } else {
             args.to_string()
         };
@@ -193,6 +193,19 @@ pub fn debug_tool_call(tool_name: &str, args: &str) {
     }
 }
 
+/// Safely truncate a string at a character boundary
+fn truncate_at_char_boundary(s: &str, max_bytes: usize) -> &str {
+    if s.len() <= max_bytes {
+        return s;
+    }
+    // Find the last valid char boundary at or before max_bytes
+    let mut end = max_bytes;
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    &s[..end]
+}
+
 /// Print tool response information
 pub fn debug_tool_response(tool_name: &str, response: &str, duration: Duration) {
     if !is_debug_enabled() {
@@ -200,7 +213,7 @@ pub fn debug_tool_response(tool_name: &str, response: &str, duration: Duration) 
     }
 
     let truncated = if response.len() > 500 {
-        format!("{}...", &response[..500])
+        format!("{}...", truncate_at_char_boundary(response, 500))
     } else {
         response.to_string()
     };
@@ -255,7 +268,7 @@ pub fn debug_llm_request(prompt: &str, max_tokens: Option<usize>) {
     let lines: Vec<&str> = prompt.lines().take(5).collect();
     for line in lines {
         let truncated = if line.len() > 120 {
-            format!("{}...", &line[..120])
+            format!("{}...", truncate_at_char_boundary(line, 120))
         } else {
             line.to_string()
         };
@@ -364,7 +377,7 @@ pub fn debug_llm_response(response: &str, duration: Duration, tokens_used: Optio
     let truncated = if response.len() > 1000 {
         format!(
             "{}...\n\n... ({} more characters)",
-            &response[..1000],
+            truncate_at_char_boundary(response, 1000),
             response.len() - 1000
         )
     } else {
@@ -395,7 +408,7 @@ pub fn debug_json_parse_attempt(json_str: &str) {
 
     // Show first 500 chars
     let head = if json_str.len() > 500 {
-        format!("{}...", &json_str[..500])
+        format!("{}...", truncate_at_char_boundary(json_str, 500))
     } else {
         json_str.to_string()
     };
@@ -404,7 +417,11 @@ pub fn debug_json_parse_attempt(json_str: &str) {
     // Show last 200 chars to see where it got cut off
     if json_str.len() > 700 {
         println!("\n... truncated ...\n");
-        let tail_start = json_str.len().saturating_sub(200);
+        // Find a valid char boundary for the tail
+        let mut tail_start = json_str.len().saturating_sub(200);
+        while tail_start < json_str.len() && !json_str.is_char_boundary(tail_start) {
+            tail_start += 1;
+        }
         println!("{}", &json_str[tail_start..].truecolor(200, 200, 200));
     }
 }

@@ -7,6 +7,18 @@ use ratatui::style::Color;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+/// Safely truncate a string at a character boundary
+fn truncate_at_char_boundary(s: &str, max_bytes: usize) -> &str {
+    if s.len() <= max_bytes {
+        return s;
+    }
+    let mut end = max_bytes;
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    &s[..end]
+}
+
 /// Status phases for the Iris agent
 #[derive(Debug, Clone, PartialEq)]
 pub enum IrisPhase {
@@ -73,7 +85,7 @@ impl IrisStatus {
 
         // Constrain message to 80 characters as requested
         let constrained_message = if message.len() > 80 {
-            format!("{}...", &message[..77])
+            format!("{}...", truncate_at_char_boundary(&message, 77))
         } else {
             message
         };
@@ -99,7 +111,7 @@ impl IrisStatus {
     ) -> Self {
         // Constrain message to 80 characters
         let constrained_message = if message.len() > 80 {
-            format!("{}...", &message[..77])
+            format!("{}...", truncate_at_char_boundary(&message, 77))
         } else {
             message
         };
@@ -133,7 +145,7 @@ impl IrisStatus {
     /// Create error status
     pub fn error(error: &str) -> Self {
         let constrained_message = if error.len() > 35 {
-            format!("❌ {}...", &error[..32])
+            format!("❌ {}...", truncate_at_char_boundary(error, 32))
         } else {
             format!("❌ {error}")
         };
