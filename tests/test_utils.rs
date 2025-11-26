@@ -1,8 +1,7 @@
-use git_iris::changes::models::ChangeMetrics;
-use git_iris::commit::types::GeneratedPullRequest;
 use git_iris::config::{Config, ProviderConfig};
 use git_iris::context::{ChangeType, CommitContext, ProjectMetadata, RecentCommit, StagedFile};
 use git_iris::git::GitRepo;
+use git_iris::types::{ChangeMetrics, GeneratedPullRequest};
 use git2::Repository;
 
 use anyhow::Result;

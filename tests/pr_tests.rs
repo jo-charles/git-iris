@@ -1,8 +1,8 @@
 use anyhow::Result;
-use git_iris::commit::types::{GeneratedPullRequest, format_pull_request};
 use git_iris::config::Config;
 use git_iris::context::ChangeType;
 use git_iris::git::GitRepo;
+use git_iris::types::{GeneratedPullRequest, format_pull_request};
 use std::sync::Arc;
 use tempfile::TempDir;
 

@@ -17,7 +17,6 @@ pub mod agents;
 pub mod changes;
 pub mod cli;
 pub mod commands;
-pub mod commit;
 pub mod common;
 pub mod config;
 pub mod context;
@@ -28,9 +27,11 @@ pub mod instruction_presets;
 pub mod llm;
 pub mod logger;
 pub mod messages;
+pub mod output;
 pub mod services;
 pub mod token_optimizer;
 pub mod tui;
+pub mod types;
 pub mod ui;
 
 // Re-export important structs and functions for easier testing
@@ -39,8 +40,8 @@ pub use config::ProviderConfig;
 // Re-export the LLMProvider trait from the external llm crate
 pub use ::llm::LLMProvider;
 
-// Re-exports from the new types organization
-pub use commit::review::{CodeIssue, DimensionAnalysis, GeneratedReview, QualityDimension};
-pub use commit::types::{
-    GeneratedMessage, GeneratedPullRequest, format_commit_message, format_pull_request,
+// Re-exports from types module
+pub use types::{
+    CodeIssue, DimensionAnalysis, GeneratedMessage, GeneratedPullRequest, GeneratedReview,
+    QualityDimension, format_commit_message, format_pull_request,
 };

@@ -487,4 +487,3 @@ pub fn handle_list_presets_command() -> Result<()> {
 
     Ok(())
 }
-

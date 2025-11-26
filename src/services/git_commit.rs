@@ -6,8 +6,8 @@
 use anyhow::Result;
 use std::sync::Arc;
 
-use crate::commit::prompt::process_commit_message;
 use crate::git::{CommitResult, GitRepo};
+use crate::gitmoji::process_commit_message;
 use crate::log_debug;
 
 /// Service for performing git commit operations

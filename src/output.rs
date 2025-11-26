@@ -1,15 +1,10 @@
-pub mod prompt;
-pub mod review;
-pub mod types;
-
-use git2::FileMode;
-pub use types::{
-    GeneratedMessage, GeneratedPullRequest, format_commit_message, format_pull_request,
-};
+//! Git output formatting utilities
 
 use crate::git::CommitResult;
+use git2::FileMode;
 use std::fmt::Write;
 
+/// Formats a commit result into a human-readable string
 pub fn format_commit_result(result: &CommitResult, message: &str) -> String {
     let mut output = format!(
         "[{} {}] {}\n",

@@ -1,3 +1,5 @@
+//! Code review types and formatting
+
 use colored::Colorize;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

@@ -1,10 +1,10 @@
 #![allow(clippy::unwrap_used)]
 
 use anyhow::Result;
-use git_iris::changes::models::{
+use git_iris::common::DetailLevel;
+use git_iris::types::{
     ChangeEntry, ChangeMetrics, ChangelogResponse, ChangelogType, ReleaseNotesResponse,
 };
-use git_iris::common::DetailLevel;
 use git2::Repository;
 
 use std::fmt::Write as FmtWrite;

@@ -58,11 +58,11 @@ pub trait StreamingCallback: Send + Sync {
 /// Unified response type that can hold any structured output
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum StructuredResponse {
-    CommitMessage(crate::commit::types::GeneratedMessage),
-    PullRequest(crate::commit::types::GeneratedPullRequest),
-    Changelog(crate::changes::models::ChangelogResponse),
-    ReleaseNotes(crate::changes::models::ReleaseNotesResponse),
-    Review(Box<crate::commit::review::GeneratedReview>),
+    CommitMessage(crate::types::GeneratedMessage),
+    PullRequest(crate::types::GeneratedPullRequest),
+    Changelog(crate::types::ChangelogResponse),
+    ReleaseNotes(crate::types::ReleaseNotesResponse),
+    Review(Box<crate::types::GeneratedReview>),
     PlainText(String),
 }
 
@@ -671,7 +671,7 @@ Guidelines:
         match output_type.as_str() {
             "GeneratedMessage" => {
                 let response = self
-                    .execute_with_agent::<crate::commit::types::GeneratedMessage>(
+                    .execute_with_agent::<crate::types::GeneratedMessage>(
                         &system_prompt,
                         user_prompt,
                     )
@@ -680,7 +680,7 @@ Guidelines:
             }
             "GeneratedPullRequest" => {
                 let response = self
-                    .execute_with_agent::<crate::commit::types::GeneratedPullRequest>(
+                    .execute_with_agent::<crate::types::GeneratedPullRequest>(
                         &system_prompt,
                         user_prompt,
                     )
@@ -689,7 +689,7 @@ Guidelines:
             }
             "ChangelogResponse" => {
                 let response = self
-                    .execute_with_agent::<crate::changes::models::ChangelogResponse>(
+                    .execute_with_agent::<crate::types::ChangelogResponse>(
                         &system_prompt,
                         user_prompt,
                     )
@@ -698,7 +698,7 @@ Guidelines:
             }
             "ReleaseNotesResponse" => {
                 let response = self
-                    .execute_with_agent::<crate::changes::models::ReleaseNotesResponse>(
+                    .execute_with_agent::<crate::types::ReleaseNotesResponse>(
                         &system_prompt,
                         user_prompt,
                     )
@@ -707,7 +707,7 @@ Guidelines:
             }
             "GeneratedReview" => {
                 let response = self
-                    .execute_with_agent::<crate::commit::review::GeneratedReview>(
+                    .execute_with_agent::<crate::types::GeneratedReview>(
                         &system_prompt,
                         user_prompt,
                     )

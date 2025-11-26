@@ -1,8 +1,8 @@
 use crate::agents::{IrisAgentService, StructuredResponse, TaskContext};
-use crate::commit::format_commit_result;
-use crate::commit::types::GeneratedMessage;
 use crate::log_debug;
+use crate::output::format_commit_result;
 use crate::services::GitCommitService;
+use crate::types::GeneratedMessage;
 use anyhow::{Error, Result};
 use crossterm::event::KeyEventKind;
 use ratatui::Terminal;

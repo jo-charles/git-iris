@@ -407,13 +407,13 @@ async fn handle_gen_with_agent(
     repository_url: Option<String>,
 ) -> anyhow::Result<()> {
     use crate::agents::{IrisAgentService, StructuredResponse, TaskContext};
-    use crate::commit::format_commit_result;
-    use crate::commit::types::format_commit_message;
     use crate::config::Config;
     use crate::git::GitRepo;
     use crate::instruction_presets::PresetType;
+    use crate::output::format_commit_result;
     use crate::services::GitCommitService;
     use crate::tui::run_tui_commit;
+    use crate::types::format_commit_message;
     use anyhow::Context;
     use std::sync::Arc;
 
@@ -840,8 +840,8 @@ async fn handle_pr_with_agent(
     repository_url: Option<String>,
 ) -> anyhow::Result<()> {
     use crate::agents::{IrisAgentService, StructuredResponse, TaskContext};
-    use crate::commit::types::format_pull_request;
     use crate::instruction_presets::PresetType;
+    use crate::types::format_pull_request;
 
     // Enable agent mode for enhanced status display
     crate::agents::status::enable_agent_mode();
