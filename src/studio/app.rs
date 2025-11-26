@@ -46,6 +46,8 @@ use super::theme;
 pub enum IrisTaskResult {
     /// Generated commit messages
     CommitMessages(Vec<GeneratedMessage>),
+    /// Generated code review (markdown)
+    ReviewContent(String),
     /// Chat response from Iris
     ChatResponse(String),
     /// Error from the task
@@ -131,6 +133,7 @@ impl StudioApp {
             // Update file trees for components
             self.update_commit_file_tree();
             self.update_explore_file_tree();
+            self.update_review_file_tree();
 
             // Load diffs into diff view
             self.load_staged_diffs(files_info.as_ref());
@@ -322,6 +325,14 @@ impl StudioApp {
                         .notify(Notification::success("Commit message generated"));
                     self.state.mark_dirty();
                 }
+                IrisTaskResult::ReviewContent(content) => {
+                    self.state.set_iris_idle();
+                    self.state.modes.review.review_content = content;
+                    self.state.modes.review.review_scroll = 0;
+                    self.state.modes.review.generating = false;
+                    self.state.notify(Notification::success("Code review generated"));
+                    self.state.mark_dirty();
+                }
                 IrisTaskResult::ChatResponse(response) => {
                     // Add response to chat state
                     if let Some(Modal::Chat(chat)) = &mut self.state.modal {
@@ -351,6 +362,9 @@ impl StudioApp {
             IrisQueryRequest::GenerateCommit { instructions } => {
                 self.spawn_commit_generation(instructions);
             }
+            IrisQueryRequest::GenerateReview => {
+                self.spawn_review_generation();
+            }
             IrisQueryRequest::SemanticBlame {
                 file,
                 start_line,
@@ -365,26 +379,90 @@ impl StudioApp {
         }
     }
 
-    /// Spawn a task for chat query
+    /// Spawn a task for chat query - uses Iris agent with chat capability
     fn spawn_chat_query(&self, message: String) {
+        use crate::agents::StructuredResponse;
+
+        let Some(agent) = self.agent_service.clone() else {
+            let tx = self.iris_result_tx.clone();
+            let _ = tx.send(IrisTaskResult::ChatResponse(
+                "Agent service not available".to_string(),
+            ));
+            return;
+        };
+
+        let tx = self.iris_result_tx.clone();
+        let mode = self.state.active_mode;
+
+        tokio::spawn(async move {
+            // Build context-aware prompt with user's message
+            let mode_context = match mode {
+                Mode::Commit => "Current mode: Commit - working with staged changes",
+                Mode::Review => "Current mode: Review - analyzing code changes",
+                Mode::PR => "Current mode: PR - preparing pull request",
+                Mode::Explore => "Current mode: Explore - navigating codebase",
+                Mode::Changelog => "Current mode: Changelog - generating changelogs",
+            };
+
+            let prompt = format!("{}\n\nUser: {}", mode_context, message);
+
+            // Execute with custom prompt to include user's message
+            match agent.execute_task_with_prompt("chat", &prompt).await {
+                Ok(response) => {
+                    let text = match response {
+                        StructuredResponse::PlainText(text) => text,
+                        other => other.to_string(),
+                    };
+                    let _ = tx.send(IrisTaskResult::ChatResponse(text));
+                }
+                Err(e) => {
+                    let _ = tx.send(IrisTaskResult::ChatResponse(format!(
+                        "I encountered an error: {}",
+                        e
+                    )));
+                }
+            }
+        });
+    }
+
+    /// Spawn a task for code review generation
+    fn spawn_review_generation(&self) {
+        use crate::agents::{StructuredResponse, TaskContext};
+
+        let Some(agent) = self.agent_service.clone() else {
+            let tx = self.iris_result_tx.clone();
+            let _ = tx.send(IrisTaskResult::Error(
+                "Agent service not available".to_string(),
+            ));
+            return;
+        };
+
         let tx = self.iris_result_tx.clone();
 
-        // For now, provide a placeholder response
-        // TODO: Integrate with Iris agent for real chat
         tokio::spawn(async move {
-            // Simulate some processing time
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            // Use review context (staged changes only)
+            let context = match TaskContext::for_review(None, None, None, false) {
+                Ok(ctx) => ctx,
+                Err(e) => {
+                    let _ = tx.send(IrisTaskResult::Error(format!("Context error: {}", e)));
+                    return;
+                }
+            };
 
-            // Placeholder response
-            let response = format!(
-                "I received your message: \"{}\"\n\n\
-                Chat functionality is coming soon! For now, I can help you with:\n\
-                • Generating commit messages (press 'g' in Commit mode)\n\
-                • Providing instructions for generation (press 'i')",
-                message
-            );
-
-            let _ = tx.send(IrisTaskResult::ChatResponse(response));
+            // Execute the review capability
+            match agent.execute_task("review", context).await {
+                Ok(response) => {
+                    let review_text = match response {
+                        StructuredResponse::MarkdownReview(review) => review.content,
+                        StructuredResponse::PlainText(text) => text,
+                        other => other.to_string(),
+                    };
+                    let _ = tx.send(IrisTaskResult::ReviewContent(review_text));
+                }
+                Err(e) => {
+                    let _ = tx.send(IrisTaskResult::Error(format!("Review error: {}", e)));
+                }
+            }
         });
     }
 
@@ -901,6 +979,7 @@ impl StudioApp {
         match self.state.active_mode {
             Mode::Explore => self.render_explore_panel(frame, area, panel_id),
             Mode::Commit => self.render_commit_panel(frame, area, panel_id),
+            Mode::Review => self.render_review_panel(frame, area, panel_id),
             _ => {
                 // Placeholder for unimplemented modes
                 let block = Block::default()
@@ -1021,6 +1100,80 @@ impl StudioApp {
         }
     }
 
+    fn render_review_panel(&mut self, frame: &mut Frame, area: Rect, panel_id: PanelId) {
+        let is_focused = panel_id == self.state.focused_panel;
+
+        match panel_id {
+            PanelId::Left => {
+                // Render changed files using FileTree component
+                render_file_tree(
+                    frame,
+                    area,
+                    &mut self.state.modes.review.file_tree,
+                    "Changed Files",
+                    is_focused,
+                );
+            }
+            PanelId::Center => {
+                // Render diff view for selected file
+                let title = self
+                    .state
+                    .modes
+                    .review
+                    .file_tree
+                    .selected_path()
+                    .map_or_else(
+                        || "Diff".to_string(),
+                        |p| format!("◈ {}", p.file_name().unwrap_or_default().to_string_lossy()),
+                    );
+                render_diff_view(
+                    frame,
+                    area,
+                    &self.state.modes.review.diff_view,
+                    &title,
+                    is_focused,
+                );
+            }
+            PanelId::Right => {
+                // Render review output
+                let block = Block::default()
+                    .title(" Review ")
+                    .borders(Borders::ALL)
+                    .border_style(if is_focused {
+                        theme::focused_border()
+                    } else {
+                        theme::unfocused_border()
+                    });
+                let inner = block.inner(area);
+                frame.render_widget(block, area);
+
+                if self.state.modes.review.review_content.is_empty() {
+                    let hint = if self.state.modes.review.generating {
+                        "Generating review..."
+                    } else {
+                        "Press 'r' to generate a code review"
+                    };
+                    let text = Paragraph::new(hint).style(Style::default().fg(theme::TEXT_DIM));
+                    frame.render_widget(text, inner);
+                } else {
+                    // Render review content with scroll
+                    let lines: Vec<Line> = self
+                        .state
+                        .modes
+                        .review
+                        .review_content
+                        .lines()
+                        .skip(self.state.modes.review.review_scroll)
+                        .take(inner.height as usize)
+                        .map(|line| Line::from(line.to_string()))
+                        .collect();
+                    let paragraph = Paragraph::new(lines);
+                    frame.render_widget(paragraph, inner);
+                }
+            }
+        }
+    }
+
     /// Update commit mode file tree from git status
     fn update_commit_file_tree(&mut self) {
         let staged = &self.state.git_status.staged_files;
@@ -1034,6 +1187,47 @@ impl StudioApp {
 
         // Expand all by default for staged files (usually not too many)
         self.state.modes.commit.file_tree.expand_all();
+    }
+
+    /// Update review mode file tree from git status (staged + modified)
+    fn update_review_file_tree(&mut self) {
+        let mut all_files = Vec::new();
+        let mut statuses = Vec::new();
+
+        // Include both staged and modified files for review
+        for path in &self.state.git_status.staged_files {
+            all_files.push(path.clone());
+            statuses.push((path.clone(), FileGitStatus::Staged));
+        }
+        for path in &self.state.git_status.modified_files {
+            if !all_files.contains(path) {
+                all_files.push(path.clone());
+                statuses.push((path.clone(), FileGitStatus::Modified));
+            }
+        }
+
+        let tree_state = super::components::FileTreeState::from_paths(&all_files, &statuses);
+        self.state.modes.review.file_tree = tree_state;
+        self.state.modes.review.file_tree.expand_all();
+
+        // Also load diffs for review mode
+        self.load_review_diffs();
+    }
+
+    /// Load diffs into review mode diff view
+    fn load_review_diffs(&mut self) {
+        let Some(repo) = &self.state.repo else { return };
+
+        // Get staged diff first, then unstaged
+        if let Ok(diff_text) = repo.get_staged_diff_full() {
+            let diffs = parse_diff(&diff_text);
+            self.state.modes.review.diff_view.set_diffs(diffs);
+        }
+
+        // Sync initial file selection
+        if let Some(path) = self.state.modes.review.file_tree.selected_path() {
+            self.state.modes.review.diff_view.select_file_by_path(&path);
+        }
     }
 
     fn render_status(&self, frame: &mut Frame, area: Rect) {

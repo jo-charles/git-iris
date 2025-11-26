@@ -21,6 +21,7 @@ const CAPABILITY_PR: &str = include_str!("capabilities/pr.toml");
 const CAPABILITY_REVIEW: &str = include_str!("capabilities/review.toml");
 const CAPABILITY_CHANGELOG: &str = include_str!("capabilities/changelog.toml");
 const CAPABILITY_RELEASE_NOTES: &str = include_str!("capabilities/release_notes.toml");
+const CAPABILITY_CHAT: &str = include_str!("capabilities/chat.toml");
 
 use crate::agents::tools::{GitRepoInfo, ParallelAnalyze, Workspace};
 // Added to ensure builder extension methods like `.max_tokens` are in scope
@@ -756,6 +757,7 @@ Guidelines:
             "review" => CAPABILITY_REVIEW,
             "changelog" => CAPABILITY_CHANGELOG,
             "release_notes" => CAPABILITY_RELEASE_NOTES,
+            "chat" => CAPABILITY_CHAT,
             _ => {
                 // Return generic prompt for unknown capabilities
                 return Ok((

@@ -58,7 +58,7 @@ impl Mode {
 
     /// Check if this mode is available (implemented)
     pub fn is_available(&self) -> bool {
-        matches!(self, Mode::Explore | Mode::Commit)
+        matches!(self, Mode::Explore | Mode::Commit | Mode::Review)
     }
 
     /// Get all modes in order
@@ -426,13 +426,29 @@ impl std::fmt::Debug for CommitState {
     }
 }
 
-/// State for Review mode (placeholder)
-#[derive(Debug, Default)]
+/// State for Review mode
+#[derive(Default)]
 pub struct ReviewState {
-    /// Current file being reviewed
-    pub current_file: Option<PathBuf>,
-    /// Current issue index
-    pub current_issue: usize,
+    /// File tree for changed files
+    pub file_tree: FileTreeState,
+    /// Diff view for selected file
+    pub diff_view: DiffViewState,
+    /// Generated review content (markdown)
+    pub review_content: String,
+    /// Review scroll offset
+    pub review_scroll: usize,
+    /// Whether a review is being generated
+    pub generating: bool,
+}
+
+impl std::fmt::Debug for ReviewState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ReviewState")
+            .field("review_content_len", &self.review_content.len())
+            .field("review_scroll", &self.review_scroll)
+            .field("generating", &self.generating)
+            .finish_non_exhaustive()
+    }
 }
 
 /// State for PR mode (placeholder)
