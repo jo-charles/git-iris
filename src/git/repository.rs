@@ -351,6 +351,54 @@ impl GitRepo {
         get_unstaged_file_statuses(&repo)
     }
 
+    /// Get diff between two refs as a full unified diff string with headers
+    ///
+    /// Returns a complete diff suitable for parsing, including:
+    /// - diff --git headers
+    /// - --- and +++ file headers
+    /// - @@ hunk headers
+    /// - +/- content lines
+    pub fn get_ref_diff_full(&self, from: &str, to: &str) -> Result<String> {
+        let repo = self.open_repo()?;
+
+        // Resolve the from and to refs
+        let from_commit = repo.revparse_single(from)?.peel_to_commit()?;
+        let to_commit = repo.revparse_single(to)?.peel_to_commit()?;
+
+        let from_tree = from_commit.tree()?;
+        let to_tree = to_commit.tree()?;
+
+        // Get diff between the two trees
+        let diff = repo.diff_tree_to_tree(Some(&from_tree), Some(&to_tree), None)?;
+
+        // Format as unified diff
+        let mut diff_string = String::new();
+        diff.print(git2::DiffFormat::Patch, |delta, _hunk, line| {
+            // For diff content lines (+/-/context), prefix with origin char
+            if matches!(line.origin(), '+' | '-' | ' ') {
+                diff_string.push(line.origin());
+            }
+            // All line types get their content appended
+            diff_string.push_str(&String::from_utf8_lossy(line.content()));
+
+            if line.origin() == 'F'
+                && !diff_string.contains("diff --git")
+                && let Some(new_file) = delta.new_file().path()
+            {
+                let header = format!("diff --git a/{0} b/{0}\n", new_file.display());
+                if !diff_string.ends_with(&header) {
+                    diff_string.insert_str(
+                        diff_string.rfind("---").unwrap_or(diff_string.len()),
+                        &header,
+                    );
+                }
+            }
+            true
+        })?;
+
+        Ok(diff_string)
+    }
+
     /// Get staged diff as a full unified diff string with headers
     ///
     /// Returns a complete diff suitable for parsing, including:

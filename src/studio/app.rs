@@ -302,6 +302,23 @@ impl StudioApp {
                                 Action::IrisQuery(query) => {
                                     self.handle_iris_query(query);
                                 }
+                                Action::SwitchMode(mode) => {
+                                    self.state.switch_mode(mode);
+                                    // Trigger mode-specific data loading
+                                    match mode {
+                                        Mode::PR => self.update_pr_data(),
+                                        Mode::Commit => {
+                                            if self.state.git_status.has_staged() {
+                                                self.auto_generate_commit();
+                                            }
+                                        }
+                                        _ => {}
+                                    }
+                                    self.state.mark_dirty();
+                                }
+                                Action::ReloadPrData => {
+                                    self.update_pr_data();
+                                }
                                 Action::None => {}
                             }
                         }
@@ -899,6 +916,56 @@ impl StudioApp {
         if let Some(path) = self.state.modes.review.file_tree.selected_path() {
             self.state.modes.review.diff_view.select_file_by_path(&path);
         }
+    }
+
+    /// Update PR mode data - load commits and diff between refs
+    pub fn update_pr_data(&mut self) {
+        use super::state::PrCommit;
+
+        // Clone the Arc to avoid borrow conflicts with self.state mutations
+        let Some(repo) = self.state.repo.clone() else {
+            return;
+        };
+
+        let base = self.state.modes.pr.base_branch.clone();
+        let to = self.state.modes.pr.to_ref.clone();
+
+        // Load commits between the refs
+        match repo.get_commits_between_with_callback(&base, &to, |commit| {
+            Ok(PrCommit {
+                hash: commit.hash[..7.min(commit.hash.len())].to_string(),
+                message: commit.message.lines().next().unwrap_or("").to_string(),
+                author: commit.author.clone(),
+            })
+        }) {
+            Ok(commits) => {
+                self.state.modes.pr.commits = commits;
+                self.state.modes.pr.selected_commit = 0;
+                self.state.modes.pr.commit_scroll = 0;
+            }
+            Err(e) => {
+                self.state.notify(Notification::warning(format!(
+                    "Could not load commits: {}",
+                    e
+                )));
+            }
+        }
+
+        // Load diff between the refs
+        match repo.get_ref_diff_full(&base, &to) {
+            Ok(diff_text) => {
+                let diffs = parse_diff(&diff_text);
+                self.state.modes.pr.diff_view.set_diffs(diffs);
+            }
+            Err(e) => {
+                self.state.notify(Notification::warning(format!(
+                    "Could not load diff: {}",
+                    e
+                )));
+            }
+        }
+
+        self.state.mark_dirty();
     }
 
     fn render_status(&self, frame: &mut Frame, area: Rect) {

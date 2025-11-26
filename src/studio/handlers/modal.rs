@@ -192,38 +192,45 @@ fn handle_ref_selector_modal(state: &mut StudioState, key: KeyEvent) -> Action {
             Action::Redraw
         }
         KeyCode::Enter => {
-            // Apply selection
-            if let Some(selected_ref) = filtered.get(selected) {
-                let label = match target {
+            // Apply selection and determine if we need to reload data
+            let needs_pr_reload = if let Some(selected_ref) = filtered.get(selected) {
+                let (label, reload) = match target {
                     RefSelectorTarget::ReviewFrom => {
                         state.modes.review.from_ref.clone_from(selected_ref);
-                        "Review from"
+                        ("Review from", false)
                     }
                     RefSelectorTarget::ReviewTo => {
                         state.modes.review.to_ref.clone_from(selected_ref);
-                        "Review to"
+                        ("Review to", false)
                     }
                     RefSelectorTarget::PrFrom => {
                         state.modes.pr.base_branch.clone_from(selected_ref);
-                        "PR base"
+                        ("PR base", true)
                     }
                     RefSelectorTarget::PrTo => {
                         state.modes.pr.to_ref.clone_from(selected_ref);
-                        "PR target"
+                        ("PR target", true)
                     }
                     RefSelectorTarget::ChangelogFrom => {
                         state.modes.changelog.from_version.clone_from(selected_ref);
-                        "Changelog from"
+                        ("Changelog from", false)
                     }
                     RefSelectorTarget::ChangelogTo => {
                         state.modes.changelog.to_version.clone_from(selected_ref);
-                        "Changelog to"
+                        ("Changelog to", false)
                     }
                 };
                 state.notify(Notification::info(format!("{label} set to {selected_ref}")));
-            }
+                reload
+            } else {
+                false
+            };
             state.close_modal();
-            Action::Redraw
+            if needs_pr_reload {
+                Action::ReloadPrData
+            } else {
+                Action::Redraw
+            }
         }
         KeyCode::Up | KeyCode::Char('k') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             if let Some(Modal::RefSelector { selected, .. }) = &mut state.modal {

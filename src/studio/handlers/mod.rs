@@ -38,6 +38,10 @@ pub enum Action {
     IrisQuery(IrisQueryRequest),
     /// Perform a commit
     Commit(String),
+    /// Switch mode (triggers mode-specific data loading)
+    SwitchMode(Mode),
+    /// Reload PR data (after ref selection changes)
+    ReloadPrData,
 }
 
 /// Request to query Iris agent
@@ -109,24 +113,19 @@ fn handle_global_key(state: &mut StudioState, key: KeyEvent) -> Option<Action> {
 
         // Mode switching (Shift+letter)
         KeyCode::Char('E') if key.modifiers.contains(KeyModifiers::SHIFT) => {
-            state.switch_mode(Mode::Explore);
-            Some(Action::Redraw)
+            Some(Action::SwitchMode(Mode::Explore))
         }
         KeyCode::Char('C') if key.modifiers.contains(KeyModifiers::SHIFT) => {
-            state.switch_mode(Mode::Commit);
-            Some(Action::Redraw)
+            Some(Action::SwitchMode(Mode::Commit))
         }
         KeyCode::Char('R') if key.modifiers.contains(KeyModifiers::SHIFT) => {
-            state.switch_mode(Mode::Review);
-            Some(Action::Redraw)
+            Some(Action::SwitchMode(Mode::Review))
         }
         KeyCode::Char('P') if key.modifiers.contains(KeyModifiers::SHIFT) => {
-            state.switch_mode(Mode::PR);
-            Some(Action::Redraw)
+            Some(Action::SwitchMode(Mode::PR))
         }
         KeyCode::Char('L') if key.modifiers.contains(KeyModifiers::SHIFT) => {
-            state.switch_mode(Mode::Changelog);
-            Some(Action::Redraw)
+            Some(Action::SwitchMode(Mode::Changelog))
         }
 
         // Panel navigation
