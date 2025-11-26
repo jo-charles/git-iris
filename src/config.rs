@@ -278,7 +278,7 @@ impl Config {
     }
 
     /// Update configuration with new values
-    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments, clippy::needless_pass_by_value)]
     pub fn update(
         &mut self,
         provider: Option<String>,

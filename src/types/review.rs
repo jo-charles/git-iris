@@ -775,141 +775,149 @@ impl GeneratedReview {
         }
     }
 
+    /// Get color for severity level
+    fn severity_badge(severity: &str) -> String {
+        match severity {
+            "Critical" => format!(
+                "[{}]",
+                "CRITICAL"
+                    .truecolor(ERROR_RED.0, ERROR_RED.1, ERROR_RED.2)
+                    .bold()
+            ),
+            "High" => format!(
+                "[{}]",
+                "HIGH"
+                    .truecolor(ERROR_RED.0, ERROR_RED.1, ERROR_RED.2)
+                    .bold()
+            ),
+            "Medium" => format!(
+                "[{}]",
+                "MEDIUM"
+                    .truecolor(ELECTRIC_YELLOW.0, ELECTRIC_YELLOW.1, ELECTRIC_YELLOW.2)
+                    .bold()
+            ),
+            "Low" => format!("[{}]", "LOW".truecolor(CORAL.0, CORAL.1, CORAL.2).bold()),
+            other => format!(
+                "[{}]",
+                other
+                    .truecolor(DIM_WHITE.0, DIM_WHITE.1, DIM_WHITE.2)
+                    .bold()
+            ),
+        }
+    }
+
+    /// Get color for a quality dimension
+    fn dimension_color(dimension: QualityDimension) -> (u8, u8, u8) {
+        match dimension {
+            QualityDimension::Security | QualityDimension::ErrorHandling => ERROR_RED,
+            QualityDimension::Performance => ELECTRIC_YELLOW,
+            QualityDimension::Testing => SUCCESS_GREEN,
+            QualityDimension::Complexity
+            | QualityDimension::Hallucination
+            | QualityDimension::Style => ELECTRIC_PURPLE,
+            _ => NEON_CYAN,
+        }
+    }
+
+    /// Format a single issue
+    fn format_issue(formatted: &mut String, index: usize, issue: &CodeIssue, color: (u8, u8, u8)) {
+        // Issue header with severity
+        writeln!(
+            formatted,
+            "  {} {} {}",
+            format!("{:02}", index + 1)
+                .truecolor(color.0, color.1, color.2)
+                .bold(),
+            Self::severity_badge(&issue.severity),
+            issue
+                .description
+                .truecolor(DIM_WHITE.0, DIM_WHITE.1, DIM_WHITE.2)
+        )
+        .expect("write to string should not fail");
+
+        // Location
+        let formatted_location = Self::format_location(&issue.location);
+        writeln!(
+            formatted,
+            "     {}: {}",
+            "LOCATION"
+                .truecolor(NEON_CYAN.0, NEON_CYAN.1, NEON_CYAN.2)
+                .bold(),
+            formatted_location.truecolor(DIM_WHITE.0, DIM_WHITE.1, DIM_WHITE.2)
+        )
+        .expect("write to string should not fail");
+
+        // Explanation (wrapped)
+        let explanation_lines = textwrap::wrap(&issue.explanation, EXPLANATION_WRAP_WIDTH);
+        write!(
+            formatted,
+            "     {}: ",
+            "DETAIL"
+                .truecolor(NEON_CYAN.0, NEON_CYAN.1, NEON_CYAN.2)
+                .bold()
+        )
+        .expect("write to string should not fail");
+        for (i, line) in explanation_lines.iter().enumerate() {
+            if i == 0 {
+                writeln!(
+                    formatted,
+                    "{}",
+                    line.truecolor(DIM_WHITE.0, DIM_WHITE.1, DIM_WHITE.2)
+                )
+                .expect("write to string should not fail");
+            } else {
+                writeln!(
+                    formatted,
+                    "            {}",
+                    line.truecolor(DIM_WHITE.0, DIM_WHITE.1, DIM_WHITE.2)
+                )
+                .expect("write to string should not fail");
+            }
+        }
+
+        // Recommendation
+        write!(
+            formatted,
+            "     {}: {}\n\n",
+            "FIX"
+                .truecolor(SUCCESS_GREEN.0, SUCCESS_GREEN.1, SUCCESS_GREEN.2)
+                .bold(),
+            issue
+                .recommendation
+                .truecolor(SUCCESS_GREEN.0, SUCCESS_GREEN.1, SUCCESS_GREEN.2)
+        )
+        .expect("write to string should not fail");
+    }
+
     /// Helper method to format a single dimension analysis
     fn format_dimension_analysis(
         formatted: &mut String,
         dimension: QualityDimension,
         analysis: Option<&DimensionAnalysis>,
     ) {
-        if let Some(dim) = analysis
-            && dim.issues_found
-            && !dim.issues.is_empty()
-        {
-            // Get dimension color
-            let color = match dimension {
-                QualityDimension::Security | QualityDimension::ErrorHandling => ERROR_RED,
-                QualityDimension::Performance => ELECTRIC_YELLOW,
-                QualityDimension::Testing => SUCCESS_GREEN,
-                QualityDimension::Complexity
-                | QualityDimension::Hallucination
-                | QualityDimension::Style => ELECTRIC_PURPLE,
-                _ => NEON_CYAN,
-            };
+        let Some(dim) = analysis else { return };
+        if !dim.issues_found || dim.issues.is_empty() {
+            return;
+        }
 
-            let title = dimension.display_name().to_uppercase();
-            let title_len = title.len();
-            let padding = 34usize.saturating_sub(title_len);
+        let color = Self::dimension_color(dimension);
+        let title = dimension.display_name().to_uppercase();
+        let padding = 34usize.saturating_sub(title.len());
 
-            // Section header
-            write!(
-                formatted,
-                "{} {} {}\n\n",
-                "─".truecolor(color.0, color.1, color.2),
-                title.truecolor(color.0, color.1, color.2).bold(),
-                "─"
-                    .repeat(padding)
-                    .truecolor(DIM_SEPARATOR.0, DIM_SEPARATOR.1, DIM_SEPARATOR.2)
-            )
-            .expect("write to string should not fail");
+        // Section header
+        write!(
+            formatted,
+            "{} {} {}\n\n",
+            "─".truecolor(color.0, color.1, color.2),
+            title.truecolor(color.0, color.1, color.2).bold(),
+            "─"
+                .repeat(padding)
+                .truecolor(DIM_SEPARATOR.0, DIM_SEPARATOR.1, DIM_SEPARATOR.2)
+        )
+        .expect("write to string should not fail");
 
-            for (i, issue) in dim.issues.iter().enumerate() {
-                // Severity badge
-                let severity_badge = match issue.severity.as_str() {
-                    "Critical" => format!(
-                        "[{}]",
-                        "CRITICAL"
-                            .truecolor(ERROR_RED.0, ERROR_RED.1, ERROR_RED.2)
-                            .bold()
-                    ),
-                    "High" => format!(
-                        "[{}]",
-                        "HIGH"
-                            .truecolor(ERROR_RED.0, ERROR_RED.1, ERROR_RED.2)
-                            .bold()
-                    ),
-                    "Medium" => format!(
-                        "[{}]",
-                        "MEDIUM"
-                            .truecolor(ELECTRIC_YELLOW.0, ELECTRIC_YELLOW.1, ELECTRIC_YELLOW.2)
-                            .bold()
-                    ),
-                    "Low" => format!("[{}]", "LOW".truecolor(CORAL.0, CORAL.1, CORAL.2).bold()),
-                    _ => format!(
-                        "[{}]",
-                        issue
-                            .severity
-                            .truecolor(DIM_WHITE.0, DIM_WHITE.1, DIM_WHITE.2)
-                            .bold()
-                    ),
-                };
-
-                writeln!(
-                    formatted,
-                    "  {} {} {}",
-                    format!("{:02}", i + 1)
-                        .truecolor(color.0, color.1, color.2)
-                        .bold(),
-                    severity_badge,
-                    issue
-                        .description
-                        .truecolor(DIM_WHITE.0, DIM_WHITE.1, DIM_WHITE.2)
-                )
-                .expect("write to string should not fail");
-
-                let formatted_location = Self::format_location(&issue.location);
-                writeln!(
-                    formatted,
-                    "     {}: {}",
-                    "LOCATION"
-                        .truecolor(NEON_CYAN.0, NEON_CYAN.1, NEON_CYAN.2)
-                        .bold(),
-                    formatted_location.truecolor(DIM_WHITE.0, DIM_WHITE.1, DIM_WHITE.2)
-                )
-                .expect("write to string should not fail");
-
-                // Format explanation
-                let explanation_lines = textwrap::wrap(&issue.explanation, EXPLANATION_WRAP_WIDTH);
-                write!(
-                    formatted,
-                    "     {}: ",
-                    "DETAIL"
-                        .truecolor(NEON_CYAN.0, NEON_CYAN.1, NEON_CYAN.2)
-                        .bold()
-                )
-                .expect("write to string should not fail");
-                for (i, line) in explanation_lines.iter().enumerate() {
-                    if i == 0 {
-                        writeln!(
-                            formatted,
-                            "{}",
-                            line.truecolor(DIM_WHITE.0, DIM_WHITE.1, DIM_WHITE.2)
-                        )
-                        .expect("write to string should not fail");
-                    } else {
-                        writeln!(
-                            formatted,
-                            "            {}",
-                            line.truecolor(DIM_WHITE.0, DIM_WHITE.1, DIM_WHITE.2)
-                        )
-                        .expect("write to string should not fail");
-                    }
-                }
-
-                // Format recommendation
-                write!(
-                    formatted,
-                    "     {}: {}\n\n",
-                    "FIX"
-                        .truecolor(SUCCESS_GREEN.0, SUCCESS_GREEN.1, SUCCESS_GREEN.2)
-                        .bold(),
-                    issue.recommendation.truecolor(
-                        SUCCESS_GREEN.0,
-                        SUCCESS_GREEN.1,
-                        SUCCESS_GREEN.2
-                    )
-                )
-                .expect("write to string should not fail");
-            }
+        for (i, issue) in dim.issues.iter().enumerate() {
+            Self::format_issue(formatted, i, issue, color);
         }
     }
 }
