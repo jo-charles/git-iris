@@ -23,7 +23,7 @@ const CAPABILITY_CHANGELOG: &str = include_str!("capabilities/changelog.toml");
 const CAPABILITY_RELEASE_NOTES: &str = include_str!("capabilities/release_notes.toml");
 
 use crate::agents::tools::{
-    CodeSearch, FileAnalyzer, GitChangedFiles, GitDiff, GitLog, GitRepoInfo, GitStatus,
+    CodeSearch, FileAnalyzer, FileRead, GitChangedFiles, GitDiff, GitLog, GitRepoInfo, GitStatus,
     ParallelAnalyze, ProjectDocs, ProjectMetadataTool, Workspace,
 };
 // Added to ensure builder extension methods like `.max_tokens` are in scope
@@ -373,7 +373,12 @@ impl IrisAgent {
 
 You have access to Git tools, code analysis tools, and powerful sub-agent capabilities for handling large analyses.
 
-**Available Sub-Agent Tools:**
+**File Access Tools:**
+- **file_read** - Read file contents directly. Use `start_line` and `num_lines` for large files.
+- **file_analyzer** - Get metadata and structure analysis of files.
+- **code_search** - Search for patterns across files. Use sparingly; prefer file_read for known files.
+
+**Sub-Agent Tools:**
 
 1. **parallel_analyze** - Run multiple analysis tasks CONCURRENTLY with independent context windows
    - Best for: Large changesets (>500 lines or >20 files), batch commit analysis
@@ -382,12 +387,11 @@ You have access to Git tools, code analysis tools, and powerful sub-agent capabi
 
 2. **analyze_subagent** - Delegate a single focused task to a sub-agent
    - Best for: Deep dive on specific files or focused analysis
-   - Example: analyze_subagent({ \"prompt\": \"Analyze the security implications of changes in src/auth/\" })
 
-**When to use sub-agents:**
-- Large changesets: Use parallel_analyze to distribute work and avoid context overflow
-- Complex analyses: Break into independent subtasks for clearer results
-- Focused deep dives: Use analyze_subagent for detailed file-level analysis"
+**Best Practices:**
+- Use git_diff to get changes first - it includes file content
+- Use file_read to read files directly instead of multiple code_search calls
+- Use parallel_analyze for large changesets to avoid context overflow"
         );
 
         // Build a simple sub-agent that can be delegated to
@@ -414,6 +418,7 @@ Guidelines:
             .tool(DebugTool::new(GitLog))
             .tool(DebugTool::new(GitChangedFiles))
             .tool(DebugTool::new(FileAnalyzer))
+            .tool(DebugTool::new(FileRead))
             .tool(DebugTool::new(CodeSearch))
             .tool(DebugTool::new(ProjectMetadataTool))
             .tool(DebugTool::new(ProjectDocs))
@@ -430,6 +435,7 @@ Guidelines:
             .tool(DebugTool::new(GitChangedFiles))
             // Analysis and search tools
             .tool(DebugTool::new(FileAnalyzer))
+            .tool(DebugTool::new(FileRead))
             .tool(DebugTool::new(CodeSearch))
             .tool(DebugTool::new(ProjectMetadataTool))
             .tool(DebugTool::new(ProjectDocs))

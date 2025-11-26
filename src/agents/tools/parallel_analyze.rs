@@ -18,7 +18,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use super::{
-    CodeSearch, FileAnalyzer, GitChangedFiles, GitDiff, GitLog, GitStatus, ProjectDocs,
+    CodeSearch, FileAnalyzer, FileRead, GitChangedFiles, GitDiff, GitLog, GitStatus, ProjectDocs,
     ProjectMetadataTool,
 };
 use crate::agents::debug_tool::DebugTool;
@@ -115,6 +115,7 @@ impl SubagentRunner {
                     .tool(DebugTool::new(GitLog))
                     .tool(DebugTool::new(GitChangedFiles))
                     .tool(DebugTool::new(FileAnalyzer))
+                    .tool(DebugTool::new(FileRead))
                     .tool(DebugTool::new(CodeSearch))
                     .tool(DebugTool::new(ProjectMetadataTool))
                     .tool(DebugTool::new(ProjectDocs))
@@ -132,6 +133,7 @@ impl SubagentRunner {
                     .tool(DebugTool::new(GitLog))
                     .tool(DebugTool::new(GitChangedFiles))
                     .tool(DebugTool::new(FileAnalyzer))
+                    .tool(DebugTool::new(FileRead))
                     .tool(DebugTool::new(CodeSearch))
                     .tool(DebugTool::new(ProjectMetadataTool))
                     .tool(DebugTool::new(ProjectDocs))

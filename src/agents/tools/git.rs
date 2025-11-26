@@ -332,11 +332,15 @@ impl Tool for GitDiff {
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let repo = get_current_repo().map_err(GitError::from)?;
 
+        // Normalize empty strings to None (LLMs often send "" instead of null)
+        let from = args.from.filter(|s| !s.is_empty());
+        let to = args.to.filter(|s| !s.is_empty());
+
         // Handle the case where we want staged changes
         // - No args: get staged changes
         // - from="staged": get staged changes
         // - Otherwise: get commit range
-        let files = match (args.from.as_deref(), args.to.as_deref()) {
+        let files = match (from.as_deref(), to.as_deref()) {
             (None | Some("staged"), None) | (Some("staged"), Some("HEAD")) => {
                 // Get staged changes
                 let files_info = repo.extract_files_info(false).map_err(GitError::from)?;
@@ -563,8 +567,9 @@ impl Tool for GitChangedFiles {
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let repo = get_current_repo().map_err(GitError::from)?;
 
-        let from = args.from;
-        let mut to = args.to;
+        // Normalize empty strings to None (LLMs often send "" instead of null)
+        let from = args.from.filter(|s| !s.is_empty());
+        let mut to = args.to.filter(|s| !s.is_empty());
 
         // Default to HEAD when the caller provides only a starting point.
         if from.is_some() && to.is_none() {

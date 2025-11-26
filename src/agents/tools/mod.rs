@@ -17,6 +17,9 @@ pub use git::{GitChangedFiles, GitDiff, GitLog, GitRepoInfo, GitStatus};
 pub mod file_analyzer;
 pub use file_analyzer::FileAnalyzer;
 
+pub mod file_read;
+pub use file_read::FileRead;
+
 pub mod code_search;
 pub use code_search::CodeSearch;
 

@@ -9,6 +9,7 @@ Generate a commit message for the staged changes.
 - `git_diff()` - Get staged changes with relevance scores and size guidance
 - `git_log(count=5)` - Recent commits for style reference
 - `project_metadata()` - Get project language, framework, and dependencies (optional)
+- `parallel_analyze(tasks=[...])` - Spawn subagents for very large changesets (optional)
 
 ## Workflow
 1. Call `git_diff()` to see what changed
@@ -20,6 +21,10 @@ Generate a commit message for the staged changes.
 - **Small** (≤3 files, <100 lines): Consider all changes equally
 - **Medium** (≤10 files, <500 lines): Focus on files with >60% relevance
 - **Large** (>10 files or >500 lines): Focus ONLY on top 5-7 highest-relevance files; summarize the theme of lower-relevance changes
+- **Very Large** (>20 files or >1000 lines): Use `parallel_analyze` to distribute analysis:
+  - Example: `parallel_analyze({ "tasks": ["Summarize changes in src/api/", "Summarize changes in src/models/", "Summarize infrastructure changes"] })`
+  - Each subagent analyzes its scope independently
+  - Synthesize subagent findings into a coherent commit message
 
 ## Output Requirements
 - **Subject line**: Imperative mood ("Add", not "Added"), max 72 chars, no period, capitalize first word
