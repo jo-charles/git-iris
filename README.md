@@ -1,4 +1,4 @@
-# 🔮 Git-Iris: AI-Powered Git Workflow Assistant
+# 🔮 Git-Iris: Your Agentic Git Companion
 
 <div align="center">
 
@@ -10,7 +10,7 @@
 [![Rust](https://img.shields.io/badge/rust-stable-EBCB8B?style=for-the-badge&logo=rust&logoColor=white&color=EFBB4D)](https://www.rust-lang.org/)
 [![ko-fi](https://img.shields.io/badge/Ko--fi-Support%20Me-A3BE8C?style=for-the-badge&logo=ko-fi&logoColor=white&color=82B062)](https://ko-fi.com/hyperb1iss)
 
-_Elevate your Git workflow with the power of AI_ 🚀
+_An intelligent agent that understands your code and crafts perfect Git artifacts_ ✨
 
 [Installation](#installation) • [Docker](#docker) • [Configuration](#configuration) • [Usage](#usage) • [Contributing](#contributing) • [License](#license)
 
@@ -22,41 +22,39 @@ _Elevate your Git workflow with the power of AI_ 🚀
   <img src="https://raw.githubusercontent.com/hyperb1iss/git-iris/main/docs/images/git-iris-screenshot-3.png" alt="Git-Iris Screenshot 3" width="33%">
 </div>
 
-_Git-Iris in action: AI-powered Git workflow assistance_
+_Iris exploring your codebase and generating contextual commit messages_
 
 ## 🌟 Overview
 
-Git-Iris is a comprehensive AI-powered Git workflow assistant that enhances your development process from start to finish. Powered by **Iris**, an intelligent agent that dynamically explores your codebase, Git-Iris crafts meaningful commit messages, generates insightful changelogs, creates detailed release notes, and provides thorough code reviews.
+Git-Iris is powered by **Iris**, an intelligent agent that actively explores your codebase to understand what you're building. Rather than dumping context and hoping for the best, Iris uses tools to gather precisely the information she needs—analyzing diffs, exploring file relationships, and building understanding iteratively.
 
-Unlike traditional tools that dump context and hope for the best, Iris uses tool calls to gather precisely the information she needs—analyzing diffs, exploring file relationships, and building understanding iteratively. This agent-first architecture delivers more accurate, context-aware results while handling large changesets gracefully.
+This agent-first architecture means Iris adapts to your project. She crafts meaningful commit messages, generates insightful changelogs, creates detailed release notes, and provides thorough code reviews—all informed by genuine understanding of your code.
 
 ## ✨ Features
 
-Git-Iris offers a suite of AI-powered tools to enhance your Git workflow:
+### 🧠 Agentic Intelligence
 
-### 🧠 Core Features
+- **Context-Aware Understanding**: Iris explores your codebase using tools, not templates—she understands what changed and why it matters
+- **Adaptive Analysis**: For large changesets, Iris spawns subagents to analyze different parts concurrently, then synthesizes findings
+- **Intelligent Focus**: Relevance scoring helps Iris prioritize what matters, ignoring noise in large diffs
+- **Iterative Exploration**: Iris can dig deeper into specific files, search for patterns, and examine commit history when needed
 
-- **Intelligent Commit Messages**: Generate context-aware, meaningful commit messages
-- **AI-Powered Code Reviews**: Get detailed feedback on your changes across multiple quality dimensions
-- **Dynamic Changelog Generation**: Create structured changelogs between any Git references
-- **Comprehensive Release Notes**: Generate release notes with summaries and key changes
-- **Agent-First Architecture**: Iris dynamically explores your codebase using tool calls for precise, context-aware results
-- **Project-Specific Configuration**: Maintain shared project settings in version control
+### 🛠️ Core Capabilities
 
-### 💪 Advanced Capabilities
+- **Commit Messages**: Contextual messages that capture the essence of your changes
+- **Code Reviews**: Thorough reviews that identify security issues, performance problems, and architectural concerns
+- **Changelogs**: Structured changelogs following Keep a Changelog format
+- **Release Notes**: Comprehensive release notes with highlights and categorized changes
+- **PR Descriptions**: Complete pull request descriptions for single commits or branch comparisons
 
-- **Multi-Provider Support**: Works with OpenAI, Anthropic, Google, Groq, XAI, Ollama and more
+### 💪 Developer Experience
+
+- **Multi-Provider Support**: Works with OpenAI, Anthropic, and Google
 - **Remote Repository Support**: Work with remote repositories without manual cloning
-- **Customizable Workflows**: Control AI behavior with custom instructions and presets
-- **Smart Context Analysis**: Extract relevant context from repository changes
-- **Multi-Language Support**: Analyze code in Rust, JavaScript, Python, Java, and more languages
-
-### 🎨 User Experience
-
-- **Interactive CLI**: Refine AI-generated content through an intuitive interface
-- **Gitmoji Integration**: Add expressive emojis to your Git documentation
-- **Performance Optimized**: Efficient token management for responsive interactions
-- **Docker Support**: Run in CI/CD pipelines and workflows without installation
+- **Customizable Presets**: Style presets from Conventional Commits to Cosmic Oracle
+- **Interactive CLI**: Refine generated content through an intuitive TUI
+- **Gitmoji Integration**: Expressive emojis for your Git documentation
+- **Docker Support**: Run in CI/CD pipelines without installation
 
 ## 🛠️ Installation
 
@@ -172,12 +170,6 @@ git-iris config --provider anthropic --api-key YOUR_ANTHROPIC_API_KEY
 
 # For Google
 git-iris config --provider google --api-key YOUR_GOOGLE_API_KEY
-
-# For Ollama (no API key required)
-git-iris config --provider ollama
-
-# For other supported providers (Groq, XAI, DeepSeek, Phind)
-git-iris config --provider <provider> --api-key YOUR_API_KEY
 ```
 
 ### Project-Specific Configuration
@@ -192,7 +184,7 @@ git-iris project-config --provider anthropic
 git-iris project-config --preset conventional
 
 # Set model for the project
-git-iris project-config --model claude-3-7-sonnet-20250219
+git-iris project-config --model claude-sonnet-4-5-20250929
 
 # View current project configuration
 git-iris project-config --print
@@ -204,16 +196,13 @@ Project configuration files do not store API keys for security reasons but can s
 
 Git-Iris supports the following LLM providers:
 
-| Provider  | Default Model              | Token Limit | API Key Required |
-| --------- | -------------------------- | ----------- | ---------------- |
-| anthropic | claude-3-7-sonnet-20250219 | 200,000     | Yes              |
-| deepseek  | deepseek-chat              | 64,000      | Yes              |
-| google    | gemini-2.0-flash           | 1,000,000   | Yes              |
-| groq      | llama-3.1-70b-versatile    | 128,000     | Yes              |
-| ollama    | llama3                     | 128,000     | No               |
-| openai    | gpt-4o                     | 128,000     | Yes              |
-| phind     | phind-v2                   | 32,000      | No               |
-| xai       | grok-2-beta                | 128,000     | Yes              |
+| Provider  | Default Model              | Context Window | API Key Required |
+| --------- | -------------------------- | -------------- | ---------------- |
+| openai    | gpt-5.1                    | 128,000        | Yes              |
+| anthropic | claude-sonnet-4-5-20250929 | 200,000        | Yes              |
+| google    | gemini-3-pro-preview       | 1,000,000      | Yes              |
+
+Each provider also has a fast model configured for simple tasks (status updates, parsing). You can override models via configuration.
 
 Additional configuration options:
 
@@ -231,7 +220,7 @@ git-iris config --preset conventional
 git-iris config --provider openai --token-limit 4000
 
 # Set model for a provider
-git-iris config --provider openai --model gpt-4o
+git-iris config --provider openai --model gpt-5.1
 
 # Set additional parameters for a provider
 git-iris config --provider openai --param temperature=0.7 --param max_tokens=150
@@ -254,7 +243,7 @@ These options apply to all commands:
 
 ### Generate Commit Messages
 
-Generate an AI-powered commit message:
+Generate a commit message with Iris:
 
 ```bash
 git-iris gen
@@ -282,9 +271,9 @@ To generate a commit message and print it to stdout without starting the interac
 git-iris gen --print
 ```
 
-### AI-Powered Code Reviews
+### Code Reviews
 
-Get a comprehensive analysis of your staged changes:
+Have Iris review your staged changes:
 
 ```bash
 git-iris review
@@ -308,11 +297,13 @@ git-iris review -i "Focus on security" --preset security --include-unstaged
 For more comprehensive reviews, you can also:
 
 - **Review unstaged changes**: Include unstaged changes in the review
+
   ```bash
   git-iris review --include-unstaged
   ```
 
 - **Review a specific commit**: Analyze a particular commit
+
   ```bash
   git-iris review --commit abc123
   ```
@@ -336,25 +327,19 @@ git-iris review --from main --to feature-branch
 git-iris review --to feature-branch  # --from defaults to 'main'
 ```
 
-The review includes:
+Iris analyzes your code across multiple quality dimensions, focusing on what matters most for each specific changeset:
 
-- A summary of the changes
-- Code quality assessment
-- Suggestions for improvement
-- Identified issues
-- Positive aspects of your code
-- Analysis across 11 dimensions of code quality:
-  - Complexity - Identifies unnecessary complexity in algorithms and control flow
-  - Abstraction - Assesses appropriateness of abstractions and design patterns
-  - Unintended Deletion - Detects critical functionality removed without replacement
-  - Hallucinated Components - Flags references to non-existent functions or APIs
-  - Style Inconsistencies - Highlights deviations from project coding standards
-  - Security Vulnerabilities - Identifies potential security issues
-  - Performance Issues - Spots inefficient algorithms or resource usage
-  - Code Duplication - Detects repeated logic or copy-pasted code
-  - Error Handling - Evaluates completeness of error recovery strategies
-  - Test Coverage - Analyzes test coverage gaps or brittle tests
-  - Best Practices - Checks adherence to language-specific conventions and design guidelines
+- **Security**: Vulnerabilities, auth issues, insecure patterns
+- **Performance**: Inefficient algorithms, resource leaks, blocking operations
+- **Error Handling**: Missing try-catch, swallowed exceptions, unclear errors
+- **Complexity**: Overly complex logic, deep nesting, god functions
+- **Abstraction**: Poor design patterns, leaky abstractions
+- **Duplication**: Copy-pasted code, repeated logic
+- **Testing**: Coverage gaps, brittle tests
+- **Style**: Inconsistencies, naming, formatting
+- **Best Practices**: Anti-patterns, deprecated APIs
+
+Each issue includes severity level, exact file:line location, explanation, and a concrete fix recommendation.
 
 ### Generate Pull Request Descriptions
 
@@ -375,6 +360,7 @@ Options:
 **Examples:**
 
 **Single commit analysis:**
+
 ```bash
 # Analyze a single commit (compares against its parent)
 git-iris pr --from abc1234
@@ -388,6 +374,7 @@ git-iris pr --from abc1234 --to abc1234
 ```
 
 **Multiple commit analysis:**
+
 ```bash
 # Review the last 3 commits together
 git-iris pr --from HEAD~3
@@ -397,16 +384,19 @@ git-iris pr --from @~5
 ```
 
 **Commit range analysis:**
+
 ```bash
 git-iris pr --from v1.0.0 --to HEAD --preset detailed
 ```
 
 **Branch comparison:**
+
 ```bash
 git-iris pr --from main --to feature-auth --preset conventional
 ```
 
 **Comparison to main:**
+
 ```bash
 # Compare feature branch to main
 git-iris pr --to feature-branch
@@ -422,6 +412,7 @@ The PR description generator analyzes the entire changeset as an atomic unit rat
 - Technical implementation details
 
 This is particularly useful for:
+
 - **Single commits**: Get detailed analysis of what changed in a specific commit or commitish (e.g., `HEAD~2`)
 - **Multiple commits**: Review a range of commits together (e.g., `--from HEAD~3` reviews the last 3 commits)
 - **Feature branches**: Get a complete overview of all changes in a feature
@@ -515,7 +506,7 @@ Options:
 Example:
 
 ```bash
-git-iris project-config --provider anthropic --preset security --model claude-3-7-sonnet-20250219
+git-iris project-config --provider anthropic --preset security --model claude-sonnet-4-5-20250929
 ```
 
 ### Working with Remote Repositories

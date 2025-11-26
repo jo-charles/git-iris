@@ -15,13 +15,11 @@ The configuration file is organized into these main sections:
 ### Global Settings
 
 - `use_gitmoji`: Boolean (optional)
-
   - Description: Enables Gitmoji in commit messages.
   - Default: `false`
   - Example: `use_gitmoji = true`
 
 - `custom_instructions`: String (optional)
-
   - Description: Custom instructions included in all LLM prompts for commit messages, code reviews, changelogs, and release notes.
   - Default: `""`
   - Example: `custom_instructions = "Always mention the ticket number and focus on the impact of changes."`
@@ -43,18 +41,15 @@ The configuration file is organized into these main sections:
 Each provider has its own subtable under `[providers]` with these fields:
 
 - `api_key`: String (required)
-
   - Description: The provider's API key.
   - Example: `api_key = "sk-1234567890abcdef"`
 
 - `model`: String (optional)
-
   - Description: The specific model to use.
   - Default: Provider-dependent
   - Example: `model = "gpt-4o"`
 
 - `additional_params`: Table (optional)
-
   - Description: Additional provider or model-specific parameters.
   - Example: `additional_params = { temperature = "0.7", max_tokens = "150" }`
 
@@ -65,16 +60,16 @@ Each provider has its own subtable under `[providers]` with these fields:
 
 ## Supported Providers and Default Models
 
-| Provider | Default Model | Notes |
-|----------|--------------|-------|
-| openai | gpt-4o | Requires OPENAI_API_KEY |
+| Provider  | Default Model              | Notes                      |
+| --------- | -------------------------- | -------------------------- |
+| openai    | gpt-4o                     | Requires OPENAI_API_KEY    |
 | anthropic | claude-3-7-sonnet-20250219 | Requires ANTHROPIC_API_KEY |
-| google | gemini-2.0-flash | Requires GOOGLE_API_KEY |
-| groq | llama-3.1-70b-versatile | Requires GROQ_API_KEY |
-| ollama | llama3 | Local, no API key needed |
-| xai | grok-2-beta | Requires XAI_API_KEY |
-| deepseek | deepseek-chat | Requires DEEPSEEK_API_KEY |
-| phind | phind-v2 | No API key needed |
+| google    | gemini-2.0-flash           | Requires GOOGLE_API_KEY    |
+| groq      | llama-3.1-70b-versatile    | Requires GROQ_API_KEY      |
+| ollama    | llama3                     | Local, no API key needed   |
+| xai       | grok-2-beta                | Requires XAI_API_KEY       |
+| deepseek  | deepseek-chat              | Requires DEEPSEEK_API_KEY  |
+| phind     | phind-v2                   | No API key needed          |
 
 ## Example Configuration File
 

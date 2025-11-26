@@ -5,6 +5,7 @@
 Git-Iris uses an agent-first architecture powered by **Iris**, an LLM-driven agent built on the [Rig framework](https://docs.rs/rig-core). Iris dynamically explores codebases using tool calls rather than dumping all context upfront.
 
 ### Core Principle
+
 The LLM makes all intelligent decisions. We avoid deterministic heuristics—Iris decides which tools to use, manages her own context, and adapts her approach based on what she learns.
 
 ## Project Structure
@@ -66,23 +67,24 @@ Each capability is defined in `src/agents/capabilities/*.toml`:
 - **release_notes** - Release notes with highlights and sections
 
 Capabilities define:
+
 - `name` - Capability identifier
 - `output_type` - Expected JSON schema (e.g., `GeneratedMessage`, `GeneratedReview`)
 - `task_prompt` - Instructions for Iris
 
 ## Tools Available to Iris
 
-| Tool | Purpose |
-|------|---------|
-| `git_diff` | Get staged/commit changes with relevance scores |
-| `git_log` | Recent commit history |
-| `git_status` | Repository status |
-| `git_changed_files` | List of changed files |
-| `file_analyzer` | Deep file analysis (content, metadata) |
-| `code_search` | Search for patterns, functions, classes |
-| `workspace` | Iris's notes and task tracking |
-| `project_docs` | Read project documentation |
-| `parallel_analyze` | Concurrent subagent processing for multiple files |
+| Tool                | Purpose                                           |
+| ------------------- | ------------------------------------------------- |
+| `git_diff`          | Get staged/commit changes with relevance scores   |
+| `git_log`           | Recent commit history                             |
+| `git_status`        | Repository status                                 |
+| `git_changed_files` | List of changed files                             |
+| `file_analyzer`     | Deep file analysis (content, metadata)            |
+| `code_search`       | Search for patterns, functions, classes           |
+| `workspace`         | Iris's notes and task tracking                    |
+| `project_docs`      | Read project documentation                        |
+| `parallel_analyze`  | Concurrent subagent processing for multiple files |
 
 ## Output Types
 
@@ -100,6 +102,7 @@ the format while capability TOMLs provide guidelines. This produces more natural
 ## Adding a New Capability
 
 1. Create `src/agents/capabilities/new_capability.toml`:
+
 ```toml
 name = "my_capability"
 description = "What it does"
@@ -137,14 +140,14 @@ Git-Iris CLI output follows the **SilkCircuit Neon** color palette for a cohesiv
 
 ### Color Palette
 
-| Color | Hex | Usage |
-|-------|-----|-------|
-| Electric Purple | `#e135ff` | Keywords, markers, emphasis |
-| Neon Cyan | `#80ffea` | Functions, paths, interactions |
-| Coral | `#ff6ac1` | Hashes, numbers, constants |
-| Electric Yellow | `#f1fa8c` | Warnings, timestamps |
-| Success Green | `#50fa7b` | Success states, confirmations |
-| Error Red | `#ff6363` | Errors, danger, removals |
+| Color           | Hex       | Usage                          |
+| --------------- | --------- | ------------------------------ |
+| Electric Purple | `#e135ff` | Keywords, markers, emphasis    |
+| Neon Cyan       | `#80ffea` | Functions, paths, interactions |
+| Coral           | `#ff6ac1` | Hashes, numbers, constants     |
+| Electric Yellow | `#f1fa8c` | Warnings, timestamps           |
+| Success Green   | `#50fa7b` | Success states, confirmations  |
+| Error Red       | `#ff6363` | Errors, danger, removals       |
 
 ### Semantic Usage
 
@@ -182,6 +185,7 @@ println!("Commit: {}", hash.truecolor(255, 106, 193));
 ## Provider Configuration
 
 Set via environment or config:
+
 ```bash
 export IRIS_PROVIDER=anthropic
 export IRIS_MODEL=claude-sonnet-4-5-20250929
