@@ -7,8 +7,9 @@ use anyhow::Result;
 use rig::completion::ToolDefinition;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value};
 use std::path::PathBuf;
+
+use super::common::parameters_schema;
 
 #[derive(Debug, thiserror::Error)]
 #[error("Docs error: {0}")]
@@ -18,30 +19,6 @@ impl From<std::io::Error> for DocsError {
     fn from(err: std::io::Error) -> Self {
         DocsError(err.to_string())
     }
-}
-
-/// `OpenAI` tool schemas require the `required` array to list every property.
-fn parameters_schema<T: schemars::JsonSchema>() -> Value {
-    use schemars::schema_for;
-
-    let schema = schema_for!(T);
-    let mut value = serde_json::to_value(schema).expect("tool schema should serialize");
-    enforce_required_properties(&mut value);
-    value
-}
-
-fn enforce_required_properties(value: &mut Value) {
-    let Some(obj) = value.as_object_mut() else {
-        return;
-    };
-
-    let props_entry = obj
-        .entry("properties")
-        .or_insert_with(|| Value::Object(Map::new()));
-    let props_obj = props_entry.as_object().expect("properties must be object");
-    let required_keys: Vec<Value> = props_obj.keys().cloned().map(Value::String).collect();
-
-    obj.insert("required".to_string(), Value::Array(required_keys));
 }
 
 /// Tool for fetching project documentation files

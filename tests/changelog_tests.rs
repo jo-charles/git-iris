@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used)]
+
 use anyhow::Result;
 use git_iris::changes::models::{
     ChangeEntry, ChangeMetrics, ChangelogResponse, ChangelogType, ReleaseNotesResponse,

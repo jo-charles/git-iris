@@ -12,23 +12,10 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use crate::context::{ProjectMetadata, StagedFile};
+use crate::define_tool_error;
 use crate::file_analyzers::get_analyzer;
 
-#[derive(Debug, thiserror::Error)]
-#[error("File analyzer error: {0}")]
-pub struct FileAnalyzerError(String);
-
-impl From<anyhow::Error> for FileAnalyzerError {
-    fn from(err: anyhow::Error) -> Self {
-        FileAnalyzerError(err.to_string())
-    }
-}
-
-impl From<std::io::Error> for FileAnalyzerError {
-    fn from(err: std::io::Error) -> Self {
-        FileAnalyzerError(err.to_string())
-    }
-}
+define_tool_error!(FileAnalyzerError);
 
 /// File analyzer tool for understanding code structure and content
 #[derive(Debug, Clone, Serialize, Deserialize)]

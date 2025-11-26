@@ -12,7 +12,7 @@ use std::sync::{Arc, Mutex};
 
 #[derive(Debug, thiserror::Error)]
 #[error("Workspace error: {0}")]
-pub struct WorkspaceError(String);
+pub struct WorkspaceError(pub String);
 
 impl From<anyhow::Error> for WorkspaceError {
     fn from(err: anyhow::Error) -> Self {

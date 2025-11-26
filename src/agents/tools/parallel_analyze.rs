@@ -297,7 +297,7 @@ mod tests {
     #[test]
     fn test_parallel_analyze_args_schema() {
         let schema = schemars::schema_for!(ParallelAnalyzeArgs);
-        let json = serde_json::to_string_pretty(&schema).unwrap();
+        let json = serde_json::to_string_pretty(&schema).expect("schema should serialize");
         assert!(json.contains("tasks"));
     }
 }

@@ -14,6 +14,55 @@ use crate::llm;
 use crate::log_debug;
 use crate::token_optimizer::TokenOptimizer;
 
+/// Context type for preset warning messages
+#[derive(Clone, Copy)]
+enum PresetContext {
+    Review,
+    PullRequest,
+}
+
+impl PresetContext {
+    fn warning_suffix(self) -> &'static str {
+        match self {
+            Self::Review => "not ideal for reviews",
+            Self::PullRequest => "may not be ideal for PRs",
+        }
+    }
+}
+
+/// Apply preset and instructions to a config clone.
+/// Returns a new Config with preset and instructions applied.
+fn apply_preset_config(
+    base_config: &Config,
+    preset: &str,
+    instructions: &str,
+    context: PresetContext,
+) -> Config {
+    let mut config = base_config.clone();
+
+    if preset.is_empty() {
+        config.instruction_preset = "default".to_string();
+    } else {
+        let library = get_instruction_preset_library();
+        if let Some(preset_info) = library.get_preset(preset) {
+            if preset_info.preset_type == PresetType::Commit {
+                log_debug!(
+                    "Warning: Preset '{}' is commit-specific, {}",
+                    preset,
+                    context.warning_suffix()
+                );
+            }
+            config.instruction_preset = preset.to_string();
+        } else {
+            log_debug!("Preset '{}' not found, using default", preset);
+            config.instruction_preset = "default".to_string();
+        }
+    }
+
+    config.instructions = instructions.to_string();
+    config
+}
+
 /// Service for handling Git commit operations with AI assistance
 pub struct IrisCommitService {
     config: Config,
@@ -316,28 +365,7 @@ impl IrisCommitService {
         instructions: &str,
         include_unstaged: bool,
     ) -> anyhow::Result<GeneratedReview> {
-        let mut config_clone = self.config.clone();
-
-        // Set the preset and instructions
-        if preset.is_empty() {
-            config_clone.instruction_preset = "default".to_string();
-        } else {
-            let library = get_instruction_preset_library();
-            if let Some(preset_info) = library.get_preset(preset) {
-                if preset_info.preset_type == PresetType::Commit {
-                    log_debug!(
-                        "Warning: Preset '{}' is commit-specific, not ideal for reviews",
-                        preset
-                    );
-                }
-                config_clone.instruction_preset = preset.to_string();
-            } else {
-                log_debug!("Preset '{}' not found, using default", preset);
-                config_clone.instruction_preset = "default".to_string();
-            }
-        }
-
-        config_clone.instructions = instructions.to_string();
+        let config_clone = apply_preset_config(&self.config, preset, instructions, PresetContext::Review);
 
         // Get context including unstaged changes if requested
         let context = self.get_git_info_with_unstaged(include_unstaged).await?;
@@ -379,28 +407,7 @@ impl IrisCommitService {
         instructions: &str,
         commit_id: &str,
     ) -> anyhow::Result<GeneratedReview> {
-        let mut config_clone = self.config.clone();
-
-        // Set the preset and instructions
-        if preset.is_empty() {
-            config_clone.instruction_preset = "default".to_string();
-        } else {
-            let library = get_instruction_preset_library();
-            if let Some(preset_info) = library.get_preset(preset) {
-                if preset_info.preset_type == PresetType::Commit {
-                    log_debug!(
-                        "Warning: Preset '{}' is commit-specific, not ideal for reviews",
-                        preset
-                    );
-                }
-                config_clone.instruction_preset = preset.to_string();
-            } else {
-                log_debug!("Preset '{}' not found, using default", preset);
-                config_clone.instruction_preset = "default".to_string();
-            }
-        }
-
-        config_clone.instructions = instructions.to_string();
+        let config_clone = apply_preset_config(&self.config, preset, instructions, PresetContext::Review);
 
         // Get context for the specific commit
         let context = self.get_git_info_for_commit(commit_id).await?;
@@ -444,28 +451,7 @@ impl IrisCommitService {
         base_branch: &str,
         target_branch: &str,
     ) -> anyhow::Result<GeneratedReview> {
-        let mut config_clone = self.config.clone();
-
-        // Set the preset and instructions
-        if preset.is_empty() {
-            config_clone.instruction_preset = "default".to_string();
-        } else {
-            let library = get_instruction_preset_library();
-            if let Some(preset_info) = library.get_preset(preset) {
-                if preset_info.preset_type == PresetType::Commit {
-                    log_debug!(
-                        "Warning: Preset '{}' is commit-specific, not ideal for reviews",
-                        preset
-                    );
-                }
-                config_clone.instruction_preset = preset.to_string();
-            } else {
-                log_debug!("Preset '{}' not found, using default", preset);
-                config_clone.instruction_preset = "default".to_string();
-            }
-        }
-
-        config_clone.instructions = instructions.to_string();
+        let config_clone = apply_preset_config(&self.config, preset, instructions, PresetContext::Review);
 
         // Get context for the branch comparison
         let context = self
@@ -508,28 +494,7 @@ impl IrisCommitService {
         preset: &str,
         instructions: &str,
     ) -> anyhow::Result<GeneratedReview> {
-        let mut config_clone = self.config.clone();
-
-        // Check if the preset exists and is valid for reviews
-        if preset.is_empty() {
-            config_clone.instruction_preset = "default".to_string();
-        } else {
-            let library = get_instruction_preset_library();
-            if let Some(preset_info) = library.get_preset(preset) {
-                if preset_info.preset_type == PresetType::Commit {
-                    log_debug!(
-                        "Warning: Preset '{}' is commit-specific, not ideal for reviews",
-                        preset
-                    );
-                }
-                config_clone.instruction_preset = preset.to_string();
-            } else {
-                log_debug!("Preset '{}' not found, using default", preset);
-                config_clone.instruction_preset = "default".to_string();
-            }
-        }
-
-        config_clone.instructions = instructions.to_string();
+        let config_clone = apply_preset_config(&self.config, preset, instructions, PresetContext::Review);
 
         let context = self.get_git_info().await?;
 
@@ -572,28 +537,7 @@ impl IrisCommitService {
         from: &str,
         to: &str,
     ) -> anyhow::Result<super::types::GeneratedPullRequest> {
-        let mut config_clone = self.config.clone();
-
-        // Set the preset and instructions
-        if preset.is_empty() {
-            config_clone.instruction_preset = "default".to_string();
-        } else {
-            let library = get_instruction_preset_library();
-            if let Some(preset_info) = library.get_preset(preset) {
-                if preset_info.preset_type == PresetType::Commit {
-                    log_debug!(
-                        "Warning: Preset '{}' is commit-specific, may not be ideal for PRs",
-                        preset
-                    );
-                }
-                config_clone.instruction_preset = preset.to_string();
-            } else {
-                log_debug!("Preset '{}' not found, using default", preset);
-                config_clone.instruction_preset = "default".to_string();
-            }
-        }
-
-        config_clone.instructions = instructions.to_string();
+        let config_clone = apply_preset_config(&self.config, preset, instructions, PresetContext::PullRequest);
 
         // Get context for the commit range
         let context = self
@@ -648,28 +592,7 @@ impl IrisCommitService {
         base_branch: &str,
         target_branch: &str,
     ) -> anyhow::Result<super::types::GeneratedPullRequest> {
-        let mut config_clone = self.config.clone();
-
-        // Set the preset and instructions
-        if preset.is_empty() {
-            config_clone.instruction_preset = "default".to_string();
-        } else {
-            let library = get_instruction_preset_library();
-            if let Some(preset_info) = library.get_preset(preset) {
-                if preset_info.preset_type == PresetType::Commit {
-                    log_debug!(
-                        "Warning: Preset '{}' is commit-specific, may not be ideal for PRs",
-                        preset
-                    );
-                }
-                config_clone.instruction_preset = preset.to_string();
-            } else {
-                log_debug!("Preset '{}' not found, using default", preset);
-                config_clone.instruction_preset = "default".to_string();
-            }
-        }
-
-        config_clone.instructions = instructions.to_string();
+        let config_clone = apply_preset_config(&self.config, preset, instructions, PresetContext::PullRequest);
 
         // Get context for the branch comparison
         let context = self

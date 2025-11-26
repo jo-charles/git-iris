@@ -11,21 +11,9 @@ use serde_json::json;
 use std::path::Path;
 use std::process::Command;
 
-#[derive(Debug, thiserror::Error)]
-#[error("Code search error: {0}")]
-pub struct CodeSearchError(String);
+use crate::define_tool_error;
 
-impl From<anyhow::Error> for CodeSearchError {
-    fn from(err: anyhow::Error) -> Self {
-        CodeSearchError(err.to_string())
-    }
-}
-
-impl From<std::io::Error> for CodeSearchError {
-    fn from(err: std::io::Error) -> Self {
-        CodeSearchError(err.to_string())
-    }
-}
+define_tool_error!(CodeSearchError);
 
 /// Code search tool for finding related files and functions
 #[derive(Debug, Clone, Serialize, Deserialize)]

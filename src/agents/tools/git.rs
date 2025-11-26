@@ -6,50 +6,14 @@ use anyhow::Result;
 use rig::completion::ToolDefinition;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value};
 
 use crate::context::ChangeType;
-use crate::git::{GitRepo, StagedFile};
+use crate::define_tool_error;
+use crate::git::StagedFile;
 
-#[derive(Debug, thiserror::Error)]
-#[error("Git error: {0}")]
-pub struct GitError(String);
+use super::common::{get_current_repo, parameters_schema};
 
-impl From<anyhow::Error> for GitError {
-    fn from(err: anyhow::Error) -> Self {
-        GitError(err.to_string())
-    }
-}
-
-impl From<std::io::Error> for GitError {
-    fn from(err: std::io::Error) -> Self {
-        GitError(err.to_string())
-    }
-}
-
-/// `OpenAI` tool schemas require the `required` array to list every property.
-fn parameters_schema<T: schemars::JsonSchema>() -> Value {
-    use schemars::schema_for;
-
-    let schema = schema_for!(T);
-    let mut value = serde_json::to_value(schema).expect("tool schema should serialize");
-    enforce_required_properties(&mut value);
-    value
-}
-
-fn enforce_required_properties(value: &mut Value) {
-    let Some(obj) = value.as_object_mut() else {
-        return;
-    };
-
-    let props_entry = obj
-        .entry("properties")
-        .or_insert_with(|| Value::Object(Map::new()));
-    let props_obj = props_entry.as_object().expect("properties must be object");
-    let required_keys: Vec<Value> = props_obj.keys().cloned().map(Value::String).collect();
-
-    obj.insert("required".to_string(), Value::Array(required_keys));
-}
+define_tool_error!(GitError);
 
 /// Helper to add a change type if not already present
 fn add_change(changes: &mut Vec<&'static str>, change: &'static str) {
@@ -302,8 +266,7 @@ impl Tool for GitStatus {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        let current_dir = std::env::current_dir().map_err(GitError::from)?;
-        let repo = GitRepo::new(&current_dir).map_err(GitError::from)?;
+        let repo = get_current_repo().map_err(GitError::from)?;
 
         let files_info = repo
             .extract_files_info(args.include_unstaged)
@@ -367,8 +330,7 @@ impl Tool for GitDiff {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        let current_dir = std::env::current_dir().map_err(GitError::from)?;
-        let repo = GitRepo::new(&current_dir).map_err(GitError::from)?;
+        let repo = get_current_repo().map_err(GitError::from)?;
 
         // Handle the case where we want staged changes
         // - No args: get staged changes
@@ -511,8 +473,7 @@ impl Tool for GitLog {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        let current_dir = std::env::current_dir().map_err(GitError::from)?;
-        let repo = GitRepo::new(&current_dir).map_err(GitError::from)?;
+        let repo = get_current_repo().map_err(GitError::from)?;
 
         let commits = repo
             .get_recent_commits(args.count.unwrap_or(10))
@@ -554,8 +515,7 @@ impl Tool for GitRepoInfo {
     }
 
     async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
-        let current_dir = std::env::current_dir().map_err(GitError::from)?;
-        let repo = GitRepo::new(&current_dir).map_err(GitError::from)?;
+        let repo = get_current_repo().map_err(GitError::from)?;
 
         let branch = repo.get_current_branch().map_err(GitError::from)?;
         let remote_url = repo.get_remote_url().unwrap_or("None").to_string();
@@ -601,8 +561,7 @@ impl Tool for GitChangedFiles {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        let current_dir = std::env::current_dir().map_err(GitError::from)?;
-        let repo = GitRepo::new(&current_dir).map_err(GitError::from)?;
+        let repo = get_current_repo().map_err(GitError::from)?;
 
         let from = args.from;
         let mut to = args.to;

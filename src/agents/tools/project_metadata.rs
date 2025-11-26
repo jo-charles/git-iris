@@ -7,51 +7,15 @@ use anyhow::Result;
 use rig::completion::ToolDefinition;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value};
 use std::path::Path;
 
 use crate::context::ProjectMetadata;
-use crate::git::{GitRepo, extract_project_metadata};
+use crate::define_tool_error;
+use crate::git::extract_project_metadata;
 
-#[derive(Debug, thiserror::Error)]
-#[error("Project metadata error: {0}")]
-pub struct MetadataError(String);
+use super::common::{get_current_repo, parameters_schema};
 
-impl From<anyhow::Error> for MetadataError {
-    fn from(err: anyhow::Error) -> Self {
-        MetadataError(err.to_string())
-    }
-}
-
-impl From<std::io::Error> for MetadataError {
-    fn from(err: std::io::Error) -> Self {
-        MetadataError(err.to_string())
-    }
-}
-
-/// `OpenAI` tool schemas require the `required` array to list every property.
-fn parameters_schema<T: schemars::JsonSchema>() -> Value {
-    use schemars::schema_for;
-
-    let schema = schema_for!(T);
-    let mut value = serde_json::to_value(schema).expect("tool schema should serialize");
-    enforce_required_properties(&mut value);
-    value
-}
-
-fn enforce_required_properties(value: &mut Value) {
-    let Some(obj) = value.as_object_mut() else {
-        return;
-    };
-
-    let props_entry = obj
-        .entry("properties")
-        .or_insert_with(|| Value::Object(Map::new()));
-    let props_obj = props_entry.as_object().expect("properties must be object");
-    let required_keys: Vec<Value> = props_obj.keys().cloned().map(Value::String).collect();
-
-    obj.insert("required".to_string(), Value::Array(required_keys));
-}
+define_tool_error!(MetadataError);
 
 /// Tool for extracting project metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -85,8 +49,7 @@ impl Tool for ProjectMetadataTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        let current_dir = std::env::current_dir().map_err(MetadataError::from)?;
-        let repo = GitRepo::new(&current_dir).map_err(MetadataError::from)?;
+        let repo = get_current_repo().map_err(MetadataError::from)?;
 
         // Get files to analyze
         let files = if args.staged_only {
@@ -96,7 +59,7 @@ impl Tool for ProjectMetadataTool {
             files_info.file_paths
         } else {
             // Get all tracked files in the repo
-            get_tracked_files(&current_dir)?
+            get_tracked_files(repo.repo_path())?
         };
 
         if files.is_empty() {

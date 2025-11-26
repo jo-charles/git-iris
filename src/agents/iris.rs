@@ -345,7 +345,7 @@ impl IrisAgent {
     }
 
     /// Build the actual agent for execution
-    fn build_agent(&self) -> Agent<impl CompletionModel + 'static> {
+    fn build_agent(&self) -> Result<Agent<impl CompletionModel + 'static>> {
         use crate::agents::debug_tool::DebugTool;
 
         // Create a fresh client builder - this ensures Send safety
@@ -353,12 +353,7 @@ impl IrisAgent {
 
         let agent_builder = client_builder
             .agent(&self.provider, &self.model)
-            .unwrap_or_else(|_| {
-                panic!(
-                    "Failed to create agent builder for provider: {}",
-                    self.provider
-                )
-            });
+            .map_err(|e| anyhow::anyhow!("Failed to create agent builder for provider '{}': {}", self.provider, e))?;
         let agent_builder = self.apply_reasoning_defaults(agent_builder);
 
         let preamble = self.preamble.as_deref().unwrap_or(
@@ -388,7 +383,7 @@ You have access to Git tools, code analysis tools, and powerful sub-agent capabi
         let client_builder = DynClientBuilder::new();
         let sub_agent_builder = client_builder
             .agent(&self.provider, &self.model)
-            .expect("Failed to create sub-agent")
+            .map_err(|e| anyhow::anyhow!("Failed to create sub-agent: {}", e))?
             .name("analyze_subagent")
             .description("Delegate focused analysis tasks to a sub-agent with its own context window. Use for analyzing specific files, commits, or code sections independently. The sub-agent has access to Git tools (diff, log, status) and file analysis tools.")
             .preamble("You are a specialized analysis sub-agent for Iris. Your job is to complete focused analysis tasks and return concise, actionable summaries.
@@ -412,7 +407,7 @@ Guidelines:
             .tool(DebugTool::new(ProjectDocs))
             .build();
 
-        agent_builder
+        Ok(agent_builder
             .preamble(preamble)
             .max_tokens(16384) // Increased for complex structured outputs like PRs and release notes
             // Git tools - wrapped with debug observability
@@ -435,7 +430,7 @@ Guidelines:
             )))
             // Sub-agent delegation (Rig's built-in agent-as-tool!)
             .tool(sub_agent)
-            .build()
+            .build())
     }
 
     fn apply_reasoning_defaults<M>(&self, builder: RigAgentBuilder<M>) -> RigAgentBuilder<M>
@@ -476,7 +471,7 @@ Guidelines:
         crate::iris_status_dynamic!(IrisPhase::Planning, msg.text, 2, 4);
 
         // Build agent with all tools attached
-        let agent = self.build_agent();
+        let agent = self.build_agent()?;
         debug::debug_context_management(
             "Agent built with tools",
             &format!("Provider: {}, Model: {}", self.provider, self.model),
@@ -715,7 +710,7 @@ Guidelines:
             }
             _ => {
                 // Fallback to regular agent for unknown types
-                let agent = self.build_agent();
+                let agent = self.build_agent()?;
                 let full_prompt = format!("{system_prompt}\n\n{user_prompt}");
                 // Use multi_turn to allow tool calls even for unknown capability types
                 let response = agent.prompt(&full_prompt).multi_turn(50).await?;
@@ -769,7 +764,7 @@ Guidelines:
 
     /// Simple single-turn execution for basic queries
     pub async fn chat(&self, message: &str) -> Result<String> {
-        let agent = self.build_agent();
+        let agent = self.build_agent()?;
         let response = agent.prompt(message).await?;
         Ok(response)
     }
