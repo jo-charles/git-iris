@@ -58,7 +58,11 @@ pub enum IrisQueryRequest {
         end_line: usize,
     },
     /// Generate commit message
-    GenerateCommit { instructions: Option<String> },
+    GenerateCommit {
+        instructions: Option<String>,
+        preset: String,
+        use_gitmoji: bool,
+    },
     /// Generate code review
     GenerateReview,
     /// Generate PR description

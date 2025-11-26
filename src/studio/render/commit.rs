@@ -17,12 +17,21 @@ pub fn render_commit_panel(
 
     match panel_id {
         PanelId::Left => {
+            // Build title with style settings
+            let gitmoji_indicator = if state.modes.commit.use_gitmoji {
+                "😀"
+            } else {
+                "—"
+            };
+            let preset_name = &state.modes.commit.preset;
+            let title = format!("Staged Files [{}/{}] [p:preset E:emoji]", preset_name, gitmoji_indicator);
+
             // Render staged files using FileTree component
             render_file_tree(
                 frame,
                 area,
                 &mut state.modes.commit.file_tree,
-                "Staged Files",
+                &title,
                 is_focused,
             );
         }

@@ -292,8 +292,20 @@ impl ChatState {
 // Modal State
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/// Active modal dialog
+/// Preset info for display
 #[derive(Debug, Clone)]
+pub struct PresetInfo {
+    /// Preset key (id)
+    pub key: String,
+    /// Display name
+    pub name: String,
+    /// Description
+    pub description: String,
+    /// Emoji
+    pub emoji: String,
+}
+
+/// Active modal dialog
 pub enum Modal {
     /// Help overlay showing keybindings
     Help,
@@ -315,6 +327,17 @@ pub enum Modal {
         selected: usize,
         /// Target mode (which mode to update)
         target: RefSelectorTarget,
+    },
+    /// Preset selector for commit style
+    PresetSelector {
+        /// Current input/filter
+        input: String,
+        /// Available presets
+        presets: Vec<PresetInfo>,
+        /// Selected index
+        selected: usize,
+        /// Scroll offset for long lists
+        scroll: usize,
     },
 }
 
@@ -422,6 +445,8 @@ pub struct CommitState {
     pub generating: bool,
     /// Use gitmoji
     pub use_gitmoji: bool,
+    /// Current preset name
+    pub preset: String,
     /// File tree state for staged files
     pub file_tree: FileTreeState,
     /// Diff view state
@@ -440,6 +465,7 @@ impl Default for CommitState {
             editing_message: false,
             generating: false,
             use_gitmoji: true,
+            preset: "default".to_string(),
             file_tree: FileTreeState::new(),
             diff_view: DiffViewState::new(),
             message_editor: MessageEditorState::new(),
@@ -885,5 +911,36 @@ impl StudioState {
         }
 
         refs
+    }
+
+    /// Get list of commit-related presets for selection
+    pub fn get_commit_presets(&self) -> Vec<PresetInfo> {
+        use crate::instruction_presets::{PresetType, get_instruction_preset_library};
+
+        let library = get_instruction_preset_library();
+        let mut presets: Vec<PresetInfo> = library
+            .list_presets_by_type(Some(PresetType::Commit))
+            .into_iter()
+            .chain(library.list_presets_by_type(Some(PresetType::Both)))
+            .map(|(key, preset)| PresetInfo {
+                key: key.clone(),
+                name: preset.name.clone(),
+                description: preset.description.clone(),
+                emoji: preset.emoji.clone(),
+            })
+            .collect();
+
+        // Sort by name, but put "default" first
+        presets.sort_by(|a, b| {
+            if a.key == "default" {
+                std::cmp::Ordering::Less
+            } else if b.key == "default" {
+                std::cmp::Ordering::Greater
+            } else {
+                a.name.cmp(&b.name)
+            }
+        });
+
+        presets
     }
 }

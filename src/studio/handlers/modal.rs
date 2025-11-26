@@ -19,6 +19,7 @@ pub fn handle_modal_key(state: &mut StudioState, key: KeyEvent) -> Action {
         Some(Modal::Instructions { .. }) => handle_instructions_modal(state, key),
         Some(Modal::Chat(_)) => handle_chat_modal(state, key),
         Some(Modal::RefSelector { .. }) => handle_ref_selector_modal(state, key),
+        Some(Modal::PresetSelector { .. }) => handle_preset_selector_modal(state, key),
         None => Action::None,
     }
 }
@@ -82,10 +83,16 @@ fn handle_instructions_modal(state: &mut StudioState, key: KeyEvent) -> Action {
             } else {
                 Some(current_input)
             };
+            let preset = state.modes.commit.preset.clone();
+            let use_gitmoji = state.modes.commit.use_gitmoji;
             state.close_modal();
             state.set_iris_thinking("Generating commit message...");
             state.modes.commit.generating = true;
-            Action::IrisQuery(IrisQueryRequest::GenerateCommit { instructions })
+            Action::IrisQuery(IrisQueryRequest::GenerateCommit {
+                instructions,
+                preset,
+                use_gitmoji,
+            })
         }
         KeyCode::Char(c) => {
             if let Some(Modal::Instructions { input }) = &mut state.modal {
@@ -158,6 +165,125 @@ fn handle_chat_modal(state: &mut StudioState, key: KeyEvent) -> Action {
             // Scroll down in chat history
             if let Some(Modal::Chat(chat)) = &mut state.modal {
                 chat.scroll_offset = chat.scroll_offset.saturating_sub(1);
+            }
+            state.mark_dirty();
+            Action::Redraw
+        }
+        _ => Action::None,
+    }
+}
+
+fn handle_preset_selector_modal(state: &mut StudioState, key: KeyEvent) -> Action {
+    // Visible items in the list (modal height - header - footer)
+    const VISIBLE_ITEMS: usize = 18;
+
+    // Get current state for filtering
+    let (input, presets, selected) = if let Some(Modal::PresetSelector {
+        input,
+        presets,
+        selected,
+        ..
+    }) = &state.modal
+    {
+        (input.clone(), presets.clone(), *selected)
+    } else {
+        return Action::None;
+    };
+
+    // Filter presets based on input
+    let filtered: Vec<_> = presets
+        .iter()
+        .filter(|p| {
+            input.is_empty()
+                || p.name.to_lowercase().contains(&input.to_lowercase())
+                || p.key.to_lowercase().contains(&input.to_lowercase())
+        })
+        .collect();
+
+    match key.code {
+        KeyCode::Esc => {
+            state.close_modal();
+            Action::Redraw
+        }
+        KeyCode::Enter => {
+            // Apply selection
+            if let Some(preset) = filtered.get(selected) {
+                state.modes.commit.preset.clone_from(&preset.key);
+                state.notify(Notification::info(format!(
+                    "Preset: {} {}",
+                    preset.emoji, preset.name
+                )));
+            }
+            state.close_modal();
+            Action::Redraw
+        }
+        KeyCode::Up => {
+            if let Some(Modal::PresetSelector {
+                selected, scroll, ..
+            }) = &mut state.modal
+            {
+                *selected = selected.saturating_sub(1);
+                // Scroll up if selection goes above visible area
+                if *selected < *scroll {
+                    *scroll = *selected;
+                }
+            }
+            state.mark_dirty();
+            Action::Redraw
+        }
+        KeyCode::Down => {
+            if let Some(Modal::PresetSelector {
+                selected,
+                scroll,
+                presets,
+                input,
+            }) = &mut state.modal
+            {
+                let filtered_len = presets
+                    .iter()
+                    .filter(|p| {
+                        input.is_empty()
+                            || p.name.to_lowercase().contains(&input.to_lowercase())
+                            || p.key.to_lowercase().contains(&input.to_lowercase())
+                    })
+                    .count();
+                if *selected + 1 < filtered_len {
+                    *selected += 1;
+                    // Scroll down if selection goes below visible area
+                    if *selected >= *scroll + VISIBLE_ITEMS {
+                        *scroll = *selected - VISIBLE_ITEMS + 1;
+                    }
+                }
+            }
+            state.mark_dirty();
+            Action::Redraw
+        }
+        KeyCode::Char(c) => {
+            if let Some(Modal::PresetSelector {
+                input,
+                selected,
+                scroll,
+                ..
+            }) = &mut state.modal
+            {
+                input.push(c);
+                *selected = 0; // Reset selection on filter change
+                *scroll = 0;
+            }
+            state.mark_dirty();
+            Action::Redraw
+        }
+        KeyCode::Backspace => {
+            if let Some(Modal::PresetSelector {
+                input,
+                selected,
+                scroll,
+                ..
+            }) = &mut state.modal
+            {
+                input.pop();
+                *selected = 0;
+                *scroll = 0;
             }
             state.mark_dirty();
             Action::Redraw
@@ -241,14 +367,14 @@ fn handle_ref_selector_modal(state: &mut StudioState, key: KeyEvent) -> Action {
                 ReloadType::None => Action::Redraw,
             }
         }
-        KeyCode::Up | KeyCode::Char('k') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+        KeyCode::Up => {
             if let Some(Modal::RefSelector { selected, .. }) = &mut state.modal {
                 *selected = selected.saturating_sub(1);
             }
             state.mark_dirty();
             Action::Redraw
         }
-        KeyCode::Down | KeyCode::Char('j') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+        KeyCode::Down => {
             if let Some(Modal::RefSelector {
                 selected,
                 refs,

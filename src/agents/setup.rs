@@ -261,6 +261,48 @@ impl IrisAgentService {
         agent.execute_task(capability, task_prompt).await
     }
 
+    /// Execute an agent task with style overrides
+    ///
+    /// Allows runtime override of preset and gitmoji settings without
+    /// modifying the underlying config. Useful for UI flows where the
+    /// user can change settings per-invocation.
+    ///
+    /// # Arguments
+    /// * `capability` - The capability to invoke
+    /// * `context` - Structured context describing what to analyze
+    /// * `preset` - Optional preset name override (e.g., "conventional", "cosmic")
+    /// * `use_gitmoji` - Optional gitmoji setting override
+    pub async fn execute_task_with_style(
+        &self,
+        capability: &str,
+        context: TaskContext,
+        preset: Option<&str>,
+        use_gitmoji: Option<bool>,
+    ) -> Result<StructuredResponse> {
+        // Clone config and apply style overrides
+        let mut config = self.config.clone();
+        if let Some(p) = preset {
+            config.temp_preset = Some(p.to_string());
+        }
+        if let Some(gitmoji) = use_gitmoji {
+            config.use_gitmoji = gitmoji;
+        }
+
+        // Create agent with modified config
+        let mut agent = IrisAgentBuilder::new()
+            .with_provider(&self.provider)
+            .with_model(&self.model)
+            .build()?;
+        agent.set_config(config);
+        agent.set_fast_model(self.fast_model.clone());
+
+        // Build task prompt with context information
+        let task_prompt = Self::build_task_prompt(capability, &context);
+
+        // Execute the task
+        agent.execute_task(capability, &task_prompt).await
+    }
+
     /// Build a task prompt incorporating the context information
     fn build_task_prompt(capability: &str, context: &TaskContext) -> String {
         let context_json = context.to_prompt_context();

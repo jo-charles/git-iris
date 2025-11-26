@@ -428,8 +428,12 @@ impl StudioApp {
         use super::events::IrisQueryRequest;
 
         match query {
-            IrisQueryRequest::GenerateCommit { instructions } => {
-                self.spawn_commit_generation(instructions);
+            IrisQueryRequest::GenerateCommit {
+                instructions,
+                preset,
+                use_gitmoji,
+            } => {
+                self.spawn_commit_generation(instructions, preset, use_gitmoji);
             }
             IrisQueryRequest::GenerateReview => {
                 self.spawn_review_generation();
@@ -621,7 +625,9 @@ impl StudioApp {
 
         self.state.set_iris_thinking("Analyzing changes...");
         self.state.modes.commit.generating = true;
-        self.spawn_commit_generation(None);
+        let preset = self.state.modes.commit.preset.clone();
+        let use_gitmoji = self.state.modes.commit.use_gitmoji;
+        self.spawn_commit_generation(None, preset, use_gitmoji);
     }
 
     /// Handle mouse events for panel focus and scrolling
@@ -747,7 +753,12 @@ impl StudioApp {
     }
 
     /// Spawn a task to generate a commit message
-    fn spawn_commit_generation(&self, instructions: Option<String>) {
+    fn spawn_commit_generation(
+        &self,
+        _instructions: Option<String>,
+        preset: String,
+        use_gitmoji: bool,
+    ) {
         use crate::agents::{StructuredResponse, TaskContext};
 
         let Some(agent) = self.agent_service.clone() else {
@@ -758,21 +769,23 @@ impl StudioApp {
             return;
         };
 
-        // Build task prompt with optional instructions
-        let task_prompt = if let Some(inst) = instructions {
-            format!("Generate a commit message. User instructions: {}", inst)
-        } else {
-            "Generate a commit message for the staged changes.".to_string()
-        };
-
         let tx = self.iris_result_tx.clone();
 
         tokio::spawn(async move {
             // Use standard commit context
             let context = TaskContext::for_gen();
 
-            // Execute the commit capability
-            match agent.execute_task("commit", context).await {
+            // Execute commit capability with style overrides
+            let preset_opt = if preset == "default" {
+                None
+            } else {
+                Some(preset.as_str())
+            };
+
+            match agent
+                .execute_task_with_style("commit", context, preset_opt, Some(use_gitmoji))
+                .await
+            {
                 Ok(response) => {
                     // Extract message from response
                     match response {
@@ -791,9 +804,6 @@ impl StudioApp {
                 }
             }
         });
-
-        // Mark as unused for now - custom prompt not yet supported
-        let _ = task_prompt;
     }
 
     fn perform_commit(&self, message: &str) -> ExitResult {

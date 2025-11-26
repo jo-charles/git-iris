@@ -109,6 +109,35 @@ fn handle_files_key(state: &mut StudioState, key: KeyEvent) -> Action {
             Action::Redraw
         }
 
+        // Style settings
+        KeyCode::Char('p') => {
+            // Open preset selector
+            let presets = state.get_commit_presets();
+            state.modal = Some(Modal::PresetSelector {
+                input: String::new(),
+                presets,
+                selected: 0,
+                scroll: 0,
+            });
+            state.mark_dirty();
+            Action::Redraw
+        }
+        KeyCode::Char('E') => {
+            // Toggle gitmoji
+            state.modes.commit.use_gitmoji = !state.modes.commit.use_gitmoji;
+            let status = if state.modes.commit.use_gitmoji {
+                "enabled"
+            } else {
+                "disabled"
+            };
+            state.notify(crate::studio::state::Notification::info(format!(
+                "Gitmoji {}",
+                status
+            )));
+            state.mark_dirty();
+            Action::Redraw
+        }
+
         KeyCode::Enter => {
             // Toggle expand for directories, or select file and move to diff view
             if let Some(entry) = state.modes.commit.file_tree.selected_entry() {
@@ -199,6 +228,8 @@ fn handle_message_key(state: &mut StudioState, key: KeyEvent) -> Action {
                 } else {
                     Some(state.modes.commit.custom_instructions.clone())
                 },
+                preset: state.modes.commit.preset.clone(),
+                use_gitmoji: state.modes.commit.use_gitmoji,
             })
         }
 
