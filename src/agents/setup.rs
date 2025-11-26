@@ -5,7 +5,6 @@
 
 use anyhow::Result;
 use rig::client::builder::DynClientBuilder;
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::agents::context::TaskContext;
@@ -14,7 +13,7 @@ use crate::agents::{AgentBackend, IrisAgent, IrisAgentBuilder};
 use crate::common::CommonParams;
 use crate::config::Config;
 use crate::git::GitRepo;
-use crate::llm::{get_combined_config, validate_provider_config};
+use crate::providers::Provider;
 
 /// Service for setting up agents with proper configuration
 pub struct AgentSetupService {
@@ -76,48 +75,31 @@ impl AgentSetupService {
 
     /// Create a Rig client builder based on the backend configuration
     fn create_client_builder(&mut self, backend: &AgentBackend) -> Result<DynClientBuilder> {
-        // Validate provider configuration
-        validate_provider_config(&self.config, &backend.provider_name)?;
+        // Parse and validate provider
+        let provider: Provider = backend
+            .provider_name
+            .parse()
+            .map_err(|_| anyhow::anyhow!("Unsupported provider: {}", backend.provider_name))?;
 
-        // Get combined configuration parameters
-        let combined_config =
-            get_combined_config(&self.config, &backend.provider_name, &HashMap::new());
+        // Check API key - from config or environment
+        let has_api_key = self
+            .config
+            .get_provider_config(provider.name())
+            .is_some_and(crate::providers::ProviderConfig::has_api_key);
 
-        // Validate API key exists
-        Self::validate_provider_config(&backend.provider_name, &combined_config)?;
+        if !has_api_key && std::env::var(provider.api_key_env()).is_err() {
+            return Err(anyhow::anyhow!(
+                "No API key found for {}. Set {} or configure in ~/.config/git-iris/config.toml",
+                provider.name(),
+                provider.api_key_env()
+            ));
+        }
 
         // Create client builder - Rig will read from environment variables
         let client_builder = DynClientBuilder::new();
-
-        // Create a new client builder for storage
-        let stored_builder = DynClientBuilder::new();
-        self.client_builder = Some(stored_builder);
+        self.client_builder = Some(DynClientBuilder::new());
 
         Ok(client_builder)
-    }
-
-    /// Validate provider configuration has required fields
-    fn validate_provider_config(provider: &str, config: &HashMap<String, String>) -> Result<()> {
-        match provider {
-            "openai" => {
-                if config.get("api_key").is_none() {
-                    return Err(anyhow::anyhow!(
-                        "No API key found for OpenAI. Please set OPENAI_API_KEY environment variable or configure it in your config file."
-                    ));
-                }
-            }
-            "anthropic" => {
-                if config.get("api_key").is_none() {
-                    return Err(anyhow::anyhow!(
-                        "No API key found for Anthropic. Please set ANTHROPIC_API_KEY environment variable or configure it in your config file."
-                    ));
-                }
-            }
-            _ => {
-                return Err(anyhow::anyhow!("Unsupported provider: {}", provider));
-            }
-        }
-        Ok(())
     }
 
     /// Get the git repository instance
@@ -175,13 +157,13 @@ pub fn create_agent_with_defaults(provider: &str, model: &str) -> Result<IrisAge
 
 /// Create an agent from environment variables
 pub fn create_agent_from_env() -> Result<IrisAgent> {
-    let provider = std::env::var("IRIS_PROVIDER").unwrap_or_else(|_| "openai".to_string());
-    let model = std::env::var("IRIS_MODEL").unwrap_or_else(|_| {
-        use crate::llm::get_default_model_for_provider;
-        get_default_model_for_provider(&provider).to_string()
-    });
+    let provider_str = std::env::var("IRIS_PROVIDER").unwrap_or_else(|_| "openai".to_string());
+    let provider: Provider = provider_str.parse().unwrap_or_default();
 
-    create_agent_with_defaults(&provider, &model)
+    let model =
+        std::env::var("IRIS_MODEL").unwrap_or_else(|_| provider.default_model().to_string());
+
+    create_agent_with_defaults(provider.name(), &model)
 }
 
 // =============================================================================

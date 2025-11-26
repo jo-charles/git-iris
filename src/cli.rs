@@ -1,7 +1,7 @@
 use crate::commands;
 use crate::common::CommonParams;
-use crate::llm::get_available_provider_names;
 use crate::log_debug;
+use crate::providers::Provider;
 use crate::ui;
 use clap::builder::{Styles, styling::AnsiColor};
 use clap::{Parser, Subcommand, crate_version};
@@ -329,10 +329,7 @@ pub fn parse_args() -> Cli {
 
 /// Generate dynamic help including available LLM providers
 fn get_dynamic_help() -> String {
-    let mut providers = get_available_provider_names();
-    providers.sort(); // Sort alphabetically
-
-    let providers_list = providers
+    let providers_list = Provider::all_names()
         .iter()
         .map(|p| format!("{}", p.bold()))
         .collect::<Vec<_>>()
@@ -354,18 +351,7 @@ pub async fn main() -> anyhow::Result<()> {
         crate::logger::enable_logging();
         let log_file = cli.log_file.as_deref().unwrap_or(LOG_FILE);
         crate::logger::set_log_file(log_file)?;
-
-        // Load config to check for verbose logging settings
-        if let Ok(config) = crate::config::Config::load() {
-            crate::logger::set_verbose_logging(config.performance.verbose_logging);
-            if config.performance.verbose_logging {
-                log_debug!(
-                    "Verbose logging enabled - will show HTTP requests and external library logs"
-                );
-            } else {
-                log_debug!("Verbose logging disabled - hiding noisy external library logs");
-            }
-        }
+        log_debug!("Debug logging enabled");
     } else {
         crate::logger::disable_logging();
     }

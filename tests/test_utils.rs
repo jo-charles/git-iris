@@ -1,6 +1,7 @@
-use git_iris::config::{Config, ProviderConfig};
+use git_iris::config::Config;
 use git_iris::context::{ChangeType, CommitContext, ProjectMetadata, RecentCommit, StagedFile};
 use git_iris::git::GitRepo;
+use git_iris::providers::ProviderConfig;
 use git_iris::types::{ChangeMetrics, GeneratedPullRequest};
 use git2::Repository;
 
@@ -309,8 +310,6 @@ impl MockDataBuilder {
             project_metadata: Self::project_metadata(),
             user_name: "Test User".to_string(),
             user_email: "test@example.com".to_string(),
-            summary: "Test commit summary".to_string(),
-            diff_stat: "1 file changed, 2 insertions(+), 1 deletion(-)".to_string(),
         }
     }
 
@@ -361,8 +360,6 @@ impl MockDataBuilder {
             },
             user_name: "Test User".to_string(),
             user_email: "test@example.com".to_string(),
-            summary: "Added JWT authentication system with middleware and user models".to_string(),
-            diff_stat: "2 files changed, 45 insertions(+), 0 deletions(-)".to_string(),
         }
     }
 

@@ -1,5 +1,5 @@
 use git_iris::common::CommonParams;
-use git_iris::config::ProviderConfig;
+use git_iris::providers::ProviderConfig;
 use std::env;
 use std::fs;
 use std::path::Path;

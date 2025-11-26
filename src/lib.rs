@@ -24,10 +24,10 @@ pub mod file_analyzers;
 pub mod git;
 pub mod gitmoji;
 pub mod instruction_presets;
-pub mod llm;
 pub mod logger;
 pub mod messages;
 pub mod output;
+pub mod providers;
 pub mod services;
 pub mod tui;
 pub mod types;
@@ -35,9 +35,7 @@ pub mod ui;
 
 // Re-export important structs and functions for easier testing
 pub use config::Config;
-pub use config::ProviderConfig;
-// Re-export the LLMProvider trait from the external llm crate
-pub use ::llm::LLMProvider;
+pub use providers::{Provider, ProviderConfig};
 
 // Re-exports from types module
 pub use types::{

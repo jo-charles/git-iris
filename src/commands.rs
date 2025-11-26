@@ -1,11 +1,10 @@
-use crate::ProviderConfig;
 use crate::common::CommonParams;
 use crate::config::Config;
 use crate::instruction_presets::{
     PresetType, get_instruction_preset_library, list_presets_formatted_by_type,
 };
-use crate::llm::get_available_provider_names;
 use crate::log_debug;
+use crate::providers::{Provider, ProviderConfig};
 use crate::ui;
 use anyhow::Context;
 use anyhow::{Result, anyhow};
@@ -45,16 +44,22 @@ fn apply_config_changes(
     let common_changes = common.apply_to_config(config)?;
     changes_made |= common_changes;
 
-    // Handle provider change - but skip if already handled by apply_to_config
-    if let Some(provider) = &common.provider {
-        if !get_available_provider_names().iter().any(|p| p == provider) {
-            return Err(anyhow!("Invalid provider: {}", provider));
-        }
+    // Handle provider change - validate and insert if needed
+    if let Some(provider_str) = &common.provider {
+        let provider: Provider = provider_str.parse().map_err(|_| {
+            anyhow!(
+                "Invalid provider: {}. Available: {}",
+                provider_str,
+                Provider::all_names().join(", ")
+            )
+        })?;
+
         // Only check for provider insertion if it wasn't already handled
-        if !config.providers.contains_key(provider) {
-            config
-                .providers
-                .insert(provider.clone(), ProviderConfig::default());
+        if !config.providers.contains_key(provider.name()) {
+            config.providers.insert(
+                provider.name().to_string(),
+                ProviderConfig::with_defaults(provider),
+            );
             changes_made = true;
         }
     }

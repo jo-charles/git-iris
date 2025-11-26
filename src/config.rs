@@ -1,9 +1,12 @@
+//! Configuration management for Git-Iris.
+//!
+//! Handles personal config (~/.config/git-iris/config.toml) and
+//! per-project config (.irisconfig) with proper layering.
+
 use crate::git::GitRepo;
 use crate::instruction_presets::get_instruction_preset_library;
-use crate::llm::{
-    get_available_provider_names, get_default_model_for_provider, provider_requires_api_key,
-};
 use crate::log_debug;
+use crate::providers::{Provider, ProviderConfig};
 
 use anyhow::{Context, Result, anyhow};
 use dirs::config_dir;
@@ -12,106 +15,82 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
-/// Configuration structure for the Git-Iris application
+/// Project configuration filename
+pub const PROJECT_CONFIG_FILENAME: &str = ".irisconfig";
+
+/// Main configuration structure
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct Config {
     /// Default LLM provider
+    #[serde(default)]
     pub default_provider: String,
-    /// Provider-specific configurations
+    /// Provider-specific configurations (keyed by provider name)
+    #[serde(default)]
     pub providers: HashMap<String, ProviderConfig>,
-    /// Flag indicating whether to use Gitmoji
-    #[serde(default = "default_gitmoji")]
+    /// Use gitmoji in commit messages
+    #[serde(default = "default_true")]
     pub use_gitmoji: bool,
-    /// Instructions for commit messages
+    /// Custom instructions for all operations
     #[serde(default)]
     pub instructions: String,
-    #[serde(default = "default_instruction_preset")]
+    /// Instruction preset name
+    #[serde(default = "default_preset")]
     pub instruction_preset: String,
-    /// Performance and execution settings
-    #[serde(default)]
-    pub performance: PerformanceConfig,
+    /// Runtime-only: temporary instructions override
     #[serde(skip)]
     pub temp_instructions: Option<String>,
+    /// Runtime-only: temporary preset override
     #[serde(skip)]
     pub temp_preset: Option<String>,
-    /// Flag indicating if this config is from a project file
+    /// Runtime-only: flag if loaded from project config
     #[serde(skip)]
     pub is_project_config: bool,
 }
 
-/// Provider-specific configuration structure
-#[derive(Deserialize, Serialize, Clone, Debug, Default)]
-pub struct ProviderConfig {
-    /// API key for the provider
-    pub api_key: String,
-    /// Primary model to be used with the provider (for complex analysis)
-    pub model: String,
-    /// Fast model for simple tasks (status updates, parsing, etc.)
-    pub fast_model: Option<String>,
-    /// Additional parameters for the provider
-    #[serde(default)]
-    pub additional_params: HashMap<String, String>,
-    /// Token limit, if set by the user
-    pub token_limit: Option<usize>,
+fn default_true() -> bool {
+    true
 }
 
-/// Performance and execution configuration
-#[derive(Deserialize, Serialize, Clone, Debug)]
-pub struct PerformanceConfig {
-    /// Maximum number of concurrent tasks for agent execution
-    pub max_concurrent_tasks: Option<usize>,
-    /// Default timeout for tasks in seconds
-    pub default_timeout_seconds: Option<u64>,
-    /// Whether to use agent framework when available
-    pub use_agent_framework: bool,
-    /// Whether to enable verbose logging (includes HTTP requests/responses)
-    #[serde(default = "default_verbose_logging")]
-    pub verbose_logging: bool,
+fn default_preset() -> String {
+    "default".to_string()
 }
 
-impl Default for PerformanceConfig {
+impl Default for Config {
     fn default() -> Self {
+        let mut providers = HashMap::new();
+        for provider in Provider::ALL {
+            providers.insert(
+                provider.name().to_string(),
+                ProviderConfig::with_defaults(*provider),
+            );
+        }
+
         Self {
-            max_concurrent_tasks: Some(5),
-            default_timeout_seconds: Some(300),
-            use_agent_framework: true,
-            verbose_logging: false,
+            default_provider: Provider::default().name().to_string(),
+            providers,
+            use_gitmoji: true,
+            instructions: String::new(),
+            instruction_preset: default_preset(),
+            temp_instructions: None,
+            temp_preset: None,
+            is_project_config: false,
         }
     }
 }
 
-/// Default function for `use_gitmoji`
-fn default_gitmoji() -> bool {
-    true
-}
-
-// Default instruction preset to use
-fn default_instruction_preset() -> String {
-    "default".to_string()
-}
-
-/// Default function for `verbose_logging`
-fn default_verbose_logging() -> bool {
-    false
-}
-
-/// Project configuration filename
-pub const PROJECT_CONFIG_FILENAME: &str = ".irisconfig";
-
 impl Config {
-    /// Load the configuration from the file
+    /// Load configuration (personal + project overlay)
     pub fn load() -> Result<Self> {
-        // First load personal config
         let config_path = Self::get_config_path()?;
         let mut config = if config_path.exists() {
-            let config_content = fs::read_to_string(&config_path)?;
-            let config: Self = toml::from_str(&config_content)?;
+            let content = fs::read_to_string(&config_path)?;
+            let config: Self = toml::from_str(&content)?;
             Self::migrate_if_needed(config)
         } else {
             Self::default()
         };
 
-        // Then try to load and merge project config if available
+        // Overlay project config if available
         if let Ok(project_config) = Self::load_project_config() {
             config.merge_with_project_config(project_config);
         }
@@ -121,92 +100,75 @@ impl Config {
     }
 
     /// Load project-specific configuration
-    pub fn load_project_config() -> Result<Self, anyhow::Error> {
+    pub fn load_project_config() -> Result<Self> {
         let config_path = Self::get_project_config_path()?;
         if !config_path.exists() {
-            return Err(anyhow::anyhow!("Project configuration file not found"));
+            return Err(anyhow!("Project configuration file not found"));
         }
 
-        // Read the config file with improved error handling
-        let config_str = match fs::read_to_string(&config_path) {
-            Ok(content) => content,
-            Err(e) => return Err(anyhow::anyhow!("Failed to read project config file: {}", e)),
-        };
+        let content = fs::read_to_string(&config_path)
+            .with_context(|| format!("Failed to read {}", config_path.display()))?;
 
-        // Parse the TOML with improved error handling
-        let mut config: Self = match toml::from_str(&config_str) {
-            Ok(config) => config,
-            Err(e) => {
-                return Err(anyhow::anyhow!(
-                    "Invalid project configuration file format: {}. Please check your {} file for syntax errors.",
-                    e,
-                    PROJECT_CONFIG_FILENAME
-                ));
-            }
-        };
+        let mut config: Self = toml::from_str(&content).with_context(|| {
+            format!(
+                "Invalid {} format. Check for syntax errors.",
+                PROJECT_CONFIG_FILENAME
+            )
+        })?;
 
         config.is_project_config = true;
         Ok(config)
     }
 
-    /// Get the path to the project configuration file
-    pub fn get_project_config_path() -> Result<PathBuf, anyhow::Error> {
-        // Use the static method to get repo root
-        let repo_root = crate::git::GitRepo::get_repo_root()?;
+    /// Get path to project config file
+    pub fn get_project_config_path() -> Result<PathBuf> {
+        let repo_root = GitRepo::get_repo_root()?;
         Ok(repo_root.join(PROJECT_CONFIG_FILENAME))
     }
 
-    /// Merge this config with project-specific config, with project config taking precedence
-    /// But never allow API keys from project config
+    /// Merge project config into this config (project takes precedence, but never API keys)
     pub fn merge_with_project_config(&mut self, project_config: Self) {
         log_debug!("Merging with project configuration");
 
-        // Override default provider if set in project config
-        if project_config.default_provider != Self::default().default_provider {
+        // Override default provider if set
+        if !project_config.default_provider.is_empty()
+            && project_config.default_provider != Provider::default().name()
+        {
             self.default_provider = project_config.default_provider;
         }
 
-        // Merge provider configs, but never allow API keys from project config
-        for (provider, proj_provider_config) in project_config.providers {
-            let entry = self.providers.entry(provider).or_default();
+        // Merge provider configs (never override API keys from project config)
+        for (provider_name, proj_config) in project_config.providers {
+            let entry = self.providers.entry(provider_name).or_default();
 
-            // Don't override API keys from project config (security)
-            if !proj_provider_config.model.is_empty() {
-                entry.model = proj_provider_config.model;
+            if !proj_config.model.is_empty() {
+                entry.model = proj_config.model;
             }
-
-            // Override fast model if set in project config
-            if proj_provider_config.fast_model.is_some() {
-                entry.fast_model = proj_provider_config.fast_model;
+            if proj_config.fast_model.is_some() {
+                entry.fast_model = proj_config.fast_model;
             }
-
-            // Merge additional params
+            if proj_config.token_limit.is_some() {
+                entry.token_limit = proj_config.token_limit;
+            }
             entry
                 .additional_params
-                .extend(proj_provider_config.additional_params);
-
-            // Override token limit if set in project config
-            if proj_provider_config.token_limit.is_some() {
-                entry.token_limit = proj_provider_config.token_limit;
-            }
+                .extend(proj_config.additional_params);
         }
 
         // Override other settings
         self.use_gitmoji = project_config.use_gitmoji;
+        self.instructions = project_config.instructions;
 
-        // Always override instructions field if set in project config
-        self.instructions = project_config.instructions.clone();
-
-        // Override preset
-        if project_config.instruction_preset != default_instruction_preset() {
+        if project_config.instruction_preset != default_preset() {
             self.instruction_preset = project_config.instruction_preset;
         }
     }
 
-    /// Migrate older config formats if needed
+    /// Migrate older config formats
     fn migrate_if_needed(mut config: Self) -> Self {
-        // Migration: rename "claude" provider to "anthropic" if it exists
-        let mut migration_performed = false;
+        let mut migrated = false;
+
+        // Migrate "claude" provider to "anthropic"
         if config.providers.contains_key("claude") {
             log_debug!("Migrating 'claude' provider to 'anthropic'");
             if let Some(claude_config) = config.providers.remove("claude") {
@@ -214,101 +176,87 @@ impl Config {
                     .providers
                     .insert("anthropic".to_string(), claude_config);
             }
-
-            // Update default provider if it was set to claude
             if config.default_provider == "claude" {
                 config.default_provider = "anthropic".to_string();
             }
-
-            migration_performed = true;
+            migrated = true;
         }
 
-        // Save the config if a migration was performed
-        if migration_performed {
-            log_debug!("Saving configuration after migration");
-            if let Err(e) = config.save() {
-                log_debug!("Failed to save migrated config: {}", e);
-            }
+        if migrated && let Err(e) = config.save() {
+            log_debug!("Failed to save migrated config: {}", e);
         }
 
         config
     }
 
-    /// Save the configuration to the file
+    /// Save configuration to personal config file
     pub fn save(&self) -> Result<()> {
-        // Don't save project configs to personal config file
         if self.is_project_config {
             return Ok(());
         }
 
         let config_path = Self::get_config_path()?;
-        let config_content = toml::to_string(self)?;
-        fs::write(config_path, config_content)?;
-        log_debug!("Configuration saved: {:?}", self);
+        let content = toml::to_string_pretty(self)?;
+        fs::write(config_path, content)?;
+        log_debug!("Configuration saved");
         Ok(())
     }
 
-    /// Save the configuration as a project-specific configuration
-    pub fn save_as_project_config(&self) -> Result<(), anyhow::Error> {
+    /// Save as project-specific configuration (strips API keys)
+    pub fn save_as_project_config(&self) -> Result<()> {
         let config_path = Self::get_project_config_path()?;
 
-        // Before saving, create a copy that excludes API keys
         let mut project_config = self.clone();
+        project_config.is_project_config = true;
 
-        // Remove API keys from all providers
+        // Strip API keys for security
         for provider_config in project_config.providers.values_mut() {
             provider_config.api_key.clear();
         }
 
-        // Mark as project config
-        project_config.is_project_config = true;
-
-        // Convert to TOML string
-        let config_str = toml::to_string_pretty(&project_config)?;
-
-        // Write to file
-        fs::write(config_path, config_str)?;
-
+        let content = toml::to_string_pretty(&project_config)?;
+        fs::write(config_path, content)?;
         Ok(())
     }
 
-    /// Get the path to the configuration file
+    /// Get path to personal config file
     fn get_config_path() -> Result<PathBuf> {
         let mut path =
             config_dir().ok_or_else(|| anyhow!("Unable to determine config directory"))?;
         path.push("git-iris");
-        std::fs::create_dir_all(&path)?;
+        fs::create_dir_all(&path)?;
         path.push("config.toml");
         Ok(path)
     }
 
-    /// Check the environment for necessary prerequisites
+    /// Check environment prerequisites
     pub fn check_environment(&self) -> Result<()> {
-        // Check if we're in a git repository
         if !GitRepo::is_inside_work_tree()? {
             return Err(anyhow!(
                 "Not in a Git repository. Please run this command from within a Git repository."
             ));
         }
-
         Ok(())
     }
 
+    /// Set temporary instructions for this session
     pub fn set_temp_instructions(&mut self, instructions: Option<String>) {
         self.temp_instructions = instructions;
     }
 
+    /// Set temporary preset for this session
     pub fn set_temp_preset(&mut self, preset: Option<String>) {
         self.temp_preset = preset;
     }
 
-    /// Get the effective preset name, preferring `temp_preset` over `instruction_preset`
+    /// Get effective preset name (temp overrides saved)
     pub fn get_effective_preset_name(&self) -> &str {
         self.temp_preset
             .as_deref()
             .unwrap_or(&self.instruction_preset)
     }
 
+    /// Get effective instructions (combines preset + custom)
     pub fn get_effective_instructions(&self) -> String {
         let preset_library = get_instruction_preset_library();
         let preset_instructions = self
@@ -319,17 +267,17 @@ impl Config {
             .map(|p| p.instructions.clone())
             .unwrap_or_default();
 
-        let custom_instructions = self
+        let custom = self
             .temp_instructions
             .as_ref()
             .unwrap_or(&self.instructions);
 
-        format!("{preset_instructions}\n\n{custom_instructions}")
+        format!("{preset_instructions}\n\n{custom}")
             .trim()
             .to_string()
     }
 
-    /// Update the configuration with new values
+    /// Update configuration with new values
     #[allow(clippy::too_many_arguments)]
     pub fn update(
         &mut self,
@@ -341,33 +289,41 @@ impl Config {
         use_gitmoji: Option<bool>,
         instructions: Option<String>,
         token_limit: Option<usize>,
-    ) -> anyhow::Result<()> {
-        if let Some(provider) = provider {
-            self.default_provider.clone_from(&provider);
-            if !self.providers.contains_key(&provider) {
-                // Only insert a new provider if it requires configuration
-                if provider_requires_api_key(&provider.to_lowercase()) {
-                    self.providers.insert(
-                        provider.clone(),
-                        ProviderConfig::default_for(&provider.to_lowercase()),
-                    );
-                }
+    ) -> Result<()> {
+        if let Some(ref provider_name) = provider {
+            // Validate provider
+            let parsed: Provider = provider_name.parse().with_context(|| {
+                format!(
+                    "Unknown provider '{}'. Supported: {}",
+                    provider_name,
+                    Provider::all_names().join(", ")
+                )
+            })?;
+
+            self.default_provider = parsed.name().to_string();
+
+            // Ensure provider config exists
+            if !self.providers.contains_key(parsed.name()) {
+                self.providers.insert(
+                    parsed.name().to_string(),
+                    ProviderConfig::with_defaults(parsed),
+                );
             }
         }
 
         let provider_config = self
             .providers
             .get_mut(&self.default_provider)
-            .context("Could not get default provider")?;
+            .context("Could not get default provider config")?;
 
         if let Some(key) = api_key {
             provider_config.api_key = key;
         }
-        if let Some(model) = model {
-            provider_config.model = model;
+        if let Some(m) = model {
+            provider_config.model = m;
         }
-        if let Some(fast_model) = fast_model {
-            provider_config.fast_model = Some(fast_model);
+        if let Some(fm) = fast_model {
+            provider_config.fast_model = Some(fm);
         }
         if let Some(params) = additional_params {
             provider_config.additional_params.extend(params);
@@ -382,101 +338,51 @@ impl Config {
             provider_config.token_limit = Some(limit);
         }
 
-        log_debug!("Configuration updated: {:?}", self);
+        log_debug!("Configuration updated");
         Ok(())
     }
 
-    /// Get the configuration for a specific provider
+    /// Get the provider configuration for a specific provider
     pub fn get_provider_config(&self, provider: &str) -> Option<&ProviderConfig> {
-        // Special case: redirect "claude" to "anthropic"
-        let provider_to_lookup = if provider.to_lowercase() == "claude" {
+        // Handle legacy "claude" alias
+        let name = if provider.eq_ignore_ascii_case("claude") {
             "anthropic"
         } else {
             provider
         };
 
-        // First try direct lookup
-        self.providers.get(provider_to_lookup).or_else(|| {
-            // If not found, try lowercased version
-            let lowercase_provider = provider_to_lookup.to_lowercase();
-
-            self.providers.get(&lowercase_provider).or_else(|| {
-                // If the provider is not in the config, check if it's a valid provider
-                if get_available_provider_names().contains(&lowercase_provider) {
-                    // Return None for valid providers not in the config
-                    // This allows the code to use default values for providers like Ollama
-                    None
-                } else {
-                    // Return None for invalid providers
-                    None
-                }
-            })
-        })
+        self.providers
+            .get(name)
+            .or_else(|| self.providers.get(&name.to_lowercase()))
     }
 
-    /// Set whether this config is a project config
-    pub fn set_project_config(&mut self, is_project: bool) {
-        self.is_project_config = is_project;
+    /// Get the current provider as `Provider` enum
+    pub fn provider(&self) -> Option<Provider> {
+        self.default_provider.parse().ok()
     }
 
-    /// Check if this is a project config
-    pub fn is_project_config(&self) -> bool {
-        self.is_project_config
-    }
+    /// Validate that the current provider is properly configured
+    pub fn validate(&self) -> Result<()> {
+        let provider: Provider = self
+            .default_provider
+            .parse()
+            .with_context(|| format!("Invalid provider: {}", self.default_provider))?;
 
-    /// Get the current provider as `LLMProvider` enum (placeholder - needs actual `LLMProvider` variants)
-    pub fn provider(&self) -> Option<String> {
-        // For now, just return the provider name as a string
-        // This will need to be updated when we know the actual LLMProvider enum structure
-        Some(self.default_provider.clone())
-    }
-}
+        let config = self
+            .get_provider_config(provider.name())
+            .ok_or_else(|| anyhow!("No configuration found for provider: {}", provider.name()))?;
 
-impl Default for Config {
-    fn default() -> Self {
-        let mut providers = HashMap::new();
-        for provider in get_available_provider_names() {
-            providers.insert(provider.clone(), ProviderConfig::default_for(&provider));
+        if !config.has_api_key() {
+            // Check environment variable as fallback
+            if std::env::var(provider.api_key_env()).is_err() {
+                return Err(anyhow!(
+                    "API key required for {}. Set {} or configure in ~/.config/git-iris/config.toml",
+                    provider.name(),
+                    provider.api_key_env()
+                ));
+            }
         }
 
-        // Default to OpenAI if available, otherwise use the first available provider
-        let default_provider = if providers.contains_key("openai") {
-            "openai".to_string()
-        } else {
-            providers.keys().next().map_or_else(
-                || "openai".to_string(), // Fallback even if no providers (should never happen)
-                std::clone::Clone::clone,
-            )
-        };
-
-        Self {
-            default_provider,
-            providers,
-            use_gitmoji: default_gitmoji(),
-            instructions: String::new(),
-            instruction_preset: default_instruction_preset(),
-            performance: PerformanceConfig::default(),
-            temp_instructions: None,
-            temp_preset: None,
-            is_project_config: false,
-        }
-    }
-}
-
-impl ProviderConfig {
-    /// Create a default provider configuration for a given provider
-    pub fn default_for(provider: &str) -> Self {
-        Self {
-            api_key: String::new(),
-            model: get_default_model_for_provider(provider).to_string(),
-            fast_model: None,
-            additional_params: HashMap::new(),
-            token_limit: None, // Will use the default from get_default_token_limit_for_provider
-        }
-    }
-
-    /// Get the token limit for this provider configuration
-    pub fn get_token_limit(&self) -> Option<usize> {
-        self.token_limit
+        Ok(())
     }
 }

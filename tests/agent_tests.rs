@@ -8,7 +8,7 @@ use git_iris::{
         setup::{AgentSetupService, create_agent_with_defaults},
         tools::{GitChangedFiles, GitDiff, GitLog, GitRepoInfo, GitStatus},
     },
-    config::{Config, PerformanceConfig},
+    config::Config,
     git::GitRepo,
 };
 use rig::client::builder::DynClientBuilder;
@@ -174,15 +174,6 @@ async fn test_agent_setup_service_from_temp_dir() {
 }
 
 #[test]
-fn test_performance_config_default() {
-    let config = PerformanceConfig::default();
-    assert_eq!(config.max_concurrent_tasks, Some(5));
-    assert_eq!(config.default_timeout_seconds, Some(300));
-    assert!(config.use_agent_framework);
-    assert!(!config.verbose_logging);
-}
-
-#[test]
 fn test_git_tools_exist() {
     // Test that our Git tools are available and have proper types
     let _git_status = GitStatus;
@@ -204,16 +195,6 @@ fn test_agent_context_accessors() {
 
     assert!(!config.default_provider.is_empty());
     assert!(repo.repo_path().exists());
-}
-
-#[test]
-fn test_config_has_performance_settings() {
-    let config = Config::default();
-
-    // Test that performance config is available
-    assert!(config.performance.use_agent_framework);
-    assert!(config.performance.max_concurrent_tasks.is_some());
-    assert!(config.performance.default_timeout_seconds.is_some());
 }
 
 // Integration test for the complete agent setup workflow

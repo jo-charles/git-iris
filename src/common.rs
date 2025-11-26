@@ -1,6 +1,6 @@
 use crate::config::Config;
 use crate::instruction_presets::{PresetType, get_instruction_preset_library};
-use crate::llm;
+use crate::providers::{Provider, ProviderConfig};
 use anyhow::Result;
 use clap::Args;
 use std::fmt::Write;
@@ -78,39 +78,32 @@ impl CommonParams {
     pub fn apply_to_config(&self, config: &mut Config) -> Result<bool> {
         let mut changes_made = false;
 
-        if let Some(provider) = &self.provider {
-            // Convert "claude" to "anthropic" for backward compatibility
-            let provider_name = if provider.to_lowercase() == "claude" {
-                "anthropic".to_string()
-            } else {
-                provider.clone()
-            };
+        if let Some(provider_str) = &self.provider {
+            // Parse and validate provider
+            let provider: Provider = provider_str.parse()?;
+            let provider_name = provider.name().to_string();
 
             // Check if we need to update the default provider
             if config.default_provider != provider_name {
                 // Ensure the provider exists in the providers HashMap
                 if !config.providers.contains_key(&provider_name) {
-                    // Import ProviderConfig here
-                    use crate::config::ProviderConfig;
                     config.providers.insert(
                         provider_name.clone(),
-                        ProviderConfig::default_for(&provider_name),
+                        ProviderConfig::with_defaults(provider),
                     );
                 }
 
-                config.default_provider.clone_from(&provider_name);
+                config.default_provider = provider_name;
                 changes_made = true;
             }
         }
 
         if let Some(instructions) = &self.instructions {
             config.set_temp_instructions(Some(instructions.clone()));
-            // Note: temp instructions don't count as permanent changes
         }
 
         if let Some(preset) = &self.preset {
             config.set_temp_preset(Some(preset.clone()));
-            // Note: temp preset doesn't count as permanent changes
         }
 
         if let Some(use_gitmoji) = self.gitmoji
@@ -136,26 +129,13 @@ impl CommonParams {
 
 /// Validates that a provider name is available in the system
 pub fn available_providers_parser(s: &str) -> Result<String, String> {
-    let mut provider_name = s.to_lowercase();
-
-    // Handle legacy "claude" provider name by mapping it to "anthropic"
-    if provider_name == "claude" {
-        provider_name = "anthropic".to_string();
-    }
-
-    let available_providers = llm::get_available_provider_names();
-
-    if available_providers
-        .iter()
-        .any(|p| p.to_lowercase() == provider_name)
-    {
-        Ok(provider_name)
-    } else {
-        Err(format!(
+    match s.parse::<Provider>() {
+        Ok(provider) => Ok(provider.name().to_string()),
+        Err(_) => Err(format!(
             "Invalid provider '{}'. Available providers: {}",
             s,
-            available_providers.join(", ")
-        ))
+            Provider::all_names().join(", ")
+        )),
     }
 }
 
