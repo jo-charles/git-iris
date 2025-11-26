@@ -1,14 +1,12 @@
 #![allow(clippy::unwrap_used)]
 
 use anyhow::Result;
-use git_iris::common::DetailLevel;
 use git_iris::types::{
     ChangeEntry, ChangeMetrics, ChangelogResponse, ChangelogType, ReleaseNotesResponse,
 };
 use git2::Repository;
 
 use std::fmt::Write as FmtWrite;
-use std::str::FromStr;
 use tempfile::TempDir;
 
 // Use our centralized test infrastructure
@@ -87,29 +85,6 @@ fn test_release_notes_response_structure() {
     assert!(!release_notes_response.summary.is_empty());
     assert!(release_notes_response.metrics.total_commits > 0);
     assert!(release_notes_response.metrics.files_changed > 0);
-}
-
-#[test]
-fn test_detail_level_from_str() {
-    assert_eq!(
-        DetailLevel::from_str("minimal").expect("Failed to parse 'minimal'"),
-        DetailLevel::Minimal,
-        "Should parse 'minimal' correctly"
-    );
-    assert_eq!(
-        DetailLevel::from_str("standard").expect("Failed to parse 'standard'"),
-        DetailLevel::Standard,
-        "Should parse 'standard' correctly"
-    );
-    assert_eq!(
-        DetailLevel::from_str("detailed").expect("Failed to parse 'detailed'"),
-        DetailLevel::Detailed,
-        "Should parse 'detailed' correctly"
-    );
-    assert!(
-        DetailLevel::from_str("invalid").is_err(),
-        "Should return an error for invalid input"
-    );
 }
 
 /// Test that the `version_name` parameter correctly overrides the changelog version

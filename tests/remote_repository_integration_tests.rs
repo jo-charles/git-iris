@@ -30,7 +30,6 @@ async fn test_cli_with_remote_repository() -> Result<()> {
         instructions: None,
         preset: None,
         gitmoji: Some(false),
-        detail_level: "minimal".to_string(),
         repository_url: Some(repo_url.to_string()),
     };
 

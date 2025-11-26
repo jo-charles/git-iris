@@ -6,6 +6,9 @@ use crate::instruction_presets::{
 use crate::log_debug;
 use crate::providers::{Provider, ProviderConfig};
 use crate::ui;
+use crate::ui::rgb::{
+    CORAL, DIM_SEPARATOR, DIM_WHITE, ELECTRIC_PURPLE, ELECTRIC_YELLOW, NEON_CYAN, SUCCESS_GREEN,
+};
 use anyhow::Context;
 use anyhow::{Result, anyhow};
 use colored::Colorize;
@@ -328,114 +331,138 @@ pub fn handle_project_config_command(
     Ok(())
 }
 
-/// Display the configuration with beautiful styling and colors
+/// Display the configuration with `SilkCircuit` styling
 fn print_configuration(config: &Config) {
-    // Create a title with gradient
+    println!();
     println!(
-        "\n{}",
-        ui::create_gradient_text("🔮 Git-Iris Configuration 🔮").bold()
+        "{}  {}  {}",
+        "━━━".truecolor(ELECTRIC_PURPLE.0, ELECTRIC_PURPLE.1, ELECTRIC_PURPLE.2),
+        "IRIS CONFIGURATION"
+            .truecolor(NEON_CYAN.0, NEON_CYAN.1, NEON_CYAN.2)
+            .bold(),
+        "━━━".truecolor(ELECTRIC_PURPLE.0, ELECTRIC_PURPLE.1, ELECTRIC_PURPLE.2)
     );
     println!();
 
-    // Global settings section
-    println!("{}", "Global Settings".bright_magenta().bold().underline());
-    println!();
+    // Global Settings
+    print_section_header("GLOBAL");
 
-    let provider_label = "Default Provider:".bright_cyan().bold();
-    let provider_value = config.default_provider.bright_white();
-    println!("  {} {} {}", "🔹".cyan(), provider_label, provider_value);
+    print_config_row("Provider", &config.default_provider, NEON_CYAN, true);
+    print_config_row(
+        "Gitmoji",
+        if config.use_gitmoji {
+            "enabled"
+        } else {
+            "disabled"
+        },
+        if config.use_gitmoji {
+            SUCCESS_GREEN
+        } else {
+            DIM_WHITE
+        },
+        false,
+    );
+    print_config_row("Preset", &config.instruction_preset, ELECTRIC_YELLOW, false);
 
-    let gitmoji_label = "Use Gitmoji:".bright_cyan().bold();
-    let gitmoji_value = if config.use_gitmoji {
-        "Yes".bright_green()
-    } else {
-        "No".bright_red()
-    };
-    println!("  {} {} {}", "🔹".cyan(), gitmoji_label, gitmoji_value);
-
-    let preset_label = "Instruction Preset:".bright_cyan().bold();
-    let preset_value = config.instruction_preset.bright_yellow();
-    println!("  {} {} {}", "🔹".cyan(), preset_label, preset_value);
-
-    println!();
-
-    // Instructions section (if any)
+    // Custom Instructions (if any)
     if !config.instructions.is_empty() {
-        println!("{}", "Custom Instructions".bright_blue().bold().underline());
         println!();
-
-        // Display full instructions, preserving newlines
-        config.instructions.lines().for_each(|line| {
-            println!("  {}", line.bright_white().italic());
-        });
-
-        println!();
+        print_section_header("INSTRUCTIONS");
+        for line in config.instructions.lines() {
+            println!(
+                "  {}",
+                line.truecolor(DIM_WHITE.0, DIM_WHITE.1, DIM_WHITE.2)
+                    .italic()
+            );
+        }
     }
 
-    // Provider configurations
-    for (provider, provider_config) in &config.providers {
-        println!(
-            "{}",
-            format!("Provider: {provider}")
-                .bright_green()
-                .bold()
-                .underline()
-        );
+    // Show all configured providers (those with API keys), sorted alphabetically
+    let mut providers: Vec<_> = config
+        .providers
+        .iter()
+        .filter(|(_, cfg)| !cfg.api_key.is_empty())
+        .collect();
+    providers.sort_by_key(|(name, _)| name.as_str());
+
+    for (provider_name, provider_config) in providers {
         println!();
-
-        // API Key status with lock emoji
-        let api_key_label = "API Key:".yellow().bold();
-        let api_key_value = if provider_config.api_key.is_empty() {
-            "Not set".bright_red().italic()
+        let is_active = provider_name == &config.default_provider;
+        let header = if is_active {
+            format!("{} ✦", provider_name.to_uppercase())
         } else {
-            "Set ✓".bright_green()
+            provider_name.to_uppercase()
         };
-        println!("  {} {} {}", "🔒".yellow(), api_key_label, api_key_value);
+        print_section_header(&header);
 
-        // Model with sparkle emoji
-        let model_label = "Model:".yellow().bold();
-        let model_value = provider_config.model.bright_cyan();
-        println!("  {} {} {}", "✨".yellow(), model_label, model_value);
+        // Model
+        print_config_row("Model", &provider_config.model, NEON_CYAN, true);
 
-        // Fast model with lightning emoji
-        let fast_model_label = "Fast Model:".yellow().bold();
-        let fast_model_value = provider_config
-            .fast_model
-            .as_ref()
-            .map_or("Default".bright_yellow(), |m| m.bright_cyan());
-        println!(
-            "  {} {} {}",
-            "⚡".yellow(),
-            fast_model_label,
-            fast_model_value
-        );
+        // Fast Model
+        let fast_model = provider_config.fast_model.as_deref().unwrap_or("(default)");
+        print_config_row("Fast Model", fast_model, NEON_CYAN, false);
 
-        // Token limit with gauge emoji
-        let token_limit_label = "Token Limit:".yellow().bold();
-        let token_limit_value = provider_config
-            .token_limit
-            .map_or("Default".bright_yellow(), |limit| {
-                limit.to_string().bright_white()
-            });
-        println!(
-            "  {} {} {}",
-            "🔢".yellow(),
-            token_limit_label,
-            token_limit_value
-        );
-
-        // Additional parameters if any
-        if !provider_config.additional_params.is_empty() {
-            let params_label = "Additional Parameters:".yellow().bold();
-            println!("  {} {}", "🔧".yellow(), params_label);
-
-            for (key, value) in &provider_config.additional_params {
-                println!("    - {}: {}", key.bright_blue(), value.bright_white());
-            }
+        // Token Limit
+        if let Some(limit) = provider_config.token_limit {
+            print_config_row("Token Limit", &limit.to_string(), CORAL, false);
         }
 
-        println!();
+        // Additional Parameters
+        if !provider_config.additional_params.is_empty() {
+            println!(
+                "  {} {}",
+                "Params".truecolor(DIM_WHITE.0, DIM_WHITE.1, DIM_WHITE.2),
+                "─".truecolor(DIM_SEPARATOR.0, DIM_SEPARATOR.1, DIM_SEPARATOR.2)
+            );
+            for (key, value) in &provider_config.additional_params {
+                println!(
+                    "    {} {} {}",
+                    key.truecolor(NEON_CYAN.0, NEON_CYAN.1, NEON_CYAN.2),
+                    "→".truecolor(DIM_SEPARATOR.0, DIM_SEPARATOR.1, DIM_SEPARATOR.2),
+                    value.truecolor(DIM_WHITE.0, DIM_WHITE.1, DIM_WHITE.2)
+                );
+            }
+        }
     }
+
+    println!();
+    println!(
+        "{}",
+        "─"
+            .repeat(40)
+            .truecolor(DIM_SEPARATOR.0, DIM_SEPARATOR.1, DIM_SEPARATOR.2)
+    );
+    println!();
+}
+
+/// Print a section header in `SilkCircuit` style
+fn print_section_header(name: &str) {
+    println!(
+        "{} {} {}",
+        "─".truecolor(ELECTRIC_PURPLE.0, ELECTRIC_PURPLE.1, ELECTRIC_PURPLE.2),
+        name.truecolor(ELECTRIC_PURPLE.0, ELECTRIC_PURPLE.1, ELECTRIC_PURPLE.2)
+            .bold(),
+        "─".repeat(30 - name.len().min(28)).truecolor(
+            DIM_SEPARATOR.0,
+            DIM_SEPARATOR.1,
+            DIM_SEPARATOR.2
+        )
+    );
+}
+
+/// Print a config row with label and value
+fn print_config_row(label: &str, value: &str, value_color: (u8, u8, u8), highlight: bool) {
+    let label_styled = format!("{label:>12}").truecolor(DIM_WHITE.0, DIM_WHITE.1, DIM_WHITE.2);
+
+    let value_styled = if highlight {
+        value
+            .truecolor(value_color.0, value_color.1, value_color.2)
+            .bold()
+    } else {
+        value.truecolor(value_color.0, value_color.1, value_color.2)
+    };
+
+    println!("{label_styled}  {value_styled}");
 }
 
 /// Parse additional parameters from the command line

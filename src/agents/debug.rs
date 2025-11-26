@@ -7,6 +7,9 @@
 //! - JSON parsing and validation
 //! - Error states and recovery
 
+use crate::ui::rgb::{
+    CORAL, ELECTRIC_PURPLE, ELECTRIC_YELLOW, ERROR_RED, NEON_CYAN, SUCCESS_GREEN,
+};
 use colored::Colorize;
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
@@ -17,13 +20,6 @@ use std::time::{Duration, Instant};
 #[cfg(unix)]
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 
-// SilkCircuit Neon Color Palette
-const ELECTRIC_PURPLE: (u8, u8, u8) = (225, 53, 255);
-const NEON_CYAN: (u8, u8, u8) = (128, 255, 234);
-const CORAL: (u8, u8, u8) = (255, 106, 193);
-const ELECTRIC_YELLOW: (u8, u8, u8) = (241, 250, 140);
-const SUCCESS_GREEN: (u8, u8, u8) = (80, 250, 123);
-const ERROR_RED: (u8, u8, u8) = (255, 99, 99);
 const DEBUG_DIR_ENV: &str = "GIT_IRIS_DEBUG_DIR";
 
 /// Global debug mode flag

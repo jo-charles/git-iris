@@ -9,6 +9,19 @@ use std::time::Duration;
 // SilkCircuit Neon — Electric meets elegant
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// RGB tuple constants for use with the `colored` crate's `.truecolor()` method
+pub mod rgb {
+    pub const ELECTRIC_PURPLE: (u8, u8, u8) = (225, 53, 255);
+    pub const NEON_CYAN: (u8, u8, u8) = (128, 255, 234);
+    pub const CORAL: (u8, u8, u8) = (255, 106, 193);
+    pub const ELECTRIC_YELLOW: (u8, u8, u8) = (241, 250, 140);
+    pub const SUCCESS_GREEN: (u8, u8, u8) = (80, 250, 123);
+    pub const ERROR_RED: (u8, u8, u8) = (255, 99, 99);
+    pub const DIM_WHITE: (u8, u8, u8) = (180, 180, 190);
+    pub const DIM_SEPARATOR: (u8, u8, u8) = (60, 60, 70);
+}
+
+// Ratatui Color constants for TUI rendering
 /// Electric Purple #e135ff — Keywords, control flow, importance
 pub const ELECTRIC_PURPLE: Color = Color::Rgb(225, 53, 255);
 /// Pure Pink #ff00ff — Tags, booleans, maximum emphasis
