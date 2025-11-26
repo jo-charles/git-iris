@@ -608,8 +608,8 @@ Guidelines:
             }
         }
 
-        // Handle commit/PR specific styling
-        if capability == "commit" || capability == "pr" {
+        // Handle commit-specific styling (structured JSON output with emoji field)
+        if capability == "commit" {
             if gitmoji_enabled {
                 system_prompt.push_str("\n\n=== GITMOJI INSTRUCTIONS ===\n");
                 system_prompt.push_str("Set the 'emoji' field to a single relevant gitmoji. ");
@@ -625,6 +625,28 @@ Guidelines:
                 system_prompt
                     .push_str("DO NOT include any emojis in the commit message or PR title. ");
                 system_prompt.push_str("The 'emoji' field should be null.");
+            }
+        }
+
+        // Handle PR/review styling (markdown output with inline emojis)
+        if capability == "pr" || capability == "review" {
+            if gitmoji_enabled {
+                system_prompt.push_str("\n\n=== EMOJI STYLING ===\n");
+                system_prompt.push_str(
+                    "Include ONE relevant gitmoji at the start of the H1 title to indicate the primary type of change. ",
+                );
+                system_prompt.push_str(
+                    "You may optionally add emojis to section headers (## headings) for visual structure. ",
+                );
+                system_prompt.push_str(
+                    "Keep prose content clean - no scattered emojis within sentences or bullet points. ",
+                );
+                system_prompt.push_str("Choose from this gitmoji list:\n\n");
+                system_prompt.push_str(&crate::gitmoji::get_gitmoji_list());
+            } else if is_conventional {
+                system_prompt.push_str("\n\n=== CONVENTIONAL STYLE ===\n");
+                system_prompt.push_str("DO NOT include any emojis anywhere in the output. ");
+                system_prompt.push_str("Keep all titles and content plain text without emojis.");
             }
         }
 

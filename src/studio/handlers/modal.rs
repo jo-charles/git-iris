@@ -1,8 +1,8 @@
 //! Modal key handling for Iris Studio
 
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent};
 
-use crate::studio::state::{Modal, Notification, RefSelectorTarget, StudioState};
+use crate::studio::state::{EmojiMode, Modal, Notification, RefSelectorTarget, StudioState};
 
 use super::{Action, IrisQueryRequest};
 
@@ -20,6 +20,7 @@ pub fn handle_modal_key(state: &mut StudioState, key: KeyEvent) -> Action {
         Some(Modal::Chat(_)) => handle_chat_modal(state, key),
         Some(Modal::RefSelector { .. }) => handle_ref_selector_modal(state, key),
         Some(Modal::PresetSelector { .. }) => handle_preset_selector_modal(state, key),
+        Some(Modal::EmojiSelector { .. }) => handle_emoji_selector_modal(state, key),
         None => Action::None,
     }
 }
@@ -206,13 +207,26 @@ fn handle_preset_selector_modal(state: &mut StudioState, key: KeyEvent) -> Actio
             Action::Redraw
         }
         KeyCode::Enter => {
-            // Apply selection
+            // Apply selection and auto-regenerate
             if let Some(preset) = filtered.get(selected) {
                 state.modes.commit.preset.clone_from(&preset.key);
                 state.notify(Notification::info(format!(
-                    "Preset: {} {}",
+                    "Preset: {} {} - regenerating...",
                     preset.emoji, preset.name
                 )));
+                let preset_key = preset.key.clone();
+                state.close_modal();
+                state.set_iris_thinking("Generating commit message...");
+                state.modes.commit.generating = true;
+                return Action::IrisQuery(IrisQueryRequest::GenerateCommit {
+                    instructions: if state.modes.commit.custom_instructions.is_empty() {
+                        None
+                    } else {
+                        Some(state.modes.commit.custom_instructions.clone())
+                    },
+                    preset: preset_key,
+                    use_gitmoji: state.modes.commit.emoji_mode != EmojiMode::None,
+                });
             }
             state.close_modal();
             Action::Redraw
@@ -413,6 +427,134 @@ fn handle_ref_selector_modal(state: &mut StudioState, key: KeyEvent) -> Action {
             {
                 input.pop();
                 *selected = 0;
+            }
+            state.mark_dirty();
+            Action::Redraw
+        }
+        _ => Action::None,
+    }
+}
+
+fn handle_emoji_selector_modal(state: &mut StudioState, key: KeyEvent) -> Action {
+    // Visible items in the list
+    const VISIBLE_ITEMS: usize = 18;
+
+    // Get current state for filtering
+    let (input, emojis, selected) = if let Some(Modal::EmojiSelector {
+        input,
+        emojis,
+        selected,
+        ..
+    }) = &state.modal
+    {
+        (input.clone(), emojis.clone(), *selected)
+    } else {
+        return Action::None;
+    };
+
+    // Filter emojis based on input
+    let filtered: Vec<_> = emojis
+        .iter()
+        .filter(|e| {
+            input.is_empty()
+                || e.key.to_lowercase().contains(&input.to_lowercase())
+                || e.description.to_lowercase().contains(&input.to_lowercase())
+                || e.emoji.contains(&input)
+        })
+        .collect();
+
+    match key.code {
+        KeyCode::Esc => {
+            state.close_modal();
+            Action::Redraw
+        }
+        KeyCode::Enter => {
+            // Apply selection
+            if let Some(emoji_info) = filtered.get(selected) {
+                let new_mode = match emoji_info.key.as_str() {
+                    "none" => EmojiMode::None,
+                    "auto" => EmojiMode::Auto,
+                    _ => EmojiMode::Custom(emoji_info.emoji.clone()),
+                };
+                state.modes.commit.emoji_mode = new_mode.clone();
+                // Sync legacy flag
+                state.modes.commit.use_gitmoji = new_mode != EmojiMode::None;
+                let status = match &new_mode {
+                    EmojiMode::None => "off".to_string(),
+                    EmojiMode::Auto => "auto".to_string(),
+                    EmojiMode::Custom(e) => format!("{} ({})", e, emoji_info.key),
+                };
+                state.notify(Notification::info(format!("Emoji: {}", status)));
+            }
+            state.close_modal();
+            Action::Redraw
+        }
+        KeyCode::Up => {
+            if let Some(Modal::EmojiSelector {
+                selected, scroll, ..
+            }) = &mut state.modal
+            {
+                *selected = selected.saturating_sub(1);
+                if *selected < *scroll {
+                    *scroll = *selected;
+                }
+            }
+            state.mark_dirty();
+            Action::Redraw
+        }
+        KeyCode::Down => {
+            if let Some(Modal::EmojiSelector {
+                selected,
+                scroll,
+                emojis,
+                input,
+            }) = &mut state.modal
+            {
+                let filtered_len = emojis
+                    .iter()
+                    .filter(|e| {
+                        input.is_empty()
+                            || e.key.to_lowercase().contains(&input.to_lowercase())
+                            || e.description.to_lowercase().contains(&input.to_lowercase())
+                            || e.emoji.contains(input.as_str())
+                    })
+                    .count();
+                if *selected + 1 < filtered_len {
+                    *selected += 1;
+                    if *selected >= *scroll + VISIBLE_ITEMS {
+                        *scroll = *selected - VISIBLE_ITEMS + 1;
+                    }
+                }
+            }
+            state.mark_dirty();
+            Action::Redraw
+        }
+        KeyCode::Char(c) => {
+            if let Some(Modal::EmojiSelector {
+                input,
+                selected,
+                scroll,
+                ..
+            }) = &mut state.modal
+            {
+                input.push(c);
+                *selected = 0;
+                *scroll = 0;
+            }
+            state.mark_dirty();
+            Action::Redraw
+        }
+        KeyCode::Backspace => {
+            if let Some(Modal::EmojiSelector {
+                input,
+                selected,
+                scroll,
+                ..
+            }) = &mut state.modal
+            {
+                input.pop();
+                *selected = 0;
+                *scroll = 0;
             }
             state.mark_dirty();
             Action::Redraw

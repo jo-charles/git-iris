@@ -2,7 +2,7 @@
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-use crate::studio::state::{Modal, PanelId, StudioState};
+use crate::studio::state::{EmojiMode, Modal, PanelId, StudioState};
 
 use super::{Action, IrisQueryRequest, copy_to_clipboard};
 
@@ -122,21 +122,6 @@ fn handle_files_key(state: &mut StudioState, key: KeyEvent) -> Action {
             state.mark_dirty();
             Action::Redraw
         }
-        KeyCode::Char('E') => {
-            // Toggle gitmoji
-            state.modes.commit.use_gitmoji = !state.modes.commit.use_gitmoji;
-            let status = if state.modes.commit.use_gitmoji {
-                "enabled"
-            } else {
-                "disabled"
-            };
-            state.notify(crate::studio::state::Notification::info(format!(
-                "Gitmoji {}",
-                status
-            )));
-            state.mark_dirty();
-            Action::Redraw
-        }
 
         KeyCode::Enter => {
             // Toggle expand for directories, or select file and move to diff view
@@ -229,7 +214,7 @@ fn handle_message_key(state: &mut StudioState, key: KeyEvent) -> Action {
                     Some(state.modes.commit.custom_instructions.clone())
                 },
                 preset: state.modes.commit.preset.clone(),
-                use_gitmoji: state.modes.commit.use_gitmoji,
+                use_gitmoji: state.modes.commit.emoji_mode != EmojiMode::None,
             })
         }
 
@@ -245,6 +230,49 @@ fn handle_message_key(state: &mut StudioState, key: KeyEvent) -> Action {
             state.modal = Some(Modal::Instructions {
                 input: state.modes.commit.custom_instructions.clone(),
             });
+            state.mark_dirty();
+            Action::Redraw
+        }
+
+        // Open emoji selector
+        KeyCode::Char('g') => {
+            let emojis = state.get_emoji_list();
+            // Find current selection index
+            let selected = match &state.modes.commit.emoji_mode {
+                EmojiMode::None => 0,
+                EmojiMode::Auto => 1,
+                EmojiMode::Custom(emoji) => emojis
+                    .iter()
+                    .position(|e| e.emoji == *emoji)
+                    .unwrap_or(1),
+            };
+            state.modal = Some(Modal::EmojiSelector {
+                input: String::new(),
+                emojis,
+                selected,
+                scroll: 0,
+            });
+            state.mark_dirty();
+            Action::Redraw
+        }
+
+        // Quick toggle emoji between None and Auto
+        KeyCode::Char('E') => {
+            state.modes.commit.emoji_mode = match state.modes.commit.emoji_mode {
+                EmojiMode::None => EmojiMode::Auto,
+                _ => EmojiMode::None,
+            };
+            // Sync legacy flag
+            state.modes.commit.use_gitmoji = state.modes.commit.emoji_mode != EmojiMode::None;
+            let status = match &state.modes.commit.emoji_mode {
+                EmojiMode::None => "off",
+                EmojiMode::Auto => "auto",
+                EmojiMode::Custom(e) => e,
+            };
+            state.notify(crate::studio::state::Notification::info(format!(
+                "Emoji: {}",
+                status
+            )));
             state.mark_dirty();
             Action::Redraw
         }

@@ -305,6 +305,29 @@ pub struct PresetInfo {
     pub emoji: String,
 }
 
+/// Emoji info for display in selector
+#[derive(Debug, Clone)]
+pub struct EmojiInfo {
+    /// The emoji character
+    pub emoji: String,
+    /// Short key/code (e.g., "feat", "fix")
+    pub key: String,
+    /// Description
+    pub description: String,
+}
+
+/// Emoji mode for commit messages
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum EmojiMode {
+    /// No emoji
+    None,
+    /// Let AI choose the emoji
+    #[default]
+    Auto,
+    /// User-selected specific emoji
+    Custom(String),
+}
+
 /// Active modal dialog
 pub enum Modal {
     /// Help overlay showing keybindings
@@ -334,6 +357,17 @@ pub enum Modal {
         input: String,
         /// Available presets
         presets: Vec<PresetInfo>,
+        /// Selected index
+        selected: usize,
+        /// Scroll offset for long lists
+        scroll: usize,
+    },
+    /// Emoji selector for commit messages
+    EmojiSelector {
+        /// Current input/filter
+        input: String,
+        /// Available emojis (None, Auto, then all gitmojis)
+        emojis: Vec<EmojiInfo>,
         /// Selected index
         selected: usize,
         /// Scroll offset for long lists
@@ -443,8 +477,10 @@ pub struct CommitState {
     pub editing_message: bool,
     /// Is generating new message
     pub generating: bool,
-    /// Use gitmoji
+    /// Use gitmoji (legacy toggle, replaced by `emoji_mode`)
     pub use_gitmoji: bool,
+    /// Current emoji mode (None, Auto, or Custom)
+    pub emoji_mode: EmojiMode,
     /// Current preset name
     pub preset: String,
     /// File tree state for staged files
@@ -465,6 +501,7 @@ impl Default for CommitState {
             editing_message: false,
             generating: false,
             use_gitmoji: true,
+            emoji_mode: EmojiMode::Auto,
             preset: "default".to_string(),
             file_tree: FileTreeState::new(),
             diff_view: DiffViewState::new(),
@@ -942,5 +979,41 @@ impl StudioState {
         });
 
         presets
+    }
+
+    /// Get list of emojis for selection (None, Auto, then all gitmojis)
+    pub fn get_emoji_list(&self) -> Vec<EmojiInfo> {
+        use crate::gitmoji::get_gitmoji_list;
+
+        let mut emojis = vec![
+            EmojiInfo {
+                emoji: "∅".to_string(),
+                key: "none".to_string(),
+                description: "No emoji".to_string(),
+            },
+            EmojiInfo {
+                emoji: "✨".to_string(),
+                key: "auto".to_string(),
+                description: "Let AI choose".to_string(),
+            },
+        ];
+
+        // Parse gitmoji list and add all entries
+        for line in get_gitmoji_list().lines() {
+            // Format: "emoji - :key: - description"
+            let parts: Vec<&str> = line.splitn(3, " - ").collect();
+            if parts.len() >= 3 {
+                let emoji = parts[0].trim().to_string();
+                let key = parts[1].trim_matches(':').to_string();
+                let description = parts[2].to_string();
+                emojis.push(EmojiInfo {
+                    emoji,
+                    key,
+                    description,
+                });
+            }
+        }
+
+        emojis
     }
 }

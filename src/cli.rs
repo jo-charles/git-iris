@@ -125,6 +125,10 @@ pub enum Commands {
         #[arg(short, long, help = "Print the generated review to stdout and exit")]
         print: bool,
 
+        /// Output raw markdown without any console formatting
+        #[arg(long, help = "Output raw markdown without any console formatting")]
+        raw: bool,
+
         /// Include unstaged changes in the review
         #[arg(long, help = "Include unstaged changes in the review")]
         include_unstaged: bool,
@@ -168,6 +172,10 @@ pub enum Commands {
         )]
         print: bool,
 
+        /// Output raw markdown without any console formatting
+        #[arg(long, help = "Output raw markdown without any console formatting")]
+        raw: bool,
+
         /// Starting branch, commit, or commitish for comparison
         #[arg(
             long,
@@ -200,6 +208,10 @@ pub enum Commands {
         #[arg(long)]
         to: Option<String>,
 
+        /// Output raw markdown without any console formatting
+        #[arg(long, help = "Output raw markdown without any console formatting")]
+        raw: bool,
+
         /// Update the changelog file with the new changes
         #[arg(long, help = "Update the changelog file with the new changes")]
         update: bool,
@@ -229,6 +241,10 @@ pub enum Commands {
         /// Ending Git reference (commit hash, tag, or branch name). Defaults to HEAD if not specified.
         #[arg(long)]
         to: Option<String>,
+
+        /// Output raw markdown without any console formatting
+        #[arg(long, help = "Output raw markdown without any console formatting")]
+        raw: bool,
 
         /// Explicit version name to use in the release notes instead of getting it from Git
         #[arg(long, help = "Explicit version name to use in the release notes")]
@@ -598,6 +614,7 @@ fn handle_config(
 async fn handle_review(
     common: CommonParams,
     print: bool,
+    raw: bool,
     repository_url: Option<String>,
     include_unstaged: bool,
     commit: Option<String>,
@@ -605,34 +622,40 @@ async fn handle_review(
     to: Option<String>,
 ) -> anyhow::Result<()> {
     log_debug!(
-        "Handling 'review' command with common: {:?}, print: {}, include_unstaged: {}, commit: {:?}, from: {:?}, to: {:?}",
+        "Handling 'review' command with common: {:?}, print: {}, raw: {}, include_unstaged: {}, commit: {:?}, from: {:?}, to: {:?}",
         common,
         print,
+        raw,
         include_unstaged,
         commit,
         from,
         to
     );
 
-    ui::print_version(crate_version!());
-    ui::print_newline();
+    // For raw output, skip all formatting
+    if !raw {
+        ui::print_version(crate_version!());
+        ui::print_newline();
+    }
 
     use crate::agents::{IrisAgentService, TaskContext};
 
     // Validate parameters and create structured context
     let context = TaskContext::for_review(commit, from, to, include_unstaged)?;
 
-    // Create spinner for progress indication
-    let spinner = ui::create_spinner("Initializing Iris...");
+    // Create spinner for progress indication (skip for raw output)
+    let spinner = if raw { None } else { Some(ui::create_spinner("Initializing Iris...")) };
 
     // Use IrisAgentService for agent execution
     let service = IrisAgentService::from_common_params(&common, repository_url)?;
     let response = service.execute_task("review", context).await?;
 
     // Finish spinner
-    spinner.finish_and_clear();
+    if let Some(s) = spinner {
+        s.finish_and_clear();
+    }
 
-    if print {
+    if raw || print {
         println!("{response}");
     } else {
         ui::print_success("Code review completed successfully");
@@ -642,27 +665,33 @@ async fn handle_review(
 }
 
 /// Handle the `Changelog` command
+#[allow(clippy::too_many_arguments)]
 async fn handle_changelog(
     common: CommonParams,
     from: String,
     to: Option<String>,
+    raw: bool,
     repository_url: Option<String>,
     update: bool,
     file: Option<String>,
     version_name: Option<String>,
 ) -> anyhow::Result<()> {
     log_debug!(
-        "Handling 'changelog' command with common: {:?}, from: {}, to: {:?}, update: {}, file: {:?}, version_name: {:?}",
+        "Handling 'changelog' command with common: {:?}, from: {}, to: {:?}, raw: {}, update: {}, file: {:?}, version_name: {:?}",
         common,
         from,
         to,
+        raw,
         update,
         file,
         version_name
     );
 
-    ui::print_version(crate_version!());
-    ui::print_newline();
+    // For raw output, skip all formatting
+    if !raw {
+        ui::print_version(crate_version!());
+        ui::print_newline();
+    }
 
     use crate::agents::{IrisAgentService, TaskContext};
     use crate::changelog::ChangelogGenerator;
@@ -674,15 +703,17 @@ async fn handle_changelog(
     let context = TaskContext::for_changelog(from.clone(), to.clone());
     let to_ref = to.unwrap_or_else(|| "HEAD".to_string());
 
-    // Create spinner for progress indication
-    let spinner = ui::create_spinner("Initializing Iris...");
+    // Create spinner for progress indication (skip for raw output)
+    let spinner = if raw { None } else { Some(ui::create_spinner("Initializing Iris...")) };
 
     // Use IrisAgentService for agent execution
     let service = IrisAgentService::from_common_params(&common, repository_url.clone())?;
     let response = service.execute_task("changelog", context).await?;
 
     // Finish spinner
-    spinner.finish_and_clear();
+    if let Some(s) = spinner {
+        s.finish_and_clear();
+    }
 
     // Print the changelog
     println!("{response}");
@@ -740,33 +771,40 @@ async fn handle_release_notes(
     common: CommonParams,
     from: String,
     to: Option<String>,
+    raw: bool,
     repository_url: Option<String>,
     _version_name: Option<String>,
 ) -> anyhow::Result<()> {
     log_debug!(
-        "Handling 'release-notes' command with common: {:?}, from: {}, to: {:?}",
+        "Handling 'release-notes' command with common: {:?}, from: {}, to: {:?}, raw: {}",
         common,
         from,
-        to
+        to,
+        raw
     );
 
-    ui::print_version(crate_version!());
-    ui::print_newline();
+    // For raw output, skip all formatting
+    if !raw {
+        ui::print_version(crate_version!());
+        ui::print_newline();
+    }
 
     use crate::agents::{IrisAgentService, TaskContext};
 
     // Create structured context for release notes
     let context = TaskContext::for_changelog(from, to);
 
-    // Create spinner for progress indication
-    let spinner = ui::create_spinner("Initializing Iris...");
+    // Create spinner for progress indication (skip for raw output)
+    let spinner = if raw { None } else { Some(ui::create_spinner("Initializing Iris...")) };
 
     // Use IrisAgentService for agent execution
     let service = IrisAgentService::from_common_params(&common, repository_url)?;
     let response = service.execute_task("release_notes", context).await?;
 
     // Finish spinner
-    spinner.finish_and_clear();
+    if let Some(s) = spinner {
+        s.finish_and_clear();
+    }
 
     println!("{response}");
     Ok(())
@@ -809,6 +847,7 @@ pub async fn handle_command(
         Commands::Review {
             common,
             print,
+            raw,
             include_unstaged,
             commit,
             from,
@@ -817,6 +856,7 @@ pub async fn handle_command(
             handle_review(
                 common,
                 print,
+                raw,
                 repository_url,
                 include_unstaged,
                 commit,
@@ -829,16 +869,18 @@ pub async fn handle_command(
             common,
             from,
             to,
+            raw,
             update,
             file,
             version_name,
-        } => handle_changelog(common, from, to, repository_url, update, file, version_name).await,
+        } => handle_changelog(common, from, to, raw, repository_url, update, file, version_name).await,
         Commands::ReleaseNotes {
             common,
             from,
             to,
+            raw,
             version_name,
-        } => handle_release_notes(common, from, to, repository_url, version_name).await,
+        } => handle_release_notes(common, from, to, raw, repository_url, version_name).await,
         Commands::ProjectConfig {
             common,
             model,
@@ -858,9 +900,10 @@ pub async fn handle_command(
         Commands::Pr {
             common,
             print,
+            raw,
             from,
             to,
-        } => handle_pr(common, print, from, to, repository_url).await,
+        } => handle_pr(common, print, raw, from, to, repository_url).await,
         Commands::Studio {
             common,
             mode,
@@ -874,6 +917,7 @@ pub async fn handle_command(
 async fn handle_pr_with_agent(
     common: CommonParams,
     print: bool,
+    raw: bool,
     from: Option<String>,
     to: Option<String>,
     repository_url: Option<String>,
@@ -881,8 +925,9 @@ async fn handle_pr_with_agent(
     use crate::agents::{IrisAgentService, StructuredResponse, TaskContext};
     use crate::instruction_presets::PresetType;
 
-    // Check if the preset is appropriate for PR descriptions
-    if !common.is_valid_preset_for_type(PresetType::Review)
+    // Check if the preset is appropriate for PR descriptions (skip for raw output)
+    if !raw
+        && !common.is_valid_preset_for_type(PresetType::Review)
         && !common.is_valid_preset_for_type(PresetType::Both)
     {
         ui::print_warning(
@@ -894,22 +939,24 @@ async fn handle_pr_with_agent(
     // Create structured context for PR (handles defaults: from=main, to=HEAD)
     let context = TaskContext::for_pr(from, to);
 
-    // Create spinner for progress indication
-    let spinner = ui::create_spinner("Initializing Iris...");
+    // Create spinner for progress indication (skip for raw output)
+    let spinner = if raw { None } else { Some(ui::create_spinner("Initializing Iris...")) };
 
     // Use IrisAgentService for agent execution
     let service = IrisAgentService::from_common_params(&common, repository_url)?;
     let response = service.execute_task("pr", context).await?;
 
     // Finish spinner
-    spinner.finish_and_clear();
+    if let Some(s) = spinner {
+        s.finish_and_clear();
+    }
 
     // Extract PR from response
     let StructuredResponse::PullRequest(generated_pr) = response else {
         return Err(anyhow::anyhow!("Expected pull request response"));
     };
 
-    if print {
+    if raw || print {
         println!("{}", generated_pr.format());
     } else {
         ui::print_success("PR description generated successfully");
@@ -923,22 +970,27 @@ async fn handle_pr_with_agent(
 async fn handle_pr(
     common: CommonParams,
     print: bool,
+    raw: bool,
     from: Option<String>,
     to: Option<String>,
     repository_url: Option<String>,
 ) -> anyhow::Result<()> {
     log_debug!(
-        "Handling 'pr' command with common: {:?}, print: {}, from: {:?}, to: {:?}",
+        "Handling 'pr' command with common: {:?}, print: {}, raw: {}, from: {:?}, to: {:?}",
         common,
         print,
+        raw,
         from,
         to
     );
 
-    ui::print_version(crate_version!());
-    ui::print_newline();
+    // For raw output, skip all formatting
+    if !raw {
+        ui::print_version(crate_version!());
+        ui::print_newline();
+    }
 
-    handle_pr_with_agent(common, print, from, to, repository_url).await
+    handle_pr_with_agent(common, print, raw, from, to, repository_url).await
 }
 
 /// Handle the `Studio` command
