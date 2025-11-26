@@ -74,6 +74,8 @@ pub struct StudioApp {
     iris_result_tx: mpsc::UnboundedSender<IrisTaskResult>,
     /// Last calculated layout for mouse hit testing
     last_layout: Option<LayoutAreas>,
+    /// Whether an explicit initial mode was set
+    explicit_mode_set: bool,
 }
 
 impl StudioApp {
@@ -94,7 +96,14 @@ impl StudioApp {
             iris_result_rx,
             iris_result_tx,
             last_layout: None,
+            explicit_mode_set: false,
         }
+    }
+
+    /// Set explicit initial mode
+    pub fn set_initial_mode(&mut self, mode: Mode) {
+        self.state.switch_mode(mode);
+        self.explicit_mode_set = true;
     }
 
     /// Update git status from repository
@@ -252,12 +261,17 @@ impl StudioApp {
         // Refresh git status on start
         let _ = self.refresh_git_status();
 
-        // Set initial mode based on repo state
-        let suggested_mode = self.state.suggest_initial_mode();
-        self.state.switch_mode(suggested_mode);
+        // Set initial mode based on repo state (only if no explicit mode was set)
+        let current_mode = if self.explicit_mode_set {
+            self.state.active_mode
+        } else {
+            let suggested_mode = self.state.suggest_initial_mode();
+            self.state.switch_mode(suggested_mode);
+            suggested_mode
+        };
 
         // Auto-generate commit message if entering Commit mode with staged changes
-        if suggested_mode == Mode::Commit && self.state.git_status.has_staged() {
+        if current_mode == Mode::Commit && self.state.git_status.has_staged() {
             self.auto_generate_commit();
         }
 
@@ -756,7 +770,7 @@ impl StudioApp {
                 80.min(area.width.saturating_sub(4)),
                 (area.height * 3 / 4).min(area.height.saturating_sub(4)),
             ),
-            Modal::Help => (60.min(area.width.saturating_sub(4)), 20),
+            Modal::Help => (70.min(area.width.saturating_sub(4)), 30),
             Modal::Instructions { .. } => (60.min(area.width.saturating_sub(4)), 8),
             Modal::Search { .. } => (60.min(area.width.saturating_sub(4)), 15),
             Modal::Confirm { .. } => (60.min(area.width.saturating_sub(4)), 6),
@@ -783,22 +797,45 @@ impl StudioApp {
                 let help_text = vec![
                     Line::from(Span::styled(
                         "Global",
-                        Style::default().add_modifier(Modifier::BOLD),
+                        Style::default()
+                            .fg(theme::NEON_CYAN)
+                            .add_modifier(Modifier::BOLD),
                     )),
-                    Line::from("  q        Quit"),
-                    Line::from("  ?        Help"),
-                    Line::from("  Tab      Next panel"),
-                    Line::from("  E/C/R    Switch mode"),
+                    Line::from("  q          Quit                 /   Chat with Iris"),
+                    Line::from("  ?          This help            Tab Next panel"),
+                    Line::from("  Shift+E    Explore mode         Shift+C  Commit mode"),
+                    Line::from("  Shift+R    Review mode          Shift+P  PR mode"),
+                    Line::from("  Shift+L    Changelog mode"),
+                    Line::from(""),
+                    Line::from(Span::styled(
+                        "Navigation (all modes)",
+                        Style::default()
+                            .fg(theme::NEON_CYAN)
+                            .add_modifier(Modifier::BOLD),
+                    )),
+                    Line::from("  j/k        Down/up              g/G  Top/bottom"),
+                    Line::from("  h/l        Collapse/expand      Enter Select"),
                     Line::from(""),
                     Line::from(Span::styled(
                         "Commit Mode",
-                        Style::default().add_modifier(Modifier::BOLD),
+                        Style::default()
+                            .fg(theme::NEON_CYAN)
+                            .add_modifier(Modifier::BOLD),
                     )),
-                    Line::from("  r        Generate message"),
-                    Line::from("  i        Custom instructions"),
-                    Line::from("  e        Edit message"),
-                    Line::from("  n/p      Cycle messages"),
-                    Line::from("  Enter    Commit"),
+                    Line::from("  r          Generate message     i   With instructions"),
+                    Line::from("  e          Edit message         n/p Cycle alternatives"),
+                    Line::from("  Enter      Commit changes"),
+                    Line::from(""),
+                    Line::from(Span::styled(
+                        "Review / PR / Changelog",
+                        Style::default()
+                            .fg(theme::NEON_CYAN)
+                            .add_modifier(Modifier::BOLD),
+                    )),
+                    Line::from("  f          Select from ref      t   Select to ref"),
+                    Line::from("  r          Generate             R   Reset"),
+                    Line::from(""),
+                    Line::from(Span::styled("Press any key to close", theme::dimmed())),
                 ];
                 let paragraph = Paragraph::new(help_text);
                 frame.render_widget(paragraph, inner);
@@ -960,9 +997,12 @@ impl StudioApp {
                 use super::state::RefSelectorTarget;
 
                 let title = match target {
-                    RefSelectorTarget::PrBase => " Select Base Branch ",
-                    RefSelectorTarget::ChangelogFrom => " Select From Version ",
-                    RefSelectorTarget::ChangelogTo => " Select To Version ",
+                    RefSelectorTarget::ReviewFrom => " Select Review From Ref ",
+                    RefSelectorTarget::ReviewTo => " Select Review To Ref ",
+                    RefSelectorTarget::PrFrom => " Select PR Base (From) ",
+                    RefSelectorTarget::PrTo => " Select PR Target (To) ",
+                    RefSelectorTarget::ChangelogFrom => " Select Changelog From ",
+                    RefSelectorTarget::ChangelogTo => " Select Changelog To ",
                 };
 
                 let block = Block::default()
@@ -1317,9 +1357,15 @@ impl StudioApp {
 
         match panel_id {
             PanelId::Left => {
-                // Render commits list
+                // Render commits list with ref info
+                let title = format!(
+                    " {} → {} ({}) [f/t] ",
+                    self.state.modes.pr.base_branch,
+                    self.state.modes.pr.to_ref,
+                    self.state.modes.pr.commits.len()
+                );
                 let block = Block::default()
-                    .title(format!(" Commits ({}) ", self.state.modes.pr.commits.len()))
+                    .title(title)
                     .borders(Borders::ALL)
                     .border_style(if is_focused {
                         theme::focused_border()
@@ -1577,12 +1623,26 @@ pub fn run_studio(
     commit_service: Option<Arc<GitCommitService>>,
     agent_service: Option<Arc<IrisAgentService>>,
     initial_mode: Option<Mode>,
+    from_ref: Option<String>,
+    to_ref: Option<String>,
 ) -> Result<()> {
     let mut app = StudioApp::new(config, repo, commit_service, agent_service);
 
     // Set initial mode if specified
     if let Some(mode) = initial_mode {
-        app.state.switch_mode(mode);
+        app.set_initial_mode(mode);
+    }
+
+    // Set comparison refs if specified (applies to Review, PR, and Changelog modes)
+    if let Some(from) = from_ref {
+        app.state.modes.review.from_ref = from.clone();
+        app.state.modes.pr.base_branch = from.clone();
+        app.state.modes.changelog.from_version = from;
+    }
+    if let Some(to) = to_ref {
+        app.state.modes.review.to_ref = to.clone();
+        app.state.modes.pr.to_ref = to.clone();
+        app.state.modes.changelog.to_version = to;
     }
 
     // Run the app

@@ -229,22 +229,33 @@ fn handle_modal_key(state: &mut StudioState, key: KeyEvent) -> Action {
                 KeyCode::Enter => {
                     // Apply selection
                     if let Some(selected_ref) = filtered.get(*selected) {
-                        let selected_ref = (*selected_ref).clone();
-                        match target {
-                            RefSelectorTarget::PrBase => {
-                                state.modes.pr.base_branch = selected_ref;
-                                state.notify(Notification::info(format!(
-                                    "Base branch set to {}",
-                                    state.modes.pr.base_branch
-                                )));
+                        let label = match target {
+                            RefSelectorTarget::ReviewFrom => {
+                                state.modes.review.from_ref.clone_from(selected_ref);
+                                "Review from"
+                            }
+                            RefSelectorTarget::ReviewTo => {
+                                state.modes.review.to_ref.clone_from(selected_ref);
+                                "Review to"
+                            }
+                            RefSelectorTarget::PrFrom => {
+                                state.modes.pr.base_branch.clone_from(selected_ref);
+                                "PR base"
+                            }
+                            RefSelectorTarget::PrTo => {
+                                state.modes.pr.to_ref.clone_from(selected_ref);
+                                "PR target"
                             }
                             RefSelectorTarget::ChangelogFrom => {
-                                state.modes.changelog.from_version = selected_ref;
+                                state.modes.changelog.from_version.clone_from(selected_ref);
+                                "Changelog from"
                             }
                             RefSelectorTarget::ChangelogTo => {
-                                state.modes.changelog.to_version = selected_ref;
+                                state.modes.changelog.to_version.clone_from(selected_ref);
+                                "Changelog to"
                             }
-                        }
+                        };
+                        state.notify(Notification::info(format!("{label} set to {selected_ref}")));
                     }
                     state.close_modal();
                     Action::Redraw
@@ -332,8 +343,8 @@ fn handle_global_key(state: &mut StudioState, key: KeyEvent) -> Option<Action> {
             Some(Action::Redraw)
         }
 
-        // Mode switching
-        KeyCode::Char('E') if key.modifiers.contains(KeyModifiers::SHIFT) || !is_editing(state) => {
+        // Mode switching (Shift+letter)
+        KeyCode::Char('E') if key.modifiers.contains(KeyModifiers::SHIFT) => {
             state.switch_mode(Mode::Explore);
             Some(Action::Redraw)
         }
@@ -830,6 +841,8 @@ fn sync_review_file_selection(state: &mut StudioState) {
 }
 
 fn handle_review_files_key(state: &mut StudioState, key: KeyEvent) -> Action {
+    use super::state::RefSelectorTarget;
+
     match key.code {
         KeyCode::Char('j') | KeyCode::Down => {
             state.modes.review.file_tree.select_next();
@@ -874,6 +887,28 @@ fn handle_review_files_key(state: &mut StudioState, key: KeyEvent) -> Action {
                     state.focused_panel = super::state::PanelId::Center;
                 }
             }
+            state.mark_dirty();
+            Action::Redraw
+        }
+        // Select from ref
+        KeyCode::Char('f') => {
+            state.modal = Some(Modal::RefSelector {
+                input: String::new(),
+                refs: state.get_branch_refs(),
+                selected: 0,
+                target: RefSelectorTarget::ReviewFrom,
+            });
+            state.mark_dirty();
+            Action::Redraw
+        }
+        // Select to ref
+        KeyCode::Char('t') => {
+            state.modal = Some(Modal::RefSelector {
+                input: String::new(),
+                refs: state.get_branch_refs(),
+                selected: 0,
+                target: RefSelectorTarget::ReviewTo,
+            });
             state.mark_dirty();
             Action::Redraw
         }
@@ -1028,14 +1063,24 @@ fn handle_pr_commits_key(state: &mut StudioState, key: KeyEvent) -> Action {
             }
             Action::Redraw
         }
-        // Select base branch
-        KeyCode::Char('b') => {
-            // Open ref selector for base branch
+        // Select from ref (base branch)
+        KeyCode::Char('f') => {
             state.modal = Some(Modal::RefSelector {
                 input: String::new(),
                 refs: state.get_branch_refs(),
                 selected: 0,
-                target: RefSelectorTarget::PrBase,
+                target: RefSelectorTarget::PrFrom,
+            });
+            state.mark_dirty();
+            Action::Redraw
+        }
+        // Select to ref
+        KeyCode::Char('t') => {
+            state.modal = Some(Modal::RefSelector {
+                input: String::new(),
+                refs: state.get_branch_refs(),
+                selected: 0,
+                target: RefSelectorTarget::PrTo,
             });
             state.mark_dirty();
             Action::Redraw
@@ -1156,8 +1201,34 @@ fn handle_pr_output_key(state: &mut StudioState, key: KeyEvent) -> Action {
     }
 }
 
-fn handle_changelog_key(_state: &mut StudioState, _key: KeyEvent) -> Action {
-    Action::None
+fn handle_changelog_key(state: &mut StudioState, key: KeyEvent) -> Action {
+    use super::state::RefSelectorTarget;
+
+    match key.code {
+        // Select from ref
+        KeyCode::Char('f') => {
+            state.modal = Some(Modal::RefSelector {
+                input: String::new(),
+                refs: state.get_branch_refs(),
+                selected: 0,
+                target: RefSelectorTarget::ChangelogFrom,
+            });
+            state.mark_dirty();
+            Action::Redraw
+        }
+        // Select to ref
+        KeyCode::Char('t') => {
+            state.modal = Some(Modal::RefSelector {
+                input: String::new(),
+                refs: state.get_branch_refs(),
+                selected: 0,
+                target: RefSelectorTarget::ChangelogTo,
+            });
+            state.mark_dirty();
+            Action::Redraw
+        }
+        _ => Action::None,
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

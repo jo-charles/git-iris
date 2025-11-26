@@ -318,8 +318,14 @@ pub enum Modal {
 /// Target for ref selector modal
 #[derive(Debug, Clone, Copy)]
 pub enum RefSelectorTarget {
-    /// PR base branch
-    PrBase,
+    /// Review from ref
+    ReviewFrom,
+    /// Review to ref
+    ReviewTo,
+    /// PR from ref (base branch)
+    PrFrom,
+    /// PR to ref
+    PrTo,
     /// Changelog from version
     ChangelogFrom,
     /// Changelog to version
@@ -461,6 +467,10 @@ pub struct ReviewState {
     pub review_scroll: usize,
     /// Whether a review is being generated
     pub generating: bool,
+    /// From ref for comparison
+    pub from_ref: String,
+    /// To ref for comparison (defaults to HEAD)
+    pub to_ref: String,
 }
 
 impl std::fmt::Debug for ReviewState {
@@ -486,8 +496,10 @@ pub struct PrCommit {
 
 /// State for PR mode
 pub struct PrState {
-    /// Base branch for PR comparison
+    /// Base branch for PR comparison (from ref)
     pub base_branch: String,
+    /// Target ref (defaults to HEAD)
+    pub to_ref: String,
     /// Commits in this PR (from base to HEAD)
     pub commits: Vec<PrCommit>,
     /// Selected commit index
@@ -510,6 +522,7 @@ impl Default for PrState {
     fn default() -> Self {
         Self {
             base_branch: "main".to_string(),
+            to_ref: "HEAD".to_string(),
             commits: Vec::new(),
             selected_commit: 0,
             commit_scroll: 0,

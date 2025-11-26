@@ -220,6 +220,8 @@ impl FileTreeState {
 
         state.root = root_nodes;
         state.cache_dirty = true;
+        // Auto-expand first 2 levels for visibility
+        state.expand_to_depth(2);
         state
     }
 
@@ -395,6 +397,29 @@ impl FileTreeState {
         self.expanded.clear();
         self.cache_dirty = true;
         self.selected = 0;
+    }
+
+    /// Expand directories up to a certain depth
+    pub fn expand_to_depth(&mut self, max_depth: usize) {
+        self.expand_to_depth_recursive(&self.root.clone(), 0, max_depth);
+        self.cache_dirty = true;
+    }
+
+    fn expand_to_depth_recursive(
+        &mut self,
+        nodes: &[TreeNode],
+        current_depth: usize,
+        max_depth: usize,
+    ) {
+        if current_depth >= max_depth {
+            return;
+        }
+        for node in nodes {
+            if node.is_dir {
+                self.expanded.insert(node.path.clone());
+                self.expand_to_depth_recursive(&node.children, current_depth + 1, max_depth);
+            }
+        }
     }
 
     /// Ensure selected item is visible (stub for future scroll viewport tracking)

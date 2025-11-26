@@ -251,6 +251,14 @@ pub enum Commands {
             help = "Initial mode: explore, commit, review, pr, changelog"
         )]
         mode: Option<String>,
+
+        /// Starting ref for PR/changelog comparison (defaults to main/master)
+        #[arg(long, value_name = "REF", help = "Starting ref for comparison")]
+        from: Option<String>,
+
+        /// Ending ref for PR/changelog comparison (defaults to HEAD)
+        #[arg(long, value_name = "REF", help = "Ending ref for comparison")]
+        to: Option<String>,
     },
 
     // Configuration and utility commands
@@ -853,7 +861,12 @@ pub async fn handle_command(
             from,
             to,
         } => handle_pr(common, print, from, to, repository_url).await,
-        Commands::Studio { common, mode } => handle_studio(common, mode, repository_url).await,
+        Commands::Studio {
+            common,
+            mode,
+            from,
+            to,
+        } => handle_studio(common, mode, from, to, repository_url).await,
     }
 }
 
@@ -933,6 +946,8 @@ async fn handle_pr(
 async fn handle_studio(
     common: CommonParams,
     mode: Option<String>,
+    from: Option<String>,
+    to: Option<String>,
     repository_url: Option<String>,
 ) -> anyhow::Result<()> {
     use crate::agents::IrisAgentService;
@@ -944,9 +959,11 @@ async fn handle_studio(
     use std::sync::Arc;
 
     log_debug!(
-        "Handling 'studio' command with common: {:?}, mode: {:?}",
+        "Handling 'studio' command with common: {:?}, mode: {:?}, from: {:?}, to: {:?}",
         common,
-        mode
+        mode,
+        from,
+        to
     );
 
     let mut cfg = Config::load()?;
@@ -990,5 +1007,7 @@ async fn handle_studio(
         Some(commit_service),
         Some(agent_service),
         initial_mode,
+        from,
+        to,
     )
 }
