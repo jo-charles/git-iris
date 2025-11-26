@@ -11,10 +11,10 @@ The LLM makes all intelligent decisions. We avoid deterministic heuristics—Iri
 
 ```
 src/
-├── agents/                 # Agent framework
+├── agents/                 # Agent framework (core of Git-Iris)
 │   ├── iris.rs            # Main agent implementation
 │   ├── core.rs            # Backend abstraction (OpenAI/Anthropic)
-│   ├── setup.rs           # Agent setup service
+│   ├── setup.rs           # IrisAgentService entry point
 │   ├── status.rs          # Real-time status tracking
 │   ├── capabilities/      # Task-specific prompts (TOML)
 │   │   ├── commit.toml
@@ -26,23 +26,33 @@ src/
 │       ├── git.rs         # Git operations (diff, log, status)
 │       ├── file_analyzer.rs # File content analysis
 │       ├── code_search.rs # Pattern searching
-│       └── workspace.rs   # Notes and task tracking
+│       ├── workspace.rs   # Notes and task tracking
+│       └── parallel_analyze.rs # Concurrent subagent processing
+├── types/                  # Response type definitions
+│   ├── commit.rs          # GeneratedMessage
+│   ├── pr.rs              # GeneratedPullRequest
+│   ├── review.rs          # GeneratedReview, CodeIssue
+│   ├── changelog.rs       # ChangelogResponse, ChangeEntry
+│   └── release_notes.rs   # ReleaseNotesResponse
+├── services/               # Pure operations (no LLM)
+│   └── git_commit.rs      # GitCommitService for git operations
 ├── cli.rs                 # CLI entry point
-├── commit/                # Commit message generation
-├── changes/               # Changelog/release notes
+├── commands.rs            # Command handlers
+├── changelog.rs           # Changelog file utilities
+├── output.rs              # Git output formatting
 ├── config.rs              # Configuration management
-├── git.rs                 # Git2 wrapper
+├── git/                   # Git2 wrapper module
+├── gitmoji.rs             # Emoji processing
 └── llm.rs                 # LLM provider abstraction
 ```
 
-## Agent Mode (Default)
+## Agent Architecture
 
-Agent mode is enabled by default. Use `--legacy` for the old non-agent implementation.
+Git-Iris is built entirely around the agent architecture. All LLM operations flow through Iris.
 
 ```bash
-git-iris gen                    # Agent mode (default)
-git-iris gen --legacy           # Legacy mode
-git-iris gen --debug            # Agent mode with debug output
+git-iris gen                    # Generate commit message
+git-iris gen --debug            # With detailed agent execution output
 ```
 
 ## Capabilities
@@ -72,10 +82,11 @@ Capabilities define:
 | `code_search` | Search for patterns, functions, classes |
 | `workspace` | Iris's notes and task tracking |
 | `project_docs` | Read project documentation |
+| `parallel_analyze` | Concurrent subagent processing for multiple files |
 
 ## Output Types
 
-Iris produces structured JSON matching these schemas (in `src/commit/types.rs` and `src/changes/models.rs`):
+Iris produces structured JSON matching these schemas (all in `src/types/`):
 
 - `GeneratedMessage` - Commit message (emoji, title, body)
 - `GeneratedPullRequest` - PR description with sections
@@ -105,7 +116,7 @@ Instructions for Iris...
 2. **Tool-Based Context**: Gather only what's needed via tool calls
 3. **Structured Output**: JSON schemas ensure parseable responses
 4. **Output Validation**: Recovery logic handles malformed JSON
-5. **Graceful Fallback**: `--legacy` mode if agent fails
+5. **Unified Architecture**: Single agent-based code path for all operations
 
 ## Development Commands
 

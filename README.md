@@ -40,7 +40,7 @@ Git-Iris offers a suite of AI-powered tools to enhance your Git workflow:
 - **AI-Powered Code Reviews**: Get detailed feedback on your changes across multiple quality dimensions
 - **Dynamic Changelog Generation**: Create structured changelogs between any Git references
 - **Comprehensive Release Notes**: Generate release notes with summaries and key changes
-- **MCP Integration**: Connect directly with Claude, Cursor, VSCode and other compatible AI tools
+- **Agent-First Architecture**: Iris dynamically explores your codebase using tool calls for precise, context-aware results
 - **Project-Specific Configuration**: Maintain shared project settings in version control
 
 ### 💪 Advanced Capabilities
@@ -250,7 +250,6 @@ These options apply to all commands:
 - `-q`, `--quiet`: Suppress non-essential output (spinners, waiting messages, etc.)
 - `-v`, `--version`: Display version information
 - `-r`, `--repo`: Use a remote repository URL instead of local repository
-- `--legacy`: Use legacy non-agent implementation (fallback mode)
 - `--debug`: Enable debug mode with detailed agent execution output
 
 ### Generate Commit Messages
@@ -538,59 +537,6 @@ git-iris gen --repo https://github.com/example/repo.git --print
 ```
 
 Note: When working with remote repositories, Git-Iris operates in read-only mode. You can't commit changes directly to remote repositories.
-
-### MCP Server for AI Integration
-
-Start an MCP (Model Context Protocol) server for integration with AI tools:
-
-```bash
-git-iris serve
-```
-
-Options:
-
-- `--dev`: Enable development mode with more verbose logging
-- `-t`, `--transport`: Transport type to use (stdio, sse)
-- `-p`, `--port`: Port to use for network transports
-- `--listen-address`: Listen address for network transports
-
-Example:
-
-```bash
-git-iris serve --transport sse --port 3077 --listen-address 127.0.0.1
-```
-
-This allows you to use Git-Iris features directly from Claude, Cursor, VSCode, and other MCP-compatible tools. See [MCP.md](docs/MCP.md) for detailed documentation.
-
-#### MCP Tool Parameters
-
-All MCP tools **require** the `repository` parameter, which must be a local project path or a remote repository URL. This is necessary because some clients (like Cursor) do not reliably provide the project root.
-
-**Example (local path):**
-
-```json
-{
-  "from": "v1.0.0",
-  "to": "v2.0.0",
-  "detail_level": "detailed",
-  "repository": "/home/bliss/dev/myproject"
-}
-```
-
-**Example (remote URL):**
-
-```json
-{
-  "from": "v1.0.0",
-  "to": "v2.0.0",
-  "detail_level": "detailed",
-  "repository": "https://github.com/example/repo.git"
-}
-```
-
-**Why is `repository` required?**
-
-> Due to limitations in some MCP clients, the server cannot reliably infer the project root or repository path. To ensure Git-Iris always operates on the correct repository, you must explicitly specify the `repository` parameter for every tool call. This eliminates ambiguity and ensures your commands are always precise and predictable.
 
 ### Interactive Commit Process
 
