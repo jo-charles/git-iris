@@ -106,7 +106,6 @@ async fn test_get_git_info_with_excluded_files() {
 
     let context = git_repo
         .get_git_info(&config)
-        .await
         .expect("Failed to get git info");
 
     // Check excluded files
@@ -127,7 +126,6 @@ async fn test_get_git_info_with_excluded_files() {
 
     for file in &excluded_files {
         assert_eq!(file.diff, "[Content excluded]");
-        assert_eq!(file.analysis, vec!["[Analysis excluded]"]);
     }
 
     // Check included file
@@ -142,7 +140,6 @@ async fn test_get_git_info_with_excluded_files() {
 
     for file in &included_files {
         assert_ne!(file.diff, "[Content excluded]");
-        assert_ne!(file.analysis, vec!["[Analysis excluded]"]);
     }
 }
 
@@ -184,7 +181,6 @@ async fn test_multiple_staged_files_with_exclusions() {
 
     let context = git_repo
         .get_git_info(&config)
-        .await
         .expect("Failed to get git info");
 
     assert_eq!(context.staged_files.len(), 5);
@@ -206,7 +202,6 @@ async fn test_multiple_staged_files_with_exclusions() {
     for file in &excluded_files {
         assert!(file.path.contains(".vscode") || file.path.contains(".min.js"));
         assert_eq!(file.diff, "[Content excluded]");
-        assert_eq!(file.analysis, vec!["[Analysis excluded]"]);
     }
 
     for file in &included_files {
@@ -217,6 +212,5 @@ async fn test_multiple_staged_files_with_exclusions() {
                     .is_some_and(|ext| ext.eq_ignore_ascii_case("txt"))
         );
         assert_ne!(file.diff, "[Content excluded]");
-        assert_ne!(file.analysis, vec!["[Analysis excluded]"]);
     }
 }

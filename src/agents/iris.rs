@@ -23,8 +23,8 @@ const CAPABILITY_CHANGELOG: &str = include_str!("capabilities/changelog.toml");
 const CAPABILITY_RELEASE_NOTES: &str = include_str!("capabilities/release_notes.toml");
 
 use crate::agents::tools::{
-    CodeSearch, FileAnalyzer, FileRead, GitChangedFiles, GitDiff, GitLog, GitRepoInfo, GitStatus,
-    ParallelAnalyze, ProjectDocs, ProjectMetadataTool, Workspace,
+    CodeSearch, FileRead, GitChangedFiles, GitDiff, GitLog, GitRepoInfo, GitStatus,
+    ParallelAnalyze, ProjectDocs, Workspace,
 };
 // Added to ensure builder extension methods like `.max_tokens` are in scope
 
@@ -417,10 +417,8 @@ Guidelines:
             .tool(DebugTool::new(GitDiff))
             .tool(DebugTool::new(GitLog))
             .tool(DebugTool::new(GitChangedFiles))
-            .tool(DebugTool::new(FileAnalyzer))
             .tool(DebugTool::new(FileRead))
             .tool(DebugTool::new(CodeSearch))
-            .tool(DebugTool::new(ProjectMetadataTool))
             .tool(DebugTool::new(ProjectDocs))
             .build();
 
@@ -434,10 +432,8 @@ Guidelines:
             .tool(DebugTool::new(GitRepoInfo))
             .tool(DebugTool::new(GitChangedFiles))
             // Analysis and search tools
-            .tool(DebugTool::new(FileAnalyzer))
             .tool(DebugTool::new(FileRead))
             .tool(DebugTool::new(CodeSearch))
-            .tool(DebugTool::new(ProjectMetadataTool))
             .tool(DebugTool::new(ProjectDocs))
             // Workspace for Iris's notes and task management
             .tool(DebugTool::new(Workspace::new()))

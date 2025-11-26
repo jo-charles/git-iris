@@ -14,17 +14,11 @@ pub mod git;
 pub use git::{GitChangedFiles, GitDiff, GitLog, GitRepoInfo, GitStatus};
 
 // Migrated Rig tools
-pub mod file_analyzer;
-pub use file_analyzer::FileAnalyzer;
-
 pub mod file_read;
 pub use file_read::FileRead;
 
 pub mod code_search;
 pub use code_search::CodeSearch;
-
-pub mod project_metadata;
-pub use project_metadata::ProjectMetadataTool;
 
 pub mod docs;
 pub use docs::ProjectDocs;

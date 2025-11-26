@@ -20,7 +20,6 @@ pub mod commands;
 pub mod common;
 pub mod config;
 pub mod context;
-pub mod file_analyzers;
 pub mod git;
 pub mod gitmoji;
 pub mod instruction_presets;

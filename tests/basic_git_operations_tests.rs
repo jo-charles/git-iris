@@ -15,7 +15,6 @@ async fn test_get_git_info() {
 
     let context = git_repo
         .get_git_info(&config)
-        .await
         .expect("Failed to get git info");
 
     // Use centralized assertions
@@ -35,12 +34,6 @@ async fn test_get_git_info() {
     // Test staged files (should be empty after commit)
     assert_eq!(context.staged_files.len(), 0);
 
-    // Test project metadata
-    assert_eq!(
-        context.project_metadata.language,
-        Some("Unknown".to_string())
-    );
-
     // Create and stage a new file using helper
     let helper = GitTestHelper::new(&temp_dir).expect("Failed to create GitTestHelper");
     helper
@@ -54,7 +47,6 @@ async fn test_get_git_info() {
     // Get updated git info
     let updated_context = git_repo
         .get_git_info(&config)
-        .await
         .expect("Failed to get updated git info");
 
     // Test staged files
@@ -84,7 +76,6 @@ async fn test_commit() {
     // Verify commit
     let context = git_repo
         .get_git_info(&config)
-        .await
         .expect("Failed to get git info after commit");
     assert_eq!(context.recent_commits.len(), 2);
     assert!(
@@ -110,7 +101,6 @@ async fn test_multiple_staged_files() {
 
     let context = git_repo
         .get_git_info(&config)
-        .await
         .expect("Failed to get git info");
 
     assert_eq!(context.staged_files.len(), 3);
@@ -137,7 +127,6 @@ async fn test_modified_file() {
 
     let context = git_repo
         .get_git_info(&config)
-        .await
         .expect("Failed to get git info");
 
     assert_eq!(context.staged_files.len(), 1);
@@ -169,7 +158,6 @@ async fn test_deleted_file() {
 
     let context = git_repo
         .get_git_info(&config)
-        .await
         .expect("Failed to get git info");
 
     assert_eq!(context.staged_files.len(), 1);
@@ -202,7 +190,6 @@ async fn test_binary_file() {
 
     let context = git_repo
         .get_git_info(&config)
-        .await
         .expect("Failed to get git info");
 
     // Check if the binary file is in staged files

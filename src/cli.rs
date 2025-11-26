@@ -433,7 +433,7 @@ async fn handle_gen_with_agent(
     )?);
 
     // Get git info for staged files check and user info
-    let git_info = git_repo.get_git_info(&cfg).await?;
+    let git_info = git_repo.get_git_info(&cfg)?;
 
     if git_info.staged_files.is_empty() {
         ui::print_warning(

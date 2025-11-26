@@ -1,6 +1,5 @@
 use crate::context::{ChangeType, RecentCommit, StagedFile};
-use crate::file_analyzers::{self, should_exclude_file};
-use crate::git::utils::is_binary_diff;
+use crate::git::utils::{is_binary_diff, should_exclude_file};
 use crate::log_debug;
 use anyhow::{Context, Result};
 use git2::{DiffOptions, Repository, StatusOptions};
@@ -61,27 +60,10 @@ pub fn get_file_statuses(repo: &Repository) -> Result<Vec<StagedFile>> {
                     }
                 };
 
-            let analyzer = file_analyzers::get_analyzer(path);
-            let staged_file = StagedFile {
-                path: path.to_string(),
-                change_type: change_type.clone(),
-                diff: diff.clone(),
-                analysis: Vec::new(),
-                content: content.clone(),
-                content_excluded: should_exclude,
-            };
-
-            let analysis = if should_exclude {
-                vec!["[Analysis excluded]".to_string()]
-            } else {
-                analyzer.analyze(path, &staged_file)
-            };
-
             staged_files.push(StagedFile {
                 path: path.to_string(),
                 change_type,
                 diff,
-                analysis,
                 content,
                 content_excluded: should_exclude,
             });
@@ -176,27 +158,10 @@ pub fn get_unstaged_file_statuses(repo: &Repository) -> Result<Vec<StagedFile>> 
                     }
                 };
 
-            let analyzer = file_analyzers::get_analyzer(path);
-            let unstaged_file = StagedFile {
-                path: path.to_string(),
-                change_type: change_type.clone(),
-                diff: diff.clone(),
-                analysis: Vec::new(),
-                content: content.clone(),
-                content_excluded: should_exclude,
-            };
-
-            let analysis = if should_exclude {
-                vec!["[Analysis excluded]".to_string()]
-            } else {
-                analyzer.analyze(path, &unstaged_file)
-            };
-
             unstaged_files.push(StagedFile {
                 path: path.to_string(),
                 change_type,
                 diff,
-                analysis,
                 content,
                 content_excluded: should_exclude,
             });

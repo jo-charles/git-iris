@@ -17,10 +17,7 @@ use serde_json::json;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use super::{
-    CodeSearch, FileAnalyzer, FileRead, GitChangedFiles, GitDiff, GitLog, GitStatus, ProjectDocs,
-    ProjectMetadataTool,
-};
+use super::{CodeSearch, FileRead, GitChangedFiles, GitDiff, GitLog, GitStatus, ProjectDocs};
 use crate::agents::debug_tool::DebugTool;
 
 /// Arguments for parallel analysis
@@ -114,10 +111,8 @@ impl SubagentRunner {
                     .tool(DebugTool::new(GitDiff))
                     .tool(DebugTool::new(GitLog))
                     .tool(DebugTool::new(GitChangedFiles))
-                    .tool(DebugTool::new(FileAnalyzer))
                     .tool(DebugTool::new(FileRead))
                     .tool(DebugTool::new(CodeSearch))
-                    .tool(DebugTool::new(ProjectMetadataTool))
                     .tool(DebugTool::new(ProjectDocs))
                     .build();
 
@@ -132,10 +127,8 @@ impl SubagentRunner {
                     .tool(DebugTool::new(GitDiff))
                     .tool(DebugTool::new(GitLog))
                     .tool(DebugTool::new(GitChangedFiles))
-                    .tool(DebugTool::new(FileAnalyzer))
                     .tool(DebugTool::new(FileRead))
                     .tool(DebugTool::new(CodeSearch))
-                    .tool(DebugTool::new(ProjectMetadataTool))
                     .tool(DebugTool::new(ProjectDocs))
                     .build();
 

@@ -40,7 +40,7 @@ async fn test_remote_repository_support() {
         let config = Config::default();
 
         // Get git info should work with remote repositories
-        let context = match git_repo.get_git_info(&config).await {
+        let context = match git_repo.get_git_info(&config) {
             Ok(ctx) => ctx,
             Err(e) => {
                 println!("Failed to get git info: {e}");

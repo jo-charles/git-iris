@@ -1,5 +1,5 @@
 use crate::context::{ChangeType, RecentCommit, StagedFile};
-use crate::git::utils::is_binary_diff;
+use crate::git::utils::{is_binary_diff, should_exclude_file};
 use crate::log_debug;
 use anyhow::{Context, Result, anyhow};
 use chrono;
@@ -185,13 +185,12 @@ pub fn get_commit_files(repo: &Repository, commit_id: &str) -> Result<Vec<Staged
                     _ => return true, // Skip other types of changes
                 };
 
-                let should_exclude = crate::file_analyzers::should_exclude_file(path);
+                let should_exclude = should_exclude_file(path);
 
                 commit_files.push(StagedFile {
                     path: path.to_string(),
                     change_type,
                     diff: String::new(), // Will be populated later
-                    analysis: Vec::new(),
                     content: None,
                     content_excluded: should_exclude,
                 });
@@ -207,7 +206,6 @@ pub fn get_commit_files(repo: &Repository, commit_id: &str) -> Result<Vec<Staged
     for file in &mut commit_files {
         if file.content_excluded {
             file.diff = String::from("[Content excluded]");
-            file.analysis = vec!["[Analysis excluded]".to_string()];
             continue;
         }
 
@@ -236,9 +234,6 @@ pub fn get_commit_files(repo: &Repository, commit_id: &str) -> Result<Vec<Staged
         } else {
             file.diff = diff_string;
         }
-
-        let analyzer = crate::file_analyzers::get_analyzer(&file.path);
-        file.analysis = analyzer.analyze(&file.path, file);
     }
 
     log_debug!("Found {} files in commit", commit_files.len());
@@ -396,13 +391,12 @@ pub fn get_branch_diff_files(
                     _ => return true, // Skip other types of changes
                 };
 
-                let should_exclude = crate::file_analyzers::should_exclude_file(path);
+                let should_exclude = should_exclude_file(path);
 
                 branch_files.push(StagedFile {
                     path: path.to_string(),
                     change_type,
                     diff: String::new(), // Will be populated later
-                    analysis: Vec::new(),
                     content: None,
                     content_excluded: should_exclude,
                 });
@@ -418,7 +412,6 @@ pub fn get_branch_diff_files(
     for file in &mut branch_files {
         if file.content_excluded {
             file.diff = String::from("[Content excluded]");
-            file.analysis = vec!["[Analysis excluded]".to_string()];
             continue;
         }
 
@@ -457,9 +450,6 @@ pub fn get_branch_diff_files(
         {
             file.content = Some(content.to_string());
         }
-
-        let analyzer = crate::file_analyzers::get_analyzer(&file.path);
-        file.analysis = analyzer.analyze(&file.path, file);
     }
 
     log_debug!(
@@ -590,13 +580,12 @@ pub fn get_commit_range_files(repo: &Repository, from: &str, to: &str) -> Result
                     _ => return true, // Skip other types of changes
                 };
 
-                let should_exclude = crate::file_analyzers::should_exclude_file(path);
+                let should_exclude = should_exclude_file(path);
 
                 range_files.push(StagedFile {
                     path: path.to_string(),
                     change_type,
                     diff: String::new(), // Will be populated later
-                    analysis: Vec::new(),
                     content: None,
                     content_excluded: should_exclude,
                 });
@@ -612,7 +601,6 @@ pub fn get_commit_range_files(repo: &Repository, from: &str, to: &str) -> Result
     for file in &mut range_files {
         if file.content_excluded {
             file.diff = String::from("[Content excluded]");
-            file.analysis = vec!["[Analysis excluded]".to_string()];
             continue;
         }
 
@@ -648,9 +636,6 @@ pub fn get_commit_range_files(repo: &Repository, from: &str, to: &str) -> Result
         {
             file.content = Some(content.to_string());
         }
-
-        let analyzer = crate::file_analyzers::get_analyzer(&file.path);
-        file.analysis = analyzer.analyze(&file.path, file);
     }
 
     log_debug!("Found {} files changed in commit range", range_files.len());
