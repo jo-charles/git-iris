@@ -211,6 +211,7 @@ pub fn render_message_editor(
     state: &MessageEditorState,
     title: &str,
     focused: bool,
+    generating: bool,
 ) {
     // Build title with message count indicator
     let count_indicator = if state.message_count() > 1 {
@@ -248,15 +249,47 @@ pub fn render_message_editor(
     }
 
     if state.message_count() == 0 {
-        // No messages - show placeholder
-        let placeholder = Paragraph::new(vec![
-            Line::from(Span::styled("No commit message generated", theme::dimmed())),
-            Line::from(""),
-            Line::from(Span::styled(
-                "Press 'r' to generate a message",
-                Style::default().fg(theme::NEON_CYAN),
-            )),
-        ]);
+        // No messages - show placeholder or generating state
+        let placeholder = if generating {
+            // Show generating spinner with braille pattern
+            let spinner_frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+            let frame_idx =
+                (std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis()
+                    / 100) as usize
+                    % spinner_frames.len();
+            let spinner = spinner_frames[frame_idx];
+
+            Paragraph::new(vec![
+                Line::from(""),
+                Line::from(vec![
+                    Span::styled(
+                        format!("{} ", spinner),
+                        Style::default().fg(theme::ELECTRIC_PURPLE),
+                    ),
+                    Span::styled(
+                        "Analyzing staged changes...",
+                        Style::default().fg(theme::TEXT_PRIMARY),
+                    ),
+                ]),
+                Line::from(""),
+                Line::from(Span::styled(
+                    "Iris is crafting your commit message",
+                    theme::dimmed(),
+                )),
+            ])
+        } else {
+            Paragraph::new(vec![
+                Line::from(Span::styled("No commit message generated", theme::dimmed())),
+                Line::from(""),
+                Line::from(Span::styled(
+                    "Press 'r' to regenerate",
+                    Style::default().fg(theme::NEON_CYAN),
+                )),
+            ])
+        };
         frame.render_widget(placeholder, inner);
     } else if state.is_editing() {
         // Render textarea in edit mode

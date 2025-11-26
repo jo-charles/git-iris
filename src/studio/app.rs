@@ -313,6 +313,7 @@ impl StudioApp {
             match result {
                 IrisTaskResult::CommitMessages(messages) => {
                     self.state.set_iris_idle();
+                    self.state.modes.commit.generating = false;
                     // Store messages in both the old location and the new component
                     self.state.modes.commit.messages.clone_from(&messages);
                     self.state.modes.commit.current_index = 0;
@@ -342,6 +343,9 @@ impl StudioApp {
                 }
                 IrisTaskResult::Error(err) => {
                     self.state.set_iris_error(&err);
+                    // Clear any generating states
+                    self.state.modes.commit.generating = false;
+                    self.state.modes.review.generating = false;
                     // If we're in chat, add error as Iris response
                     if let Some(Modal::Chat(chat)) = &mut self.state.modal {
                         chat.is_responding = false;
@@ -474,6 +478,7 @@ impl StudioApp {
         }
 
         self.state.set_iris_thinking("Analyzing changes...");
+        self.state.modes.commit.generating = true;
         self.spawn_commit_generation(None);
     }
 
@@ -1075,6 +1080,7 @@ impl StudioApp {
                     &self.state.modes.commit.message_editor,
                     "Commit Message",
                     is_focused,
+                    self.state.modes.commit.generating,
                 );
             }
             PanelId::Right => {

@@ -131,6 +131,7 @@ fn handle_modal_key(state: &mut StudioState, key: KeyEvent) -> Action {
                     };
                     state.close_modal();
                     state.set_iris_thinking("Generating commit message...");
+                    state.modes.commit.generating = true;
                     Action::IrisQuery(IrisQueryRequest::GenerateCommit { instructions })
                 }
                 KeyCode::Char(c) => {
@@ -651,6 +652,7 @@ fn handle_commit_message_key(state: &mut StudioState, key: KeyEvent) -> Action {
         // Regenerate message
         KeyCode::Char('r') => {
             state.set_iris_thinking("Generating commit message...");
+            state.modes.commit.generating = true;
             Action::IrisQuery(IrisQueryRequest::GenerateCommit {
                 instructions: if state.modes.commit.custom_instructions.is_empty() {
                     None
