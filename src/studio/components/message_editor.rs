@@ -253,13 +253,12 @@ pub fn render_message_editor(
         let placeholder = if generating {
             // Show generating spinner with braille pattern
             let spinner_frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
-            let frame_idx =
-                (std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis()
-                    / 100) as usize
-                    % spinner_frames.len();
+            let frame_idx = (std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis()
+                / 100) as usize
+                % spinner_frames.len();
             let spinner = spinner_frames[frame_idx];
 
             Paragraph::new(vec![

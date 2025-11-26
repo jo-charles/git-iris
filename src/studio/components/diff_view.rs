@@ -345,6 +345,16 @@ impl DiffViewState {
         self.scroll_offset = (self.scroll_offset + amount).min(max_offset);
     }
 
+    /// Scroll to top
+    pub fn scroll_to_top(&mut self) {
+        self.scroll_offset = 0;
+    }
+
+    /// Scroll to bottom
+    pub fn scroll_to_bottom(&mut self) {
+        self.scroll_offset = self.cached_lines.len().saturating_sub(1);
+    }
+
     /// Go to next hunk
     pub fn next_hunk(&mut self) {
         let lines = &self.cached_lines;

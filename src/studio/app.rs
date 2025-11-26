@@ -17,7 +17,7 @@ use ratatui::backend::CrosstermBackend;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph};
 use std::io::{self, Stdout};
 use std::sync::Arc;
 use std::time::Duration;
@@ -48,6 +48,8 @@ pub enum IrisTaskResult {
     CommitMessages(Vec<GeneratedMessage>),
     /// Generated code review (markdown)
     ReviewContent(String),
+    /// Generated PR description (markdown)
+    PRContent(String),
     /// Chat response from Iris
     ChatResponse(String),
     /// Error from the task
@@ -331,7 +333,17 @@ impl StudioApp {
                     self.state.modes.review.review_content = content;
                     self.state.modes.review.review_scroll = 0;
                     self.state.modes.review.generating = false;
-                    self.state.notify(Notification::success("Code review generated"));
+                    self.state
+                        .notify(Notification::success("Code review generated"));
+                    self.state.mark_dirty();
+                }
+                IrisTaskResult::PRContent(content) => {
+                    self.state.set_iris_idle();
+                    self.state.modes.pr.pr_content = content;
+                    self.state.modes.pr.pr_scroll = 0;
+                    self.state.modes.pr.generating = false;
+                    self.state
+                        .notify(Notification::success("PR description generated"));
                     self.state.mark_dirty();
                 }
                 IrisTaskResult::ChatResponse(response) => {
@@ -346,6 +358,7 @@ impl StudioApp {
                     // Clear any generating states
                     self.state.modes.commit.generating = false;
                     self.state.modes.review.generating = false;
+                    self.state.modes.pr.generating = false;
                     // If we're in chat, add error as Iris response
                     if let Some(Modal::Chat(chat)) = &mut self.state.modal {
                         chat.is_responding = false;
@@ -368,6 +381,9 @@ impl StudioApp {
             }
             IrisQueryRequest::GenerateReview => {
                 self.spawn_review_generation();
+            }
+            IrisQueryRequest::GeneratePR => {
+                self.spawn_pr_generation();
             }
             IrisQueryRequest::SemanticBlame {
                 file,
@@ -465,6 +481,42 @@ impl StudioApp {
                 }
                 Err(e) => {
                     let _ = tx.send(IrisTaskResult::Error(format!("Review error: {}", e)));
+                }
+            }
+        });
+    }
+
+    /// Spawn a task for PR description generation
+    fn spawn_pr_generation(&self) {
+        use crate::agents::{StructuredResponse, TaskContext};
+
+        let Some(agent) = self.agent_service.clone() else {
+            let tx = self.iris_result_tx.clone();
+            let _ = tx.send(IrisTaskResult::Error(
+                "Agent service not available".to_string(),
+            ));
+            return;
+        };
+
+        let tx = self.iris_result_tx.clone();
+        let base_branch = self.state.modes.pr.base_branch.clone();
+
+        tokio::spawn(async move {
+            // Build context for PR (comparing current branch to base)
+            let context = TaskContext::for_pr(Some(base_branch), None);
+
+            // Execute the PR capability
+            match agent.execute_task("pr", context).await {
+                Ok(response) => {
+                    let pr_text = match response {
+                        StructuredResponse::PullRequest(pr) => pr.content,
+                        StructuredResponse::PlainText(text) => text,
+                        other => other.to_string(),
+                    };
+                    let _ = tx.send(IrisTaskResult::PRContent(pr_text));
+                }
+                Err(e) => {
+                    let _ = tx.send(IrisTaskResult::Error(format!("PR error: {}", e)));
                 }
             }
         });
@@ -708,6 +760,7 @@ impl StudioApp {
             Modal::Instructions { .. } => (60.min(area.width.saturating_sub(4)), 8),
             Modal::Search { .. } => (60.min(area.width.saturating_sub(4)), 15),
             Modal::Confirm { .. } => (60.min(area.width.saturating_sub(4)), 6),
+            Modal::RefSelector { .. } => (50.min(area.width.saturating_sub(4)), 15),
         };
         let modal_height = modal_height.min(area.height.saturating_sub(4));
 
@@ -898,6 +951,83 @@ impl StudioApp {
                 let input_paragraph = Paragraph::new(input_line);
                 frame.render_widget(input_paragraph, input_inner);
             }
+            Modal::RefSelector {
+                input,
+                refs,
+                selected,
+                target,
+            } => {
+                use super::state::RefSelectorTarget;
+
+                let title = match target {
+                    RefSelectorTarget::PrBase => " Select Base Branch ",
+                    RefSelectorTarget::ChangelogFrom => " Select From Version ",
+                    RefSelectorTarget::ChangelogTo => " Select To Version ",
+                };
+
+                let block = Block::default()
+                    .title(title)
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(theme::NEON_CYAN));
+                let inner = block.inner(modal_area);
+                frame.render_widget(block, modal_area);
+
+                // Filter refs based on input
+                let filtered: Vec<_> = refs
+                    .iter()
+                    .filter(|r| {
+                        input.is_empty() || r.to_lowercase().contains(&input.to_lowercase())
+                    })
+                    .collect();
+
+                // Build lines
+                let mut lines = vec![
+                    Line::from(vec![
+                        Span::styled("Filter: ", theme::dimmed()),
+                        Span::styled(input.as_str(), Style::default().fg(theme::TEXT_PRIMARY)),
+                        Span::styled("█", Style::default().fg(theme::NEON_CYAN)),
+                    ]),
+                    Line::from(""),
+                ];
+
+                // Show filtered refs
+                for (idx, branch) in filtered.iter().take(inner.height as usize - 4).enumerate() {
+                    let is_selected = idx == *selected;
+                    let prefix = if is_selected { "▸ " } else { "  " };
+                    let style = if is_selected {
+                        Style::default()
+                            .fg(theme::NEON_CYAN)
+                            .add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default().fg(theme::TEXT_PRIMARY)
+                    };
+                    lines.push(Line::from(vec![
+                        Span::styled(prefix, style),
+                        Span::styled((*branch).clone(), style),
+                    ]));
+                }
+
+                if filtered.is_empty() {
+                    lines.push(Line::from(Span::styled(
+                        "No matching refs",
+                        theme::dimmed(),
+                    )));
+                }
+
+                // Hint at bottom
+                lines.push(Line::from(""));
+                lines.push(Line::from(vec![
+                    Span::styled("Ctrl+j/k", Style::default().fg(theme::NEON_CYAN)),
+                    Span::styled(" navigate  ", theme::dimmed()),
+                    Span::styled("Enter", Style::default().fg(theme::NEON_CYAN)),
+                    Span::styled(" select  ", theme::dimmed()),
+                    Span::styled("Esc", Style::default().fg(theme::NEON_CYAN)),
+                    Span::styled(" cancel", theme::dimmed()),
+                ]));
+
+                let paragraph = Paragraph::new(lines);
+                frame.render_widget(paragraph, inner);
+            }
         }
     }
 
@@ -985,8 +1115,9 @@ impl StudioApp {
             Mode::Explore => self.render_explore_panel(frame, area, panel_id),
             Mode::Commit => self.render_commit_panel(frame, area, panel_id),
             Mode::Review => self.render_review_panel(frame, area, panel_id),
-            _ => {
-                // Placeholder for unimplemented modes
+            Mode::PR => self.render_pr_panel(frame, area, panel_id),
+            Mode::Changelog => {
+                // Placeholder for Changelog mode
                 let block = Block::default()
                     .title(" Coming Soon ")
                     .borders(Borders::ALL)
@@ -1170,6 +1301,143 @@ impl StudioApp {
                         .review_content
                         .lines()
                         .skip(self.state.modes.review.review_scroll)
+                        .take(inner.height as usize)
+                        .map(|line| Line::from(line.to_string()))
+                        .collect();
+                    let paragraph = Paragraph::new(lines);
+                    frame.render_widget(paragraph, inner);
+                }
+            }
+        }
+    }
+
+    /// Render a panel in PR mode
+    fn render_pr_panel(&mut self, frame: &mut Frame, area: Rect, panel_id: PanelId) {
+        let is_focused = panel_id == self.state.focused_panel;
+
+        match panel_id {
+            PanelId::Left => {
+                // Render commits list
+                let block = Block::default()
+                    .title(format!(" Commits ({}) ", self.state.modes.pr.commits.len()))
+                    .borders(Borders::ALL)
+                    .border_style(if is_focused {
+                        theme::focused_border()
+                    } else {
+                        theme::unfocused_border()
+                    });
+                let inner = block.inner(area);
+                frame.render_widget(block, area);
+
+                if self.state.modes.pr.commits.is_empty() {
+                    let text = Paragraph::new("No commits to show")
+                        .style(Style::default().fg(theme::TEXT_DIM));
+                    frame.render_widget(text, inner);
+                } else {
+                    let items: Vec<ListItem> = self
+                        .state
+                        .modes
+                        .pr
+                        .commits
+                        .iter()
+                        .enumerate()
+                        .skip(self.state.modes.pr.commit_scroll)
+                        .take(inner.height as usize)
+                        .map(|(idx, commit)| {
+                            let is_selected = idx == self.state.modes.pr.selected_commit;
+                            let prefix = if is_selected { "▸ " } else { "  " };
+                            let style = if is_selected {
+                                Style::default()
+                                    .fg(theme::TEXT_PRIMARY)
+                                    .add_modifier(Modifier::BOLD)
+                            } else {
+                                Style::default().fg(theme::TEXT_DIM)
+                            };
+                            ListItem::new(Line::from(vec![
+                                Span::styled(prefix, style),
+                                Span::styled(&commit.hash, Style::default().fg(theme::CORAL)),
+                                Span::raw(" "),
+                                Span::styled(&commit.message, style),
+                            ]))
+                        })
+                        .collect();
+                    let list = List::new(items);
+                    frame.render_widget(list, inner);
+                }
+            }
+            PanelId::Center => {
+                // Render diff view for selected commit or all changes
+                let title = if self.state.modes.pr.commits.is_empty() {
+                    "Changes".to_string()
+                } else {
+                    format!("Changes ({} → {})", self.state.modes.pr.base_branch, "HEAD")
+                };
+                render_diff_view(
+                    frame,
+                    area,
+                    &self.state.modes.pr.diff_view,
+                    &title,
+                    is_focused,
+                );
+            }
+            PanelId::Right => {
+                // Render PR description
+                let block = Block::default()
+                    .title(" PR Description ")
+                    .borders(Borders::ALL)
+                    .border_style(if is_focused {
+                        theme::focused_border()
+                    } else {
+                        theme::unfocused_border()
+                    });
+                let inner = block.inner(area);
+                frame.render_widget(block, area);
+
+                if self.state.modes.pr.pr_content.is_empty() {
+                    // Show generating state or hint
+                    if self.state.modes.pr.generating {
+                        let spinner_frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+                        let frame_idx = (std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis()
+                            / 100) as usize
+                            % spinner_frames.len();
+                        let spinner = spinner_frames[frame_idx];
+
+                        let text = Paragraph::new(vec![
+                            Line::from(""),
+                            Line::from(vec![
+                                Span::styled(
+                                    format!("{} ", spinner),
+                                    Style::default().fg(theme::ELECTRIC_PURPLE),
+                                ),
+                                Span::styled(
+                                    "Analyzing commits...",
+                                    Style::default().fg(theme::TEXT_PRIMARY),
+                                ),
+                            ]),
+                            Line::from(""),
+                            Line::from(Span::styled(
+                                "Iris is crafting your PR description",
+                                Style::default().fg(theme::TEXT_DIM),
+                            )),
+                        ]);
+                        frame.render_widget(text, inner);
+                    } else {
+                        let text = Paragraph::new("Press 'r' to generate a PR description")
+                            .style(Style::default().fg(theme::TEXT_DIM));
+                        frame.render_widget(text, inner);
+                    }
+                } else {
+                    // Render PR content with scroll
+                    let lines: Vec<Line> = self
+                        .state
+                        .modes
+                        .pr
+                        .pr_content
+                        .lines()
+                        .skip(self.state.modes.pr.pr_scroll)
                         .take(inner.height as usize)
                         .map(|line| Line::from(line.to_string()))
                         .collect();

@@ -4,7 +4,7 @@
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-use super::state::{Modal, Mode, StudioState};
+use super::state::{Modal, Mode, Notification, PanelId, StudioState};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Action Types
@@ -38,6 +38,8 @@ pub enum IrisQueryRequest {
     GenerateCommit { instructions: Option<String> },
     /// Generate code review
     GenerateReview,
+    /// Generate PR description
+    GeneratePR,
     /// Chat with Iris
     Chat { message: String },
 }
@@ -198,6 +200,105 @@ fn handle_modal_key(state: &mut StudioState, key: KeyEvent) -> Action {
                     // Scroll down in chat history
                     if let Some(Modal::Chat(chat)) = &mut state.modal {
                         chat.scroll_offset = chat.scroll_offset.saturating_sub(1);
+                    }
+                    state.mark_dirty();
+                    Action::Redraw
+                }
+                _ => Action::None,
+            }
+        }
+        Some(Modal::RefSelector {
+            input,
+            refs,
+            selected,
+            target,
+        }) => {
+            use super::state::RefSelectorTarget;
+
+            // Filter refs based on input
+            let filtered: Vec<_> = refs
+                .iter()
+                .filter(|r| input.is_empty() || r.to_lowercase().contains(&input.to_lowercase()))
+                .collect();
+
+            match key.code {
+                KeyCode::Esc => {
+                    state.close_modal();
+                    Action::Redraw
+                }
+                KeyCode::Enter => {
+                    // Apply selection
+                    if let Some(selected_ref) = filtered.get(*selected) {
+                        let selected_ref = (*selected_ref).clone();
+                        match target {
+                            RefSelectorTarget::PrBase => {
+                                state.modes.pr.base_branch = selected_ref;
+                                state.notify(Notification::info(format!(
+                                    "Base branch set to {}",
+                                    state.modes.pr.base_branch
+                                )));
+                            }
+                            RefSelectorTarget::ChangelogFrom => {
+                                state.modes.changelog.from_version = selected_ref;
+                            }
+                            RefSelectorTarget::ChangelogTo => {
+                                state.modes.changelog.to_version = selected_ref;
+                            }
+                        }
+                    }
+                    state.close_modal();
+                    Action::Redraw
+                }
+                KeyCode::Up | KeyCode::Char('k')
+                    if key.modifiers.contains(KeyModifiers::CONTROL) =>
+                {
+                    if let Some(Modal::RefSelector { selected, .. }) = &mut state.modal {
+                        *selected = selected.saturating_sub(1);
+                    }
+                    state.mark_dirty();
+                    Action::Redraw
+                }
+                KeyCode::Down | KeyCode::Char('j')
+                    if key.modifiers.contains(KeyModifiers::CONTROL) =>
+                {
+                    if let Some(Modal::RefSelector {
+                        selected,
+                        refs,
+                        input,
+                        ..
+                    }) = &mut state.modal
+                    {
+                        let filtered_len = refs
+                            .iter()
+                            .filter(|r| {
+                                input.is_empty() || r.to_lowercase().contains(&input.to_lowercase())
+                            })
+                            .count();
+                        if *selected + 1 < filtered_len {
+                            *selected += 1;
+                        }
+                    }
+                    state.mark_dirty();
+                    Action::Redraw
+                }
+                KeyCode::Char(c) => {
+                    if let Some(Modal::RefSelector {
+                        input, selected, ..
+                    }) = &mut state.modal
+                    {
+                        input.push(c);
+                        *selected = 0; // Reset selection on filter change
+                    }
+                    state.mark_dirty();
+                    Action::Redraw
+                }
+                KeyCode::Backspace => {
+                    if let Some(Modal::RefSelector {
+                        input, selected, ..
+                    }) = &mut state.modal
+                    {
+                        input.pop();
+                        *selected = 0;
                     }
                     state.mark_dirty();
                     Action::Redraw
@@ -882,8 +983,177 @@ fn handle_review_output_key(state: &mut StudioState, key: KeyEvent) -> Action {
     }
 }
 
-fn handle_pr_key(_state: &mut StudioState, _key: KeyEvent) -> Action {
-    Action::None
+fn handle_pr_key(state: &mut StudioState, key: KeyEvent) -> Action {
+    // Route to panel-specific handlers
+    match state.focused_panel {
+        PanelId::Left => handle_pr_commits_key(state, key),
+        PanelId::Center => handle_pr_diff_key(state, key),
+        PanelId::Right => handle_pr_output_key(state, key),
+    }
+}
+
+fn handle_pr_commits_key(state: &mut StudioState, key: KeyEvent) -> Action {
+    use super::state::RefSelectorTarget;
+
+    match key.code {
+        // Navigation
+        KeyCode::Up | KeyCode::Char('k') => {
+            if state.modes.pr.selected_commit > 0 {
+                state.modes.pr.selected_commit -= 1;
+                // Adjust scroll if needed
+                if state.modes.pr.selected_commit < state.modes.pr.commit_scroll {
+                    state.modes.pr.commit_scroll = state.modes.pr.selected_commit;
+                }
+                state.mark_dirty();
+            }
+            Action::Redraw
+        }
+        KeyCode::Down | KeyCode::Char('j') => {
+            if state.modes.pr.selected_commit + 1 < state.modes.pr.commits.len() {
+                state.modes.pr.selected_commit += 1;
+                state.mark_dirty();
+            }
+            Action::Redraw
+        }
+        KeyCode::Home | KeyCode::Char('g') => {
+            state.modes.pr.selected_commit = 0;
+            state.modes.pr.commit_scroll = 0;
+            state.mark_dirty();
+            Action::Redraw
+        }
+        KeyCode::End | KeyCode::Char('G') => {
+            if !state.modes.pr.commits.is_empty() {
+                state.modes.pr.selected_commit = state.modes.pr.commits.len() - 1;
+                state.mark_dirty();
+            }
+            Action::Redraw
+        }
+        // Select base branch
+        KeyCode::Char('b') => {
+            // Open ref selector for base branch
+            state.modal = Some(Modal::RefSelector {
+                input: String::new(),
+                refs: state.get_branch_refs(),
+                selected: 0,
+                target: RefSelectorTarget::PrBase,
+            });
+            state.mark_dirty();
+            Action::Redraw
+        }
+        // Generate PR
+        KeyCode::Char('r') => {
+            state.set_iris_thinking("Generating PR description...");
+            state.modes.pr.generating = true;
+            Action::IrisQuery(IrisQueryRequest::GeneratePR)
+        }
+        _ => Action::None,
+    }
+}
+
+fn handle_pr_diff_key(state: &mut StudioState, key: KeyEvent) -> Action {
+    match key.code {
+        // Scroll diff
+        KeyCode::Up | KeyCode::Char('k') => {
+            state.modes.pr.diff_view.scroll_up(1);
+            state.mark_dirty();
+            Action::Redraw
+        }
+        KeyCode::Down | KeyCode::Char('j') => {
+            state.modes.pr.diff_view.scroll_down(1);
+            state.mark_dirty();
+            Action::Redraw
+        }
+        KeyCode::PageUp => {
+            state.modes.pr.diff_view.scroll_up(20);
+            state.mark_dirty();
+            Action::Redraw
+        }
+        KeyCode::PageDown => {
+            state.modes.pr.diff_view.scroll_down(20);
+            state.mark_dirty();
+            Action::Redraw
+        }
+        KeyCode::Home | KeyCode::Char('g') => {
+            state.modes.pr.diff_view.scroll_to_top();
+            state.mark_dirty();
+            Action::Redraw
+        }
+        KeyCode::End | KeyCode::Char('G') => {
+            state.modes.pr.diff_view.scroll_to_bottom();
+            state.mark_dirty();
+            Action::Redraw
+        }
+        // Generate PR
+        KeyCode::Char('r') => {
+            state.set_iris_thinking("Generating PR description...");
+            state.modes.pr.generating = true;
+            Action::IrisQuery(IrisQueryRequest::GeneratePR)
+        }
+        _ => Action::None,
+    }
+}
+
+fn handle_pr_output_key(state: &mut StudioState, key: KeyEvent) -> Action {
+    let content_lines = state.modes.pr.pr_content.lines().count();
+
+    match key.code {
+        // Scroll PR content
+        KeyCode::Up | KeyCode::Char('k') => {
+            state.modes.pr.pr_scroll = state.modes.pr.pr_scroll.saturating_sub(1);
+            state.mark_dirty();
+            Action::Redraw
+        }
+        KeyCode::Down | KeyCode::Char('j') => {
+            if state.modes.pr.pr_scroll + 1 < content_lines {
+                state.modes.pr.pr_scroll += 1;
+                state.mark_dirty();
+            }
+            Action::Redraw
+        }
+        KeyCode::PageUp | KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            state.modes.pr.pr_scroll = state.modes.pr.pr_scroll.saturating_sub(20);
+            state.mark_dirty();
+            Action::Redraw
+        }
+        KeyCode::PageDown | KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            state.modes.pr.pr_scroll =
+                (state.modes.pr.pr_scroll + 20).min(content_lines.saturating_sub(1));
+            state.mark_dirty();
+            Action::Redraw
+        }
+        KeyCode::Home | KeyCode::Char('g') => {
+            state.modes.pr.pr_scroll = 0;
+            state.mark_dirty();
+            Action::Redraw
+        }
+        KeyCode::End | KeyCode::Char('G') => {
+            state.modes.pr.pr_scroll = content_lines.saturating_sub(1);
+            state.mark_dirty();
+            Action::Redraw
+        }
+        // Generate PR
+        KeyCode::Char('r') => {
+            state.set_iris_thinking("Generating PR description...");
+            state.modes.pr.generating = true;
+            Action::IrisQuery(IrisQueryRequest::GeneratePR)
+        }
+        // Copy to clipboard (placeholder)
+        KeyCode::Char('y') => {
+            if !state.modes.pr.pr_content.is_empty() {
+                state.notify(Notification::info("PR description copied to clipboard"));
+                state.mark_dirty();
+            }
+            Action::Redraw
+        }
+        // Reset
+        KeyCode::Char('R') => {
+            state.modes.pr.pr_content.clear();
+            state.modes.pr.pr_scroll = 0;
+            state.mark_dirty();
+            Action::Redraw
+        }
+        _ => Action::None,
+    }
 }
 
 fn handle_changelog_key(_state: &mut StudioState, _key: KeyEvent) -> Action {

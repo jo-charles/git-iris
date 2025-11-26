@@ -58,7 +58,7 @@ impl Mode {
 
     /// Check if this mode is available (implemented)
     pub fn is_available(&self) -> bool {
-        matches!(self, Mode::Explore | Mode::Commit | Mode::Review)
+        matches!(self, Mode::Explore | Mode::Commit | Mode::Review | Mode::PR)
     }
 
     /// Get all modes in order
@@ -302,6 +302,28 @@ pub enum Modal {
     Instructions { input: String },
     /// Chat interface with Iris
     Chat(ChatState),
+    /// Base branch/ref selector for PR/changelog modes
+    RefSelector {
+        /// Current input/filter
+        input: String,
+        /// Available refs (branches, tags)
+        refs: Vec<String>,
+        /// Selected index
+        selected: usize,
+        /// Target mode (which mode to update)
+        target: RefSelectorTarget,
+    },
+}
+
+/// Target for ref selector modal
+#[derive(Debug, Clone, Copy)]
+pub enum RefSelectorTarget {
+    /// PR base branch
+    PrBase,
+    /// Changelog from version
+    ChangelogFrom,
+    /// Changelog to version
+    ChangelogTo,
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -451,13 +473,65 @@ impl std::fmt::Debug for ReviewState {
     }
 }
 
-/// State for PR mode (placeholder)
-#[derive(Debug, Default)]
+/// A commit entry for PR mode
+#[derive(Debug, Clone)]
+pub struct PrCommit {
+    /// Short commit hash
+    pub hash: String,
+    /// Commit message (first line)
+    pub message: String,
+    /// Author name
+    pub author: String,
+}
+
+/// State for PR mode
 pub struct PrState {
-    /// Base branch for PR
+    /// Base branch for PR comparison
     pub base_branch: String,
-    /// Description hint from commit messages
-    pub description_hint: Option<String>,
+    /// Commits in this PR (from base to HEAD)
+    pub commits: Vec<PrCommit>,
+    /// Selected commit index
+    pub selected_commit: usize,
+    /// Commit list scroll offset
+    pub commit_scroll: usize,
+    /// File tree for changed files
+    pub file_tree: FileTreeState,
+    /// Diff view state
+    pub diff_view: DiffViewState,
+    /// Generated PR description (markdown)
+    pub pr_content: String,
+    /// PR content scroll offset
+    pub pr_scroll: usize,
+    /// Whether PR description is being generated
+    pub generating: bool,
+}
+
+impl Default for PrState {
+    fn default() -> Self {
+        Self {
+            base_branch: "main".to_string(),
+            commits: Vec::new(),
+            selected_commit: 0,
+            commit_scroll: 0,
+            file_tree: FileTreeState::new(),
+            diff_view: DiffViewState::new(),
+            pr_content: String::new(),
+            pr_scroll: 0,
+            generating: false,
+        }
+    }
+}
+
+impl std::fmt::Debug for PrState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PrState")
+            .field("base_branch", &self.base_branch)
+            .field("commits_count", &self.commits.len())
+            .field("selected_commit", &self.selected_commit)
+            .field("pr_content_len", &self.pr_content.len())
+            .field("generating", &self.generating)
+            .finish_non_exhaustive()
+    }
 }
 
 /// State for Changelog mode (placeholder)
@@ -697,5 +771,60 @@ impl StudioState {
         if matches!(self.iris_status, IrisStatus::Thinking { .. }) {
             self.dirty = true;
         }
+    }
+
+    /// Get list of branch refs for selection
+    pub fn get_branch_refs(&self) -> Vec<String> {
+        let Some(git_repo) = &self.repo else {
+            return vec!["main".to_string(), "master".to_string()];
+        };
+
+        let Ok(repo) = git_repo.open_repo() else {
+            return vec!["main".to_string(), "master".to_string()];
+        };
+
+        let mut refs = Vec::new();
+
+        // Get local branches
+        if let Ok(branches) = repo.branches(Some(git2::BranchType::Local)) {
+            for branch in branches.flatten() {
+                if let Ok(Some(name)) = branch.0.name() {
+                    refs.push(name.to_string());
+                }
+            }
+        }
+
+        // Get remote branches (origin/*)
+        if let Ok(branches) = repo.branches(Some(git2::BranchType::Remote)) {
+            for branch in branches.flatten() {
+                if let Ok(Some(name)) = branch.0.name() {
+                    // Skip HEAD references
+                    if !name.ends_with("/HEAD") {
+                        refs.push(name.to_string());
+                    }
+                }
+            }
+        }
+
+        // Sort with common branches first
+        refs.sort_by(|a, b| {
+            let priority = |s: &str| -> i32 {
+                match s {
+                    "main" => 0,
+                    "master" => 1,
+                    s if s.starts_with("origin/main") => 2,
+                    s if s.starts_with("origin/master") => 3,
+                    s if s.starts_with("origin/") => 5,
+                    _ => 4,
+                }
+            };
+            priority(a).cmp(&priority(b)).then(a.cmp(b))
+        });
+
+        if refs.is_empty() {
+            refs.push("main".to_string());
+        }
+
+        refs
     }
 }
