@@ -761,6 +761,87 @@ impl GitRepo {
         let repo = self.open_repo()?;
         commit::get_file_paths_for_commit(&repo, commit_id)
     }
+
+    /// Stage a file (add to index)
+    pub fn stage_file(&self, path: &Path) -> Result<()> {
+        let repo = self.open_repo()?;
+        let mut index = repo.index()?;
+
+        // Check if file exists - if not, it might be a deletion
+        let full_path = self.repo_path.join(path);
+        if full_path.exists() {
+            index.add_path(path)?;
+        } else {
+            // File was deleted, remove from index
+            index.remove_path(path)?;
+        }
+
+        index.write()?;
+        Ok(())
+    }
+
+    /// Unstage a file (remove from index, keep working tree changes)
+    pub fn unstage_file(&self, path: &Path) -> Result<()> {
+        let repo = self.open_repo()?;
+
+        // Get HEAD tree to reset index entry
+        let head = repo.head()?;
+        let head_commit = head.peel_to_commit()?;
+        let head_tree = head_commit.tree()?;
+
+        let mut index = repo.index()?;
+
+        // Try to get the entry from HEAD
+        if let Ok(entry) = head_tree.get_path(path) {
+            // File exists in HEAD, reset to that state
+            let blob = repo.find_blob(entry.id())?;
+            #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation, clippy::as_conversions)]
+            let file_mode = entry.filemode() as u32;
+            #[allow(clippy::cast_possible_truncation, clippy::as_conversions)]
+            let file_size = blob.content().len() as u32;
+            index.add_frombuffer(
+                &git2::IndexEntry {
+                    ctime: git2::IndexTime::new(0, 0),
+                    mtime: git2::IndexTime::new(0, 0),
+                    dev: 0,
+                    ino: 0,
+                    mode: file_mode,
+                    uid: 0,
+                    gid: 0,
+                    file_size,
+                    id: entry.id(),
+                    flags: 0,
+                    flags_extended: 0,
+                    path: path.to_string_lossy().as_bytes().to_vec(),
+                },
+                blob.content(),
+            )?;
+        } else {
+            // File doesn't exist in HEAD (new file), remove from index
+            index.remove_path(path)?;
+        }
+
+        index.write()?;
+        Ok(())
+    }
+
+    /// Stage all modified/new/deleted files
+    pub fn stage_all(&self) -> Result<()> {
+        let repo = self.open_repo()?;
+        let mut index = repo.index()?;
+        index.add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None)?;
+        index.write()?;
+        Ok(())
+    }
+
+    /// Unstage all files (reset index to HEAD)
+    pub fn unstage_all(&self) -> Result<()> {
+        let repo = self.open_repo()?;
+        let head = repo.head()?;
+        let head_commit = head.peel_to_commit()?;
+        repo.reset(head_commit.as_object(), git2::ResetType::Mixed, None)?;
+        Ok(())
+    }
 }
 
 impl Drop for GitRepo {

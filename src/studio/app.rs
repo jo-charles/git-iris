@@ -335,6 +335,18 @@ impl StudioApp {
                                 Action::ReloadReleaseNotesData => {
                                     self.update_release_notes_data();
                                 }
+                                Action::StageFile(path) => {
+                                    self.stage_file(&path);
+                                }
+                                Action::UnstageFile(path) => {
+                                    self.unstage_file(&path);
+                                }
+                                Action::StageAll => {
+                                    self.stage_all();
+                                }
+                                Action::UnstageAll => {
+                                    self.unstage_all();
+                                }
                                 Action::None => {}
                             }
                         }
@@ -898,64 +910,118 @@ impl StudioApp {
     fn render_header(&self, frame: &mut Frame, area: Rect) {
         let branch = &self.state.git_status.branch;
         let staged = self.state.git_status.staged_count;
+        let modified = self.state.git_status.modified_count;
 
-        let title = Span::styled(
-            " Iris Studio ",
-            Style::default()
-                .fg(theme::ELECTRIC_PURPLE)
-                .add_modifier(Modifier::BOLD),
-        );
+        // Create gradient title "◆ Iris Studio"
+        let mut spans: Vec<Span> = Vec::new();
+        spans.push(Span::styled(
+            " ◆ ",
+            Style::default().fg(theme::ELECTRIC_PURPLE),
+        ));
 
-        let branch_info = if branch.is_empty() {
-            Span::raw("")
-        } else {
-            Span::styled(
-                format!(" {} ", branch),
-                Style::default().fg(theme::NEON_CYAN),
-            )
-        };
+        // Gradient text for "Iris Studio"
+        let title_text = "Iris Studio";
+        #[allow(clippy::cast_precision_loss)]
+        for (i, c) in title_text.chars().enumerate() {
+            let position = i as f32 / (title_text.len() - 1).max(1) as f32;
+            spans.push(Span::styled(
+                c.to_string(),
+                Style::default()
+                    .fg(theme::gradient_purple_cyan(position))
+                    .add_modifier(Modifier::BOLD),
+            ));
+        }
 
-        let staged_info = if staged > 0 {
-            Span::styled(
-                format!(" {} staged ", staged),
+        spans.push(Span::raw(" "));
+
+        // Branch info with git icon
+        if !branch.is_empty() {
+            spans.push(Span::styled("⎇ ", Style::default().fg(theme::TEXT_DIM)));
+            spans.push(Span::styled(
+                format!("{} ", branch),
+                Style::default()
+                    .fg(theme::NEON_CYAN)
+                    .add_modifier(Modifier::BOLD),
+            ));
+        }
+
+        // Staged count
+        if staged > 0 {
+            spans.push(Span::styled(
+                format!("✓{} ", staged),
                 Style::default().fg(theme::SUCCESS_GREEN),
-            )
-        } else {
-            Span::raw("")
-        };
+            ));
+        }
 
-        let line = Line::from(vec![title, branch_info, staged_info]);
+        // Modified count
+        if modified > 0 {
+            spans.push(Span::styled(
+                format!("○{} ", modified),
+                Style::default().fg(theme::ELECTRIC_YELLOW),
+            ));
+        }
+
+        let line = Line::from(spans);
         let header = Paragraph::new(line);
         frame.render_widget(header, area);
     }
 
     fn render_tabs(&self, frame: &mut Frame, area: Rect) {
         let mut spans = Vec::new();
-        spans.push(Span::raw("  "));
+        spans.push(Span::raw(" "));
 
-        for mode in Mode::all() {
+        for (idx, mode) in Mode::all().iter().enumerate() {
             let is_active = *mode == self.state.active_mode;
             let is_available = mode.is_available();
 
-            let style = if is_active {
-                theme::mode_active()
-            } else if is_available {
-                theme::mode_inactive()
-            } else {
-                Style::default().fg(theme::TEXT_MUTED)
-            };
-
-            let label = format!("[{}] {} ", mode.shortcut(), mode.display_name());
-            spans.push(Span::styled(label, style));
-
             if is_active {
+                // Active tab with gradient underline effect
                 spans.push(Span::styled(
-                    "━━━",
+                    format!(" {} ", mode.shortcut()),
+                    Style::default()
+                        .fg(theme::ELECTRIC_PURPLE)
+                        .add_modifier(Modifier::BOLD),
+                ));
+                // Mode name with gradient
+                let name = mode.display_name();
+                #[allow(clippy::cast_precision_loss)]
+                for (i, c) in name.chars().enumerate() {
+                    let position = i as f32 / (name.len() - 1).max(1) as f32;
+                    spans.push(Span::styled(
+                        c.to_string(),
+                        Style::default()
+                            .fg(theme::gradient_purple_cyan(position))
+                            .add_modifier(Modifier::BOLD),
+                    ));
+                }
+                spans.push(Span::raw(" "));
+                // Underline with gradient
+                spans.push(Span::styled(
+                    "━",
                     Style::default().fg(theme::ELECTRIC_PURPLE),
+                ));
+                spans.push(Span::styled("━", Style::default().fg(theme::SOFT_PURPLE)));
+                spans.push(Span::styled("━", Style::default().fg(theme::NEON_CYAN)));
+            } else if is_available {
+                spans.push(Span::styled(
+                    format!(" {} ", mode.shortcut()),
+                    Style::default().fg(theme::TEXT_MUTED),
+                ));
+                spans.push(Span::styled(
+                    mode.display_name().to_string(),
+                    theme::mode_inactive(),
+                ));
+            } else {
+                spans.push(Span::styled(
+                    format!(" {} {} ", mode.shortcut(), mode.display_name()),
+                    Style::default().fg(theme::TEXT_MUTED),
                 ));
             }
 
-            spans.push(Span::raw("  "));
+            // Separator between tabs
+            if idx < Mode::all().len() - 1 {
+                spans.push(Span::styled(" │ ", Style::default().fg(theme::TEXT_MUTED)));
+            }
         }
 
         let tabs = Paragraph::new(Line::from(spans));
@@ -982,23 +1048,35 @@ impl StudioApp {
             Mode::PR => render_pr_panel(&mut self.state, frame, area, panel_id),
             Mode::Changelog => render_changelog_panel(&mut self.state, frame, area, panel_id),
             Mode::ReleaseNotes => {
-                render_release_notes_panel(&mut self.state, frame, area, panel_id)
+                render_release_notes_panel(&mut self.state, frame, area, panel_id);
             }
         }
     }
 
     /// Update commit mode file tree from git status
+    /// Shows all changed files: staged and unstaged with different styling
     fn update_commit_file_tree(&mut self) {
-        let staged = &self.state.git_status.staged_files;
-        let statuses: Vec<_> = staged
-            .iter()
-            .map(|p| (p.clone(), FileGitStatus::Staged))
-            .collect();
+        let mut all_files = Vec::new();
+        let mut statuses = Vec::new();
 
-        let tree_state = super::components::FileTreeState::from_paths(staged, &statuses);
+        // Add staged files first (they appear at the top)
+        for path in &self.state.git_status.staged_files {
+            all_files.push(path.clone());
+            statuses.push((path.clone(), FileGitStatus::Staged));
+        }
+
+        // Add modified (unstaged) files that aren't already in staged
+        for path in &self.state.git_status.modified_files {
+            if !self.state.git_status.staged_files.contains(path) {
+                all_files.push(path.clone());
+                statuses.push((path.clone(), FileGitStatus::Modified));
+            }
+        }
+
+        let tree_state = super::components::FileTreeState::from_paths(&all_files, &statuses);
         self.state.modes.commit.file_tree = tree_state;
 
-        // Expand all by default for staged files (usually not too many)
+        // Expand all by default (usually not too many files)
         self.state.modes.commit.file_tree.expand_all();
     }
 
@@ -1225,6 +1303,97 @@ impl StudioApp {
         self.state.mark_dirty();
     }
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Staging Operations
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /// Stage a single file
+    fn stage_file(&mut self, path: &str) {
+        let Some(repo) = &self.state.repo else {
+            self.state
+                .notify(Notification::error("No repository available"));
+            return;
+        };
+
+        match repo.stage_file(std::path::Path::new(path)) {
+            Ok(()) => {
+                self.state
+                    .notify(Notification::success(format!("Staged: {}", path)));
+                let _ = self.refresh_git_status();
+            }
+            Err(e) => {
+                self.state
+                    .notify(Notification::error(format!("Failed to stage: {}", e)));
+            }
+        }
+        self.state.mark_dirty();
+    }
+
+    /// Unstage a single file
+    fn unstage_file(&mut self, path: &str) {
+        let Some(repo) = &self.state.repo else {
+            self.state
+                .notify(Notification::error("No repository available"));
+            return;
+        };
+
+        match repo.unstage_file(std::path::Path::new(path)) {
+            Ok(()) => {
+                self.state
+                    .notify(Notification::success(format!("Unstaged: {}", path)));
+                let _ = self.refresh_git_status();
+            }
+            Err(e) => {
+                self.state
+                    .notify(Notification::error(format!("Failed to unstage: {}", e)));
+            }
+        }
+        self.state.mark_dirty();
+    }
+
+    /// Stage all files
+    fn stage_all(&mut self) {
+        let Some(repo) = &self.state.repo else {
+            self.state
+                .notify(Notification::error("No repository available"));
+            return;
+        };
+
+        match repo.stage_all() {
+            Ok(()) => {
+                self.state.notify(Notification::success("Staged all files"));
+                let _ = self.refresh_git_status();
+            }
+            Err(e) => {
+                self.state
+                    .notify(Notification::error(format!("Failed to stage all: {}", e)));
+            }
+        }
+        self.state.mark_dirty();
+    }
+
+    /// Unstage all files
+    fn unstage_all(&mut self) {
+        let Some(repo) = &self.state.repo else {
+            self.state
+                .notify(Notification::error("No repository available"));
+            return;
+        };
+
+        match repo.unstage_all() {
+            Ok(()) => {
+                self.state
+                    .notify(Notification::success("Unstaged all files"));
+                let _ = self.refresh_git_status();
+            }
+            Err(e) => {
+                self.state
+                    .notify(Notification::error(format!("Failed to unstage all: {}", e)));
+            }
+        }
+        self.state.mark_dirty();
+    }
+
     fn render_status(&self, frame: &mut Frame, area: Rect) {
         let mut spans = Vec::new();
 
@@ -1275,7 +1444,7 @@ impl StudioApp {
 
         match self.state.active_mode {
             Mode::Commit => match self.state.focused_panel {
-                PanelId::Left => format!("{} · [↑↓]nav [Enter]select", base),
+                PanelId::Left => format!("{} · [↑↓]nav [s]stage [u]unstage [a]all [U]reset", base),
                 PanelId::Center => format!(
                     "{} · [e]edit [r]regen [p]preset [g]emoji [←→]msg [Enter]commit",
                     base

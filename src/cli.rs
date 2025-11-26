@@ -412,9 +412,15 @@ pub async fn main() -> anyhow::Result<()> {
     if let Some(command) = cli.command {
         handle_command(command, cli.repository_url).await
     } else {
-        // If no subcommand is provided, print the help
-        let _ = Cli::parse_from(["git-iris", "--help"]);
-        Ok(())
+        // Default: launch Studio with auto-detect mode
+        handle_studio(
+            CommonParams::default(),
+            None,
+            None,
+            None,
+            cli.repository_url,
+        )
+        .await
     }
 }
 
@@ -427,7 +433,7 @@ struct GenConfig {
     verify: bool,
 }
 
-/// Handle the `Gen` command with agent framework and TUI integration
+/// Handle the `Gen` command with agent framework and Studio integration
 #[allow(clippy::too_many_lines)]
 async fn handle_gen_with_agent(
     common: CommonParams,
@@ -440,7 +446,7 @@ async fn handle_gen_with_agent(
     use crate::instruction_presets::PresetType;
     use crate::output::format_commit_result;
     use crate::services::GitCommitService;
-    use crate::tui::run_tui_commit;
+    use crate::studio::{Mode, run_studio};
     use crate::types::format_commit_message;
     use anyhow::Context;
     use std::sync::Arc;
@@ -474,53 +480,46 @@ async fn handle_gen_with_agent(
         repository_url.clone(),
     )?);
 
-    // Get git info for staged files check and user info
+    // Get git info for staged files check
     let git_info = git_repo.get_git_info(&cfg)?;
 
-    if git_info.staged_files.is_empty() {
-        ui::print_warning(
-            "No staged changes. Please stage your changes before generating a commit message.",
-        );
-        ui::print_info("You can stage changes using 'git add <file>' or 'git add .'");
-        return Ok(());
-    }
+    // For --print or --auto-commit, we need to generate the message first
+    if config.print_only || config.auto_commit {
+        if git_info.staged_files.is_empty() {
+            ui::print_warning(
+                "No staged changes. Please stage your changes before generating a commit message.",
+            );
+            ui::print_info("You can stage changes using 'git add <file>' or 'git add .'");
+            return Ok(());
+        }
 
-    // Run pre-commit hook before we do anything else
-    if let Err(e) = commit_service.pre_commit() {
-        ui::print_error(&format!("Pre-commit failed: {e}"));
-        return Err(e);
-    }
+        // Run pre-commit hook before we do anything else
+        if let Err(e) = commit_service.pre_commit() {
+            ui::print_error(&format!("Pre-commit failed: {e}"));
+            return Err(e);
+        }
 
-    // Extract values we need for TUI
-    let effective_instructions = common
-        .instructions
-        .as_ref()
-        .cloned()
-        .unwrap_or_else(|| cfg.instructions.clone());
-    let preset_str = common.preset.clone().unwrap_or_default();
+        // Create spinner for agent mode
+        let spinner = ui::create_spinner("Generating commit message...");
 
-    // Create spinner for agent mode
-    let spinner = ui::create_spinner("Initializing Iris...");
+        // Use IrisAgentService for commit message generation
+        let context = TaskContext::for_gen();
+        let response = agent_service.execute_task("commit", context).await?;
 
-    // Use IrisAgentService for commit message generation
-    let context = TaskContext::for_gen();
-    let response = agent_service.execute_task("commit", context).await?;
+        // Extract commit message from response
+        let StructuredResponse::CommitMessage(generated_message) = response else {
+            return Err(anyhow::anyhow!("Expected commit message response"));
+        };
 
-    // Extract commit message from response
-    let StructuredResponse::CommitMessage(generated_message) = response else {
-        return Err(anyhow::anyhow!("Expected commit message response"));
-    };
+        // Finish spinner after agent completes
+        spinner.finish_and_clear();
 
-    // Finish spinner after agent completes
-    spinner.finish_and_clear();
+        if config.print_only {
+            println!("{}", format_commit_message(&generated_message));
+            return Ok(());
+        }
 
-    if config.print_only {
-        println!("{}", format_commit_message(&generated_message));
-        return Ok(());
-    }
-
-    if config.auto_commit {
-        // Only allow auto-commit for local repositories
+        // Auto-commit mode
         if commit_service.is_remote() {
             ui::print_error(
                 "Cannot automatically commit to a remote repository. Use --print instead.",
@@ -544,28 +543,24 @@ async fn handle_gen_with_agent(
         return Ok(());
     }
 
-    // Only allow interactive commit for local repositories
+    // Interactive mode: launch Studio (it handles staged check and auto-generation)
     if commit_service.is_remote() {
         ui::print_warning(
-            "Interactive commit not available for remote repositories. Using print mode instead.",
+            "Interactive commit not available for remote repositories. Use --print instead.",
         );
-        println!("{}", format_commit_message(&generated_message));
         return Ok(());
     }
 
-    run_tui_commit(
-        vec![generated_message],
-        effective_instructions,
-        preset_str,
-        git_info.user_name,
-        git_info.user_email,
-        commit_service,
-        agent_service,
-        use_gitmoji,
+    // Launch Studio in Commit mode - it will auto-generate if there are staged changes
+    run_studio(
+        cfg,
+        Some(git_repo),
+        Some(commit_service),
+        Some(agent_service),
+        Some(Mode::Commit),
+        None,
+        None,
     )
-    .await?;
-
-    Ok(())
 }
 
 /// Handle the `Gen` command

@@ -29,7 +29,6 @@ pub mod output;
 pub mod providers;
 pub mod services;
 pub mod studio;
-pub mod tui;
 pub mod types;
 pub mod ui;
 

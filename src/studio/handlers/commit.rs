@@ -104,6 +104,30 @@ fn handle_files_key(state: &mut StudioState, key: KeyEvent) -> Action {
             Action::Redraw
         }
 
+        // Stage selected file
+        KeyCode::Char('s') => {
+            if let Some(path) = state.modes.commit.file_tree.selected_path() {
+                Action::StageFile(path.to_string_lossy().to_string())
+            } else {
+                Action::None
+            }
+        }
+
+        // Unstage selected file
+        KeyCode::Char('u') => {
+            if let Some(path) = state.modes.commit.file_tree.selected_path() {
+                Action::UnstageFile(path.to_string_lossy().to_string())
+            } else {
+                Action::None
+            }
+        }
+
+        // Stage all files
+        KeyCode::Char('a') => Action::StageAll,
+
+        // Unstage all files
+        KeyCode::Char('U') => Action::UnstageAll,
+
         _ => Action::None,
     }
 }

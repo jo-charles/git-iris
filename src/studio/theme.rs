@@ -29,20 +29,39 @@ pub const SUCCESS_GREEN: Color = Color::Rgb(80, 250, 123);
 pub const ERROR_RED: Color = Color::Rgb(255, 99, 99);
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// Gradient Colors (for SilkCircuit Neon aesthetic)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Purple gradient end - darker variant
+pub const GRADIENT_PURPLE_DARK: Color = Color::Rgb(140, 30, 180);
+
+/// Cyan gradient end - darker variant
+pub const GRADIENT_CYAN_DARK: Color = Color::Rgb(60, 180, 160);
+
+/// Pink/Magenta accent for highlights
+pub const MAGENTA_ACCENT: Color = Color::Rgb(255, 85, 255);
+
+/// Soft purple for subtle accents
+pub const SOFT_PURPLE: Color = Color::Rgb(180, 130, 255);
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // Backgrounds
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /// Dark background base
-pub const BG_DARK: Color = Color::Rgb(22, 22, 30);
+pub const BG_DARK: Color = Color::Rgb(18, 18, 24);
 
 /// Panel background
-pub const BG_PANEL: Color = Color::Rgb(30, 30, 40);
+pub const BG_PANEL: Color = Color::Rgb(24, 24, 32);
 
-/// Highlighted/selected background
-pub const BG_HIGHLIGHT: Color = Color::Rgb(40, 42, 54);
+/// Highlighted/selected background - more visible with purple tint
+pub const BG_HIGHLIGHT: Color = Color::Rgb(45, 40, 60);
 
 /// Elevated surface
-pub const BG_ELEVATED: Color = Color::Rgb(50, 52, 64);
+pub const BG_ELEVATED: Color = Color::Rgb(55, 50, 70);
+
+/// Active selection background - vibrant
+pub const BG_ACTIVE: Color = Color::Rgb(60, 45, 85);
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Text Colors
@@ -100,6 +119,14 @@ pub fn cursor_line() -> Style {
 /// Style for selected items
 pub fn selected() -> Style {
     Style::default().bg(BG_HIGHLIGHT).fg(NEON_CYAN)
+}
+
+/// Style for actively selected (focused panel, selected item)
+pub fn active_selected() -> Style {
+    Style::default()
+        .bg(BG_ACTIVE)
+        .fg(ELECTRIC_PURPLE)
+        .add_modifier(Modifier::BOLD)
 }
 
 /// Style for focused panel border
@@ -297,3 +324,96 @@ pub fn format_mode_indicator(_name: &str, active: bool) -> Style {
         mode_inactive()
     }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Gradient & Effect Helpers
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Get a color for a gradient position (0.0 = start, 1.0 = end)
+/// Gradient goes from `ELECTRIC_PURPLE` → `NEON_CYAN`
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::as_conversions
+)]
+pub fn gradient_purple_cyan(position: f32) -> Color {
+    let t = position.clamp(0.0, 1.0);
+    // ELECTRIC_PURPLE (225, 53, 255) → NEON_CYAN (128, 255, 234)
+    Color::Rgb(
+        (225.0 + (128.0 - 225.0) * t) as u8,
+        (53.0 + (255.0 - 53.0) * t) as u8,
+        (255.0 + (234.0 - 255.0) * t) as u8,
+    )
+}
+
+/// Get a color for a gradient position (0.0 = start, 1.0 = end)
+/// Gradient goes from CORAL → `ELECTRIC_YELLOW`
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::as_conversions
+)]
+pub fn gradient_coral_yellow(position: f32) -> Color {
+    let t = position.clamp(0.0, 1.0);
+    // CORAL (255, 106, 193) → ELECTRIC_YELLOW (241, 250, 140)
+    Color::Rgb(
+        (255.0 + (241.0 - 255.0) * t) as u8,
+        (106.0 + (250.0 - 106.0) * t) as u8,
+        (193.0 + (140.0 - 193.0) * t) as u8,
+    )
+}
+
+/// Unicode block characters for drawing gradient bars
+pub const BLOCK_FULL: char = '█';
+pub const BLOCK_3_4: char = '▓';
+pub const BLOCK_1_2: char = '▒';
+pub const BLOCK_1_4: char = '░';
+
+/// Thin gradient line characters
+pub const GRADIENT_LINE: &[char] = &['━', '━', '━', '━'];
+
+/// Create styled text with gradient coloring
+#[allow(clippy::as_conversions, clippy::cast_precision_loss)]
+pub fn styled_gradient_text(text: &str, gradient_fn: fn(f32) -> Color) -> Vec<Span<'static>> {
+    let len = text.chars().count().max(1);
+    text.chars()
+        .enumerate()
+        .map(|(i, c)| {
+            let position = i as f32 / (len - 1).max(1) as f32;
+            Span::styled(c.to_string(), Style::default().fg(gradient_fn(position)))
+        })
+        .collect()
+}
+
+/// Create a horizontal gradient line
+#[allow(clippy::as_conversions, clippy::cast_precision_loss)]
+pub fn gradient_line(width: usize) -> Vec<Span<'static>> {
+    let char = LINE_THIN;
+    (0..width)
+        .map(|i| {
+            let position = i as f32 / (width - 1).max(1) as f32;
+            Span::styled(
+                char.to_string(),
+                Style::default().fg(gradient_purple_cyan(position)),
+            )
+        })
+        .collect()
+}
+
+/// Create a thick horizontal gradient line
+#[allow(clippy::as_conversions, clippy::cast_precision_loss)]
+pub fn gradient_line_thick(width: usize) -> Vec<Span<'static>> {
+    let char = LINE_THICK;
+    (0..width)
+        .map(|i| {
+            let position = i as f32 / (width - 1).max(1) as f32;
+            Span::styled(
+                char.to_string(),
+                Style::default().fg(gradient_purple_cyan(position)),
+            )
+        })
+        .collect()
+}
+
+// Import needed for Span
+use ratatui::text::Span;

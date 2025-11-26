@@ -50,6 +50,14 @@ pub enum Action {
     ReloadChangelogData,
     /// Reload Release Notes data (after ref selection changes)
     ReloadReleaseNotesData,
+    /// Stage a file
+    StageFile(String),
+    /// Unstage a file
+    UnstageFile(String),
+    /// Stage all files
+    StageAll,
+    /// Unstage all files
+    UnstageAll,
 }
 
 /// Request to query Iris agent

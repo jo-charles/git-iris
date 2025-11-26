@@ -845,7 +845,16 @@ impl StudioState {
         }
 
         self.active_mode = new_mode;
-        self.focused_panel = PanelId::Left;
+
+        // Set default focus based on mode
+        self.focused_panel = match new_mode {
+            // Commit mode: focus on message editor (center panel)
+            Mode::Commit => PanelId::Center,
+            // Review/PR/Changelog/Release: focus on output (center panel)
+            Mode::Review | Mode::PR | Mode::Changelog | Mode::ReleaseNotes => PanelId::Center,
+            // Explore: focus on file tree (left panel)
+            Mode::Explore => PanelId::Left,
+        };
         self.dirty = true;
     }
 

@@ -17,12 +17,22 @@ pub fn render_commit_panel(
 
     match panel_id {
         PanelId::Left => {
-            // Render staged files using FileTree component
+            // Build title with file counts
+            let staged = state.git_status.staged_count;
+            let modified = state.git_status.modified_count;
+            let title = if modified > 0 {
+                format!("Changes ✓{} ○{}", staged, modified)
+            } else if staged > 0 {
+                format!("Changes ✓{}", staged)
+            } else {
+                "Changes".to_string()
+            };
+
             render_file_tree(
                 frame,
                 area,
                 &mut state.modes.commit.file_tree,
-                "Staged Files",
+                &title,
                 is_focused,
             );
         }
