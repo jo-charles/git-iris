@@ -17,7 +17,9 @@
 
 mod app;
 mod events;
+mod handlers;
 mod layout;
+mod render;
 mod state;
 mod theme;
 

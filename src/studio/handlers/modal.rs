@@ -1,0 +1,280 @@
+//! Modal key handling for Iris Studio
+
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+use crate::studio::state::{Modal, Notification, RefSelectorTarget, StudioState};
+
+use super::{Action, IrisQueryRequest};
+
+/// Handle key events when a modal is open
+pub fn handle_modal_key(state: &mut StudioState, key: KeyEvent) -> Action {
+    match &state.modal {
+        Some(Modal::Help) => {
+            // Any key closes help
+            state.close_modal();
+            Action::Redraw
+        }
+        Some(Modal::Search { .. }) => handle_search_modal(state, key),
+        Some(Modal::Confirm { .. }) => handle_confirm_modal(state, key),
+        Some(Modal::Instructions { .. }) => handle_instructions_modal(state, key),
+        Some(Modal::Chat(_)) => handle_chat_modal(state, key),
+        Some(Modal::RefSelector { .. }) => handle_ref_selector_modal(state, key),
+        None => Action::None,
+    }
+}
+
+fn handle_search_modal(state: &mut StudioState, key: KeyEvent) -> Action {
+    match key.code {
+        KeyCode::Esc => {
+            state.close_modal();
+            Action::Redraw
+        }
+        KeyCode::Enter => {
+            // TODO: Handle search selection
+            state.close_modal();
+            Action::Redraw
+        }
+        KeyCode::Char(c) => {
+            // TODO: Update search query
+            let _ = c;
+            Action::Redraw
+        }
+        KeyCode::Backspace => {
+            // TODO: Update search query
+            Action::Redraw
+        }
+        _ => Action::None,
+    }
+}
+
+fn handle_confirm_modal(state: &mut StudioState, key: KeyEvent) -> Action {
+    match key.code {
+        KeyCode::Char('y' | 'Y') => {
+            // TODO: Execute confirmed action
+            state.close_modal();
+            Action::Redraw
+        }
+        KeyCode::Char('n' | 'N') | KeyCode::Esc => {
+            state.close_modal();
+            Action::Redraw
+        }
+        _ => Action::None,
+    }
+}
+
+fn handle_instructions_modal(state: &mut StudioState, key: KeyEvent) -> Action {
+    // Get current input for Enter handling
+    let current_input = if let Some(Modal::Instructions { input }) = &state.modal {
+        input.clone()
+    } else {
+        String::new()
+    };
+
+    match key.code {
+        KeyCode::Esc => {
+            state.close_modal();
+            Action::Redraw
+        }
+        KeyCode::Enter => {
+            // Generate commit with instructions
+            let instructions = if current_input.is_empty() {
+                None
+            } else {
+                Some(current_input)
+            };
+            state.close_modal();
+            state.set_iris_thinking("Generating commit message...");
+            state.modes.commit.generating = true;
+            Action::IrisQuery(IrisQueryRequest::GenerateCommit { instructions })
+        }
+        KeyCode::Char(c) => {
+            if let Some(Modal::Instructions { input }) = &mut state.modal {
+                input.push(c);
+            }
+            state.mark_dirty();
+            Action::Redraw
+        }
+        KeyCode::Backspace => {
+            if let Some(Modal::Instructions { input }) = &mut state.modal {
+                input.pop();
+            }
+            state.mark_dirty();
+            Action::Redraw
+        }
+        _ => Action::None,
+    }
+}
+
+fn handle_chat_modal(state: &mut StudioState, key: KeyEvent) -> Action {
+    // Get current state for Enter handling
+    let (current_input, is_responding) = if let Some(Modal::Chat(chat)) = &state.modal {
+        (chat.input.clone(), chat.is_responding)
+    } else {
+        (String::new(), false)
+    };
+
+    match key.code {
+        KeyCode::Esc => {
+            state.close_modal();
+            Action::Redraw
+        }
+        KeyCode::Enter => {
+            // Send message if not empty and not already responding
+            if !current_input.is_empty() && !is_responding {
+                let message = current_input;
+                if let Some(Modal::Chat(chat)) = &mut state.modal {
+                    chat.add_user_message(&message);
+                    chat.is_responding = true;
+                }
+                state.mark_dirty();
+                Action::IrisQuery(IrisQueryRequest::Chat { message })
+            } else {
+                Action::None
+            }
+        }
+        KeyCode::Char(c) => {
+            if let Some(Modal::Chat(chat)) = &mut state.modal {
+                chat.input.push(c);
+            }
+            state.mark_dirty();
+            Action::Redraw
+        }
+        KeyCode::Backspace => {
+            if let Some(Modal::Chat(chat)) = &mut state.modal {
+                chat.input.pop();
+            }
+            state.mark_dirty();
+            Action::Redraw
+        }
+        KeyCode::Up => {
+            // Scroll up in chat history
+            if let Some(Modal::Chat(chat)) = &mut state.modal {
+                chat.scroll_offset = chat.scroll_offset.saturating_add(1);
+            }
+            state.mark_dirty();
+            Action::Redraw
+        }
+        KeyCode::Down => {
+            // Scroll down in chat history
+            if let Some(Modal::Chat(chat)) = &mut state.modal {
+                chat.scroll_offset = chat.scroll_offset.saturating_sub(1);
+            }
+            state.mark_dirty();
+            Action::Redraw
+        }
+        _ => Action::None,
+    }
+}
+
+fn handle_ref_selector_modal(state: &mut StudioState, key: KeyEvent) -> Action {
+    // Get current state for filtering
+    let (input, refs, selected, target) = if let Some(Modal::RefSelector {
+        input,
+        refs,
+        selected,
+        target,
+    }) = &state.modal
+    {
+        (input.clone(), refs.clone(), *selected, *target)
+    } else {
+        return Action::None;
+    };
+
+    // Filter refs based on input
+    let filtered: Vec<_> = refs
+        .iter()
+        .filter(|r| input.is_empty() || r.to_lowercase().contains(&input.to_lowercase()))
+        .collect();
+
+    match key.code {
+        KeyCode::Esc => {
+            state.close_modal();
+            Action::Redraw
+        }
+        KeyCode::Enter => {
+            // Apply selection
+            if let Some(selected_ref) = filtered.get(selected) {
+                let label = match target {
+                    RefSelectorTarget::ReviewFrom => {
+                        state.modes.review.from_ref.clone_from(selected_ref);
+                        "Review from"
+                    }
+                    RefSelectorTarget::ReviewTo => {
+                        state.modes.review.to_ref.clone_from(selected_ref);
+                        "Review to"
+                    }
+                    RefSelectorTarget::PrFrom => {
+                        state.modes.pr.base_branch.clone_from(selected_ref);
+                        "PR base"
+                    }
+                    RefSelectorTarget::PrTo => {
+                        state.modes.pr.to_ref.clone_from(selected_ref);
+                        "PR target"
+                    }
+                    RefSelectorTarget::ChangelogFrom => {
+                        state.modes.changelog.from_version.clone_from(selected_ref);
+                        "Changelog from"
+                    }
+                    RefSelectorTarget::ChangelogTo => {
+                        state.modes.changelog.to_version.clone_from(selected_ref);
+                        "Changelog to"
+                    }
+                };
+                state.notify(Notification::info(format!("{label} set to {selected_ref}")));
+            }
+            state.close_modal();
+            Action::Redraw
+        }
+        KeyCode::Up | KeyCode::Char('k') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            if let Some(Modal::RefSelector { selected, .. }) = &mut state.modal {
+                *selected = selected.saturating_sub(1);
+            }
+            state.mark_dirty();
+            Action::Redraw
+        }
+        KeyCode::Down | KeyCode::Char('j') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            if let Some(Modal::RefSelector {
+                selected,
+                refs,
+                input,
+                ..
+            }) = &mut state.modal
+            {
+                let filtered_len = refs
+                    .iter()
+                    .filter(|r| {
+                        input.is_empty() || r.to_lowercase().contains(&input.to_lowercase())
+                    })
+                    .count();
+                if *selected + 1 < filtered_len {
+                    *selected += 1;
+                }
+            }
+            state.mark_dirty();
+            Action::Redraw
+        }
+        KeyCode::Char(c) => {
+            if let Some(Modal::RefSelector {
+                input, selected, ..
+            }) = &mut state.modal
+            {
+                input.push(c);
+                *selected = 0; // Reset selection on filter change
+            }
+            state.mark_dirty();
+            Action::Redraw
+        }
+        KeyCode::Backspace => {
+            if let Some(Modal::RefSelector {
+                input, selected, ..
+            }) = &mut state.modal
+            {
+                input.pop();
+                *selected = 0;
+            }
+            state.mark_dirty();
+            Action::Redraw
+        }
+        _ => Action::None,
+    }
+}
