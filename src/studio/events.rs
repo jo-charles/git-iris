@@ -472,8 +472,8 @@ fn handle_commit_key(state: &mut StudioState, key: KeyEvent) -> Action {
 
     match state.focused_panel {
         PanelId::Left => handle_commit_files_key(state, key),
-        PanelId::Center => handle_commit_diff_key(state, key),
-        PanelId::Right => handle_commit_message_key(state, key),
+        PanelId::Center => handle_commit_message_key(state, key),
+        PanelId::Right => handle_commit_diff_key(state, key),
     }
 }
 
@@ -489,29 +489,25 @@ fn handle_commit_editing_key(state: &mut StudioState, key: KeyEvent) -> Action {
     }
 }
 
+/// Sync file tree selection with diff view
+fn sync_commit_file_selection(state: &mut StudioState) {
+    if let Some(path) = state.modes.commit.file_tree.selected_path() {
+        state.modes.commit.diff_view.select_file_by_path(&path);
+    }
+}
+
 fn handle_commit_files_key(state: &mut StudioState, key: KeyEvent) -> Action {
     match key.code {
         // Navigation
         KeyCode::Char('j') | KeyCode::Down => {
             state.modes.commit.file_tree.select_next();
-            // Sync selected index and update diff view
-            if let Some(entry) = state.modes.commit.file_tree.selected_entry()
-                && !entry.is_dir
-            {
-                // Update diff view to show this file
-                let file_idx = state.modes.commit.diff_view.selected_file_index();
-                // Find matching file in diffs
-                for (i, _) in (0..state.modes.commit.diff_view.file_count()).enumerate() {
-                    if i != file_idx {
-                        // Will need file path matching logic
-                    }
-                }
-            }
+            sync_commit_file_selection(state);
             state.mark_dirty();
             Action::Redraw
         }
         KeyCode::Char('k') | KeyCode::Up => {
             state.modes.commit.file_tree.select_prev();
+            sync_commit_file_selection(state);
             state.mark_dirty();
             Action::Redraw
         }
@@ -527,21 +523,25 @@ fn handle_commit_files_key(state: &mut StudioState, key: KeyEvent) -> Action {
         }
         KeyCode::Char('g') => {
             state.modes.commit.file_tree.select_first();
+            sync_commit_file_selection(state);
             state.mark_dirty();
             Action::Redraw
         }
         KeyCode::Char('G') => {
             state.modes.commit.file_tree.select_last();
+            sync_commit_file_selection(state);
             state.mark_dirty();
             Action::Redraw
         }
         KeyCode::PageDown | KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             state.modes.commit.file_tree.page_down(10);
+            sync_commit_file_selection(state);
             state.mark_dirty();
             Action::Redraw
         }
         KeyCode::PageUp | KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             state.modes.commit.file_tree.page_up(10);
+            sync_commit_file_selection(state);
             state.mark_dirty();
             Action::Redraw
         }
@@ -572,8 +572,9 @@ fn handle_commit_files_key(state: &mut StudioState, key: KeyEvent) -> Action {
                 if entry.is_dir {
                     state.modes.commit.file_tree.toggle_expand();
                 } else {
-                    // Move focus to diff panel
-                    state.focus_next_panel();
+                    // Sync diff view and move focus to diff panel (right)
+                    sync_commit_file_selection(state);
+                    state.focused_panel = super::state::PanelId::Right;
                 }
             }
             state.mark_dirty();

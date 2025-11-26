@@ -384,6 +384,22 @@ impl DiffViewState {
     pub fn selected_file_index(&self) -> usize {
         self.selected_file
     }
+
+    /// Select file by path (returns true if found)
+    pub fn select_file_by_path(&mut self, path: &std::path::Path) -> bool {
+        for (i, diff) in self.diffs.iter().enumerate() {
+            if diff.path == path {
+                self.select_file(i);
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Get all file paths in the diff
+    pub fn file_paths(&self) -> Vec<&std::path::Path> {
+        self.diffs.iter().map(|d| d.path.as_path()).collect()
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

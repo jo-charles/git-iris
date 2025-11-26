@@ -134,6 +134,11 @@ impl StudioApp {
 
             // Load diffs into diff view
             self.load_staged_diffs(files_info.as_ref());
+
+            // Sync initial file selection with diff view
+            if let Some(path) = self.state.modes.commit.file_tree.selected_path() {
+                self.state.modes.commit.diff_view.select_file_by_path(&path);
+            }
         }
         Ok(())
     }
@@ -245,6 +250,11 @@ impl StudioApp {
         // Set initial mode based on repo state
         let suggested_mode = self.state.suggest_initial_mode();
         self.state.switch_mode(suggested_mode);
+
+        // Auto-generate commit message if entering Commit mode with staged changes
+        if suggested_mode == Mode::Commit && self.state.git_status.has_staged() {
+            self.auto_generate_commit();
+        }
 
         loop {
             // Check for completed Iris tasks
@@ -378,6 +388,17 @@ impl StudioApp {
         });
     }
 
+    /// Auto-generate commit message on app start
+    fn auto_generate_commit(&mut self) {
+        // Don't regenerate if we already have messages
+        if !self.state.modes.commit.messages.is_empty() {
+            return;
+        }
+
+        self.state.set_iris_thinking("Analyzing changes...");
+        self.spawn_commit_generation(None);
+    }
+
     /// Handle mouse events for panel focus and scrolling
     fn handle_mouse_event(&mut self, mouse: MouseEvent) {
         match mouse.kind {
@@ -459,7 +480,7 @@ impl StudioApp {
             Mode::Commit => {
                 match self.state.focused_panel {
                     PanelId::Left => {
-                        // Staged files tree scroll
+                        // Staged files tree scroll + sync diff view
                         if delta > 0 {
                             for _ in 0..delta {
                                 self.state.modes.commit.file_tree.select_next();
@@ -469,8 +490,15 @@ impl StudioApp {
                                 self.state.modes.commit.file_tree.select_prev();
                             }
                         }
+                        // Sync diff view to selected file
+                        if let Some(path) = self.state.modes.commit.file_tree.selected_path() {
+                            self.state.modes.commit.diff_view.select_file_by_path(&path);
+                        }
                     }
                     PanelId::Center => {
+                        // Message editor - textarea handles scrolling
+                    }
+                    PanelId::Right => {
                         // Diff view scroll
                         if delta > 0 {
                             self.state
@@ -485,9 +513,6 @@ impl StudioApp {
                                 .diff_view
                                 .scroll_up((-delta) as usize);
                         }
-                    }
-                    PanelId::Right => {
-                        // Message editor - textarea handles scrolling
                     }
                 }
             }
@@ -964,22 +989,32 @@ impl StudioApp {
                 );
             }
             PanelId::Center => {
-                // Render diff view
-                render_diff_view(
-                    frame,
-                    area,
-                    &self.state.modes.commit.diff_view,
-                    "Changes",
-                    is_focused,
-                );
-            }
-            PanelId::Right => {
-                // Render message editor
+                // Render message editor (center panel for visibility)
                 render_message_editor(
                     frame,
                     area,
                     &self.state.modes.commit.message_editor,
                     "Commit Message",
+                    is_focused,
+                );
+            }
+            PanelId::Right => {
+                // Render diff view for selected file
+                let title = self
+                    .state
+                    .modes
+                    .commit
+                    .file_tree
+                    .selected_path()
+                    .map_or_else(
+                        || "Changes".to_string(),
+                        |p| format!("◈ {}", p.file_name().unwrap_or_default().to_string_lossy()),
+                    );
+                render_diff_view(
+                    frame,
+                    area,
+                    &self.state.modes.commit.diff_view,
+                    &title,
                     is_focused,
                 );
             }
