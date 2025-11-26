@@ -417,9 +417,6 @@ async fn handle_gen_with_agent(
     use anyhow::Context;
     use std::sync::Arc;
 
-    // Enable agent mode for enhanced status display
-    crate::agents::status::enable_agent_mode();
-
     // Check if the preset is appropriate for commit messages
     if !common.is_valid_preset_for_type(PresetType::Commit) {
         ui::print_warning(
@@ -613,9 +610,15 @@ async fn handle_review(
     // Validate parameters and create structured context
     let context = TaskContext::for_review(commit, from, to, include_unstaged)?;
 
+    // Create spinner for progress indication
+    let spinner = ui::create_spinner("Initializing Iris...");
+
     // Use IrisAgentService for agent execution
     let service = IrisAgentService::from_common_params(&common, repository_url)?;
     let response = service.execute_task("review", context).await?;
+
+    // Finish spinner
+    spinner.finish_and_clear();
 
     if print {
         println!("{response}");
@@ -646,6 +649,9 @@ async fn handle_changelog(
         version_name
     );
 
+    ui::print_version(crate_version!());
+    ui::print_newline();
+
     use crate::agents::{IrisAgentService, TaskContext};
     use crate::changelog::ChangelogGenerator;
     use crate::git::GitRepo;
@@ -656,9 +662,15 @@ async fn handle_changelog(
     let context = TaskContext::for_changelog(from.clone(), to.clone());
     let to_ref = to.unwrap_or_else(|| "HEAD".to_string());
 
+    // Create spinner for progress indication
+    let spinner = ui::create_spinner("Initializing Iris...");
+
     // Use IrisAgentService for agent execution
     let service = IrisAgentService::from_common_params(&common, repository_url.clone())?;
     let response = service.execute_task("changelog", context).await?;
+
+    // Finish spinner
+    spinner.finish_and_clear();
 
     // Print the changelog
     println!("{response}");
@@ -726,14 +738,23 @@ async fn handle_release_notes(
         to
     );
 
+    ui::print_version(crate_version!());
+    ui::print_newline();
+
     use crate::agents::{IrisAgentService, TaskContext};
 
     // Create structured context for release notes
     let context = TaskContext::for_changelog(from, to);
 
+    // Create spinner for progress indication
+    let spinner = ui::create_spinner("Initializing Iris...");
+
     // Use IrisAgentService for agent execution
     let service = IrisAgentService::from_common_params(&common, repository_url)?;
     let response = service.execute_task("release_notes", context).await?;
+
+    // Finish spinner
+    spinner.finish_and_clear();
 
     println!("{response}");
     Ok(())
@@ -843,9 +864,6 @@ async fn handle_pr_with_agent(
     use crate::instruction_presets::PresetType;
     use crate::types::format_pull_request;
 
-    // Enable agent mode for enhanced status display
-    crate::agents::status::enable_agent_mode();
-
     // Check if the preset is appropriate for PR descriptions
     if !common.is_valid_preset_for_type(PresetType::Review)
         && !common.is_valid_preset_for_type(PresetType::Both)
@@ -859,9 +877,15 @@ async fn handle_pr_with_agent(
     // Create structured context for PR (handles defaults: from=main, to=HEAD)
     let context = TaskContext::for_pr(from, to);
 
+    // Create spinner for progress indication
+    let spinner = ui::create_spinner("Initializing Iris...");
+
     // Use IrisAgentService for agent execution
     let service = IrisAgentService::from_common_params(&common, repository_url)?;
     let response = service.execute_task("pr", context).await?;
+
+    // Finish spinner
+    spinner.finish_and_clear();
 
     // Extract PR from response
     let StructuredResponse::PullRequest(generated_pr) = response else {

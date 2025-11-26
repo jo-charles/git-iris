@@ -467,13 +467,15 @@ Guidelines:
     {
         use crate::agents::debug;
         use crate::agents::status::IrisPhase;
-        use crate::messages::get_waiting_message;
+        use crate::messages::get_capability_message;
         use schemars::schema_for;
+
+        let capability = self.current_capability().unwrap_or("commit");
 
         debug::debug_phase_change(&format!("AGENT EXECUTION: {}", std::any::type_name::<T>()));
 
-        // Update status - building agent
-        let msg = get_waiting_message();
+        // Update status - building agent (capability-aware)
+        let msg = get_capability_message(capability);
         crate::iris_status_dynamic!(IrisPhase::Planning, msg.text, 2, 4);
 
         // Build agent with all tools attached
@@ -511,8 +513,8 @@ Guidelines:
 
         debug::debug_llm_request(&full_prompt, Some(16384));
 
-        // Update status - generation phase (sending to LLM)
-        let gen_msg = get_waiting_message();
+        // Update status - generation phase (capability-aware)
+        let gen_msg = get_capability_message(capability);
         crate::iris_status_dynamic!(IrisPhase::Generation, gen_msg.text, 3, 4);
 
         // Prompt the agent with multi-turn support
@@ -575,10 +577,10 @@ Guidelines:
         user_prompt: &str,
     ) -> Result<StructuredResponse> {
         use crate::agents::status::IrisPhase;
-        use crate::messages::get_waiting_message;
+        use crate::messages::get_capability_message;
 
-        // Show initializing status with a fun random message
-        let waiting_msg = get_waiting_message();
+        // Show initializing status with a capability-specific message
+        let waiting_msg = get_capability_message(capability);
         crate::iris_status_dynamic!(IrisPhase::Initializing, waiting_msg.text, 1, 4);
 
         // Load the capability config to get both prompt and output type

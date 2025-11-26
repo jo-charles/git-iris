@@ -325,6 +325,165 @@ pub fn get_review_waiting_message() -> ColoredMessage {
         })
 }
 
+/// Get a waiting message appropriate for the given capability
+pub fn get_capability_message(capability: &str) -> ColoredMessage {
+    match capability {
+        "review" => get_review_waiting_message(),
+        "pr" => get_pr_waiting_message(),
+        "changelog" => get_changelog_waiting_message(),
+        "release_notes" => get_release_notes_waiting_message(),
+        // "commit" and any other capability use the default cosmic messages
+        _ => get_waiting_message(),
+    }
+}
+
+static PR_WAITING_MESSAGES: std::sync::LazyLock<Vec<ColoredMessage>> =
+    std::sync::LazyLock::new(|| {
+        vec![
+            ColoredMessage {
+                text: "🔮 Crafting your PR narrative...".to_string(),
+                color: NEBULA_PURPLE,
+            },
+            ColoredMessage {
+                text: "✨ Weaving your commits into a story...".to_string(),
+                color: STARLIGHT,
+            },
+            ColoredMessage {
+                text: "📝 Summarizing your brilliant work...".to_string(),
+                color: CELESTIAL_BLUE,
+            },
+            ColoredMessage {
+                text: "🎯 Distilling the essence of your changes...".to_string(),
+                color: PLASMA_CYAN,
+            },
+            ColoredMessage {
+                text: "🌟 Highlighting your contributions...".to_string(),
+                color: AURORA_GREEN,
+            },
+            ColoredMessage {
+                text: "📋 Building your PR description...".to_string(),
+                color: SOLAR_YELLOW,
+            },
+            ColoredMessage {
+                text: "🎨 Painting the PR picture...".to_string(),
+                color: GALAXY_PINK,
+            },
+            ColoredMessage {
+                text: "🧵 Threading your commits together...".to_string(),
+                color: COMET_ORANGE,
+            },
+        ]
+    });
+
+static CHANGELOG_WAITING_MESSAGES: std::sync::LazyLock<Vec<ColoredMessage>> =
+    std::sync::LazyLock::new(|| {
+        vec![
+            ColoredMessage {
+                text: "📜 Chronicling your changes...".to_string(),
+                color: NEBULA_PURPLE,
+            },
+            ColoredMessage {
+                text: "✨ Cataloging your accomplishments...".to_string(),
+                color: STARLIGHT,
+            },
+            ColoredMessage {
+                text: "📖 Writing the history of your code...".to_string(),
+                color: CELESTIAL_BLUE,
+            },
+            ColoredMessage {
+                text: "🏛️ Archiving your progress...".to_string(),
+                color: PLASMA_CYAN,
+            },
+            ColoredMessage {
+                text: "🔖 Tagging your milestones...".to_string(),
+                color: AURORA_GREEN,
+            },
+            ColoredMessage {
+                text: "📝 Documenting the journey...".to_string(),
+                color: SOLAR_YELLOW,
+            },
+            ColoredMessage {
+                text: "🗂️ Organizing your achievements...".to_string(),
+                color: GALAXY_PINK,
+            },
+            ColoredMessage {
+                text: "⚡ Capturing the deltas...".to_string(),
+                color: COMET_ORANGE,
+            },
+        ]
+    });
+
+static RELEASE_NOTES_WAITING_MESSAGES: std::sync::LazyLock<Vec<ColoredMessage>> =
+    std::sync::LazyLock::new(|| {
+        vec![
+            ColoredMessage {
+                text: "🚀 Preparing launch notes...".to_string(),
+                color: METEOR_RED,
+            },
+            ColoredMessage {
+                text: "✨ Polishing the release highlights...".to_string(),
+                color: STARLIGHT,
+            },
+            ColoredMessage {
+                text: "📣 Announcing your achievements...".to_string(),
+                color: NEBULA_PURPLE,
+            },
+            ColoredMessage {
+                text: "🎉 Celebrating the release...".to_string(),
+                color: AURORA_GREEN,
+            },
+            ColoredMessage {
+                text: "📦 Packaging the release story...".to_string(),
+                color: CELESTIAL_BLUE,
+            },
+            ColoredMessage {
+                text: "🌟 Showcasing new features...".to_string(),
+                color: PLASMA_CYAN,
+            },
+            ColoredMessage {
+                text: "📢 Composing the release fanfare...".to_string(),
+                color: SOLAR_YELLOW,
+            },
+            ColoredMessage {
+                text: "🎊 Wrapping up the release...".to_string(),
+                color: GALAXY_PINK,
+            },
+        ]
+    });
+
+fn get_pr_waiting_message() -> ColoredMessage {
+    let mut rng = rand::rng();
+    PR_WAITING_MESSAGES
+        .choose(&mut rng)
+        .cloned()
+        .unwrap_or_else(|| ColoredMessage {
+            text: "Building PR description...".to_string(),
+            color: NEBULA_PURPLE,
+        })
+}
+
+fn get_changelog_waiting_message() -> ColoredMessage {
+    let mut rng = rand::rng();
+    CHANGELOG_WAITING_MESSAGES
+        .choose(&mut rng)
+        .cloned()
+        .unwrap_or_else(|| ColoredMessage {
+            text: "Generating changelog...".to_string(),
+            color: CELESTIAL_BLUE,
+        })
+}
+
+fn get_release_notes_waiting_message() -> ColoredMessage {
+    let mut rng = rand::rng();
+    RELEASE_NOTES_WAITING_MESSAGES
+        .choose(&mut rng)
+        .cloned()
+        .unwrap_or_else(|| ColoredMessage {
+            text: "Creating release notes...".to_string(),
+            color: AURORA_GREEN,
+        })
+}
+
 pub fn get_user_message() -> ColoredMessage {
     let mut rng = rand::rng();
     USER_MESSAGES
