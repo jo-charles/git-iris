@@ -4,7 +4,7 @@
 //! and multi-turn execution using Rig. One agent to rule them all! ✨
 
 use anyhow::Result;
-use rig::agent::{Agent, AgentBuilder as RigAgentBuilder};
+use rig::agent::{Agent, AgentBuilder as RigAgentBuilder, PromptResponse};
 use rig::client::builder::DynClientBuilder;
 use rig::completion::{CompletionModel, Prompt};
 use schemars::JsonSchema;
@@ -551,11 +551,28 @@ Guidelines:
             "LLM request",
             "Sending prompt to agent with multi_turn(50)",
         );
-        let response = agent.prompt(&full_prompt).multi_turn(50).await?;
+        let prompt_response: PromptResponse = agent
+            .prompt(&full_prompt)
+            .multi_turn(50)
+            .extended_details()
+            .await?;
 
         timer.finish();
 
-        debug::debug_llm_response(&response, std::time::Duration::from_secs(0), None);
+        // Extract usage stats for debug output
+        let usage = &prompt_response.total_usage;
+        debug::debug_context_management(
+            "Token usage",
+            &format!(
+                "input: {} | output: {} | total: {}",
+                usage.input_tokens, usage.output_tokens, usage.total_tokens
+            ),
+        );
+
+        let response = &prompt_response.output;
+        #[allow(clippy::cast_possible_truncation, clippy::as_conversions)]
+        let total_tokens_usize = usage.total_tokens as usize;
+        debug::debug_llm_response(response, std::time::Duration::from_secs(0), Some(total_tokens_usize));
 
         // Update status - synthesis phase
         crate::iris_status_dynamic!(
@@ -566,7 +583,7 @@ Guidelines:
         );
 
         // Extract and parse JSON from the response
-        let json_str = extract_json_from_response(&response)?;
+        let json_str = extract_json_from_response(response)?;
         let sanitized_json = sanitize_json_response(&json_str);
         let sanitized_ref = sanitized_json.as_ref();
 
