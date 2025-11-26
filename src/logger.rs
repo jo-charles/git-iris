@@ -163,23 +163,17 @@ pub fn init() -> Result<(), Box<dyn std::error::Error>> {
         // Try to initialize the log system for backwards compatibility
         let log_result = log::set_logger(&LOGGER).map(|()| log::set_max_level(LevelFilter::Debug));
 
-        let result = match (tracing_result, log_result) {
-            (Ok(()), Ok(())) => Ok(()),
-            (Ok(()), Err(_)) => {
-                // Tracing succeeded, log failed - that's okay, tracing can handle everything
-                eprintln!("Note: Using tracing-only logging (log crate setup skipped)");
-                Ok(())
-            }
-            (Err(tracing_err), Ok(())) => {
-                // Log succeeded, tracing failed - fallback to log only
-                eprintln!("Note: Using log-only logging (tracing setup failed: {tracing_err})");
-                Ok(())
-            }
-            (Err(tracing_err), Err(log_err)) => {
-                // Both failed
-                Err(format!(
-                    "Failed to initialize logging: tracing={tracing_err}, log={log_err}"
-                ))
+        // Tracing handles the log facade automatically via its compatibility layer,
+        // so log::set_logger() will typically fail (which is fine)
+        let result = match tracing_result {
+            Ok(()) => Ok(()),
+            Err(tracing_err) => {
+                if log_result.is_ok() {
+                    // Fallback to log-only (tracing already initialized elsewhere)
+                    Ok(())
+                } else {
+                    Err(format!("Failed to initialize logging: {tracing_err}"))
+                }
             }
         };
 

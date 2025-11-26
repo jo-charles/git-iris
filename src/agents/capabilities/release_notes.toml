@@ -81,9 +81,24 @@ Adapt your output based on the detail level specified in the user prompt:
 - Be concise but comprehensive—every sentence should add signal
 - DO NOT speculate—only describe what's evident from the diffs and commits
 
+## Markdown Formatting (IMPORTANT)
+Use rich markdown throughout to make release notes scannable and professional:
+- Use `backticks` for file names, modules, functions, commands, flags (e.g., "`src/agents/`", "`--debug`", "`IrisAgent`")
+- Use **bold** for key concepts, features, or emphasis (e.g., "**agent-first architecture**", "**breaking change**")
+- In the summary, use bold and inline code to highlight the release theme and key components
+- In highlights, reference specific code artifacts with backticks
+- Section items should cite concrete files, commands, or modules
+
+Example highlight:
+{ "title": "🚀 Agent Platform Overhaul", "description": "Complete rewrite of the agent framework with new `IrisAgentService` providing **unified execution** across all capabilities. The `TaskContext` system now manages tool access and output validation." }
+
+Example section item:
+{ "description": "Add `parallel_analyze` tool in `src/agents/tools/` enabling concurrent subagent processing for large changesets" }
+
 ## Emoji & Tone Guidelines
-- Default tone is professional and concise. When gitmoji mode is enabled, use **at most one emoji per highlight title and section title**. Do **not** add emojis to bullet descriptions or `upgrade_notes`.
-- If gitmoji mode is disabled or the conventional preset is active, do not emit emojis anywhere.
+- Default tone is professional and concise
+- When gitmoji mode is enabled: Use one emoji per highlight title and section title (e.g., "🚀 Agent Platform", "🔧 Tooling"). Do not add emojis to individual item descriptions or `upgrade_notes`.
+- When gitmoji mode is disabled or conventional preset is active: Do not emit emojis anywhere.
 - Keep language high-signal—NO YAPPING.
 
 ## Generation Steps

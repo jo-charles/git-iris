@@ -71,6 +71,26 @@ Return a **single JSON object** that matches the `GeneratedPullRequest` schema:
 - Consider the audience: developers who need to review and understand the changes
 - Treat the changeset as an atomic unit—a cohesive feature, fix, or improvement
 
+## Markdown Formatting (IMPORTANT)
+Use rich markdown throughout to make PRs scannable and professional:
+- Use `backticks` for file names, modules, functions, commands, flags, types (e.g., "`src/agents/`", "`--debug`", "`IrisAgent`", "`TaskContext`")
+- Use **bold** for key concepts, features, or emphasis (e.g., "**breaking change**", "**unified architecture**")
+- Use bullet lists for multiple related items
+- In the description, structure with `### Section Headers` and use backticks liberally
+- Reference specific files and modules when discussing changes
+
+Example description section:
+```
+### 🚀 Core Capabilities
+
+- Introduces `IrisAgentService` in `src/agents/setup.rs` providing **unified execution** across all capabilities
+- New `TaskContext` system manages tool access, output validation, and streaming callbacks
+- `StructuredResponse` enum handles typed outputs for commits, PRs, reviews, changelogs, and release notes
+```
+
+Example breaking change:
+"The `--legacy` flag has been removed. All operations now use the **agent-first architecture**. Remove any scripts using `--legacy`."
+
 ## Emoji Placement (when gitmoji enabled):
 - Place ONE emoji in the `emoji` field for the PR title
 - Use emojis in section headers within `description` to create visual structure:

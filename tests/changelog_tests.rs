@@ -27,6 +27,7 @@ fn test_changelog_response_structure() {
     let changelog_response = ChangelogResponse {
         version: Some("1.0.0".to_string()),
         release_date: Some("2023-06-01".to_string()),
+        summary: Some("This release adds new features and fixes bugs.".to_string()),
         sections: {
             let mut sections = std::collections::HashMap::new();
             sections.insert(
