@@ -114,7 +114,7 @@ fn test_detail_level_from_str() {
 /// Test that the `version_name` parameter correctly overrides the changelog version
 #[test]
 fn test_update_changelog_file_with_version_name() -> Result<()> {
-    use git_iris::changes::ChangelogGenerator;
+    use git_iris::changelog::ChangelogGenerator;
     use git_iris::git::GitRepo;
     use std::sync::Arc;
     use tempfile::TempDir;

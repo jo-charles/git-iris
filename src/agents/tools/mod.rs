@@ -26,8 +26,8 @@ pub use project_metadata::ProjectMetadataTool;
 pub mod docs;
 pub use docs::ProjectDocs;
 
-pub mod workspace_new;
-pub use workspace_new::Workspace;
+pub mod workspace;
+pub use workspace::Workspace;
 
 pub mod parallel_analyze;
 pub use parallel_analyze::{ParallelAnalyze, ParallelAnalyzeResult, SubagentResult};

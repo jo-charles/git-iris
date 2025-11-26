@@ -9,9 +9,6 @@ pub mod core;
 pub mod iris;
 pub mod prompts;
 
-// Agent services
-pub mod services;
-
 // Agent tools
 pub mod tools;
 

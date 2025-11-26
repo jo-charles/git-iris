@@ -14,7 +14,7 @@
 #![allow(clippy::redundant_clone)] // Sometimes more explicit is clearer
 
 pub mod agents;
-pub mod changes;
+pub mod changelog;
 pub mod cli;
 pub mod commands;
 pub mod common;

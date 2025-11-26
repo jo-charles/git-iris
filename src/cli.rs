@@ -647,7 +647,7 @@ async fn handle_changelog(
     );
 
     use crate::agents::{IrisAgentService, TaskContext};
-    use crate::changes::ChangelogGenerator;
+    use crate::changelog::ChangelogGenerator;
     use crate::git::GitRepo;
     use anyhow::Context;
     use std::sync::Arc;

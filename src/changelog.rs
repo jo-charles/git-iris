@@ -1,4 +1,7 @@
 //! Changelog file utilities
+//!
+//! This module provides utilities for managing changelog files.
+//! The changelog/release notes *types* are in the `types` module.
 
 use crate::git::GitRepo;
 use crate::log_debug;
