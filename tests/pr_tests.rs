@@ -1,11 +1,9 @@
 use anyhow::Result;
 use git_iris::commit::prompt::{create_pr_system_prompt, create_pr_user_prompt};
-use git_iris::commit::service::IrisCommitService;
 use git_iris::commit::types::{GeneratedPullRequest, format_pull_request};
 use git_iris::config::Config;
 use git_iris::context::{ChangeType, CommitContext, StagedFile};
 use git_iris::git::GitRepo;
-use std::path::PathBuf;
 use std::sync::Arc;
 use tempfile::TempDir;
 
@@ -181,32 +179,6 @@ async fn test_git_repo_get_commit_range_files() -> Result<()> {
                 .any(|f| matches!(f.change_type, ChangeType::Added))
         );
     }
-
-    Ok(())
-}
-
-// Tests for service integration
-#[tokio::test]
-async fn test_service_pr_generation_setup() -> Result<()> {
-    let (temp_dir, _git_repo) = setup_test_repo_with_commits_arc()?;
-    let config = Config::default();
-    let repo_path = PathBuf::from(temp_dir.path());
-    let provider_name = "test";
-
-    // Create a new GitRepo instance for the service
-    let service_git_repo = GitRepo::new(temp_dir.path())?;
-
-    let service = IrisCommitService::new(
-        config,
-        &repo_path,
-        provider_name,
-        false, // gitmoji not needed for PR
-        false, // verification not needed for PR
-        service_git_repo,
-    )?;
-
-    // Test that service can be created successfully
-    assert!(!service.is_remote_repository());
 
     Ok(())
 }

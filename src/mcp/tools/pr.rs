@@ -2,7 +2,7 @@
 //!
 //! This module provides the MCP tool for generating pull request descriptions.
 
-use crate::commit::service::IrisCommitService;
+use crate::agents::{IrisAgentService, StructuredResponse, TaskContext};
 use crate::commit::types::format_pull_request;
 use crate::config::Config as GitIrisConfig;
 use crate::git::GitRepo;
@@ -89,34 +89,25 @@ impl GitIrisTool for PrTool {
             log_debug!("Operating on remote repository in read-only mode");
         }
 
-        // Create a commit service for processing
-        let repo_path = git_repo.repo_path().clone();
-        let provider_name = &config.default_provider;
-
-        let service = IrisCommitService::new(
-            config.clone(),
-            &repo_path,
-            provider_name,
-            false, // gitmoji not needed for PR
-            false, // verification not needed for PR
-            GitRepo::new(&repo_path)?,
-        )?;
-
         // Set up config with custom instructions if provided
         let mut config_clone = config.clone();
         apply_custom_instructions(&mut config_clone, &self.custom_instructions);
 
-        // Process the preset
-        let preset = if self.preset.trim().is_empty() {
-            "default"
-        } else {
-            &self.preset
-        };
+        // Create TaskContext for PR generation
+        let context = TaskContext::for_pr(Some(self.from.clone()), Some(to));
 
-        // Generate the PR description using the commit range
-        let pr_description = service
-            .generate_pr_for_commit_range(preset, &self.custom_instructions, &self.from, &to)
-            .await?;
+        // Create IrisAgentService for LLM operations
+        let backend = crate::agents::AgentBackend::from_config(&config_clone)?;
+        let agent_service =
+            IrisAgentService::new(config_clone, backend.provider_name, backend.model);
+
+        // Generate the PR description using agent
+        let response = agent_service.execute_task("pr", context).await?;
+
+        // Extract the PR description from the response
+        let StructuredResponse::PullRequest(pr_description) = response else {
+            return Err(anyhow::anyhow!("Expected pull request response"));
+        };
 
         // Format and return the PR description
         let formatted_pr = format_pull_request(&pr_description);

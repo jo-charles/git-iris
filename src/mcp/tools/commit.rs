@@ -2,7 +2,7 @@
 //!
 //! This module provides the MCP tool for generating and performing commits.
 
-use crate::commit::service::IrisCommitService;
+use crate::agents::{IrisAgentService, StructuredResponse, TaskContext};
 use crate::commit::types::format_commit_message;
 use crate::config::Config as GitIrisConfig;
 use crate::git::GitRepo;
@@ -10,6 +10,7 @@ use crate::log_debug;
 use crate::mcp::tools::utils::{
     GitIrisTool, create_text_result, resolve_git_repo, validate_repository_parameter,
 };
+use crate::services::GitCommitService;
 
 use rmcp::handler::server::tool::cached_schema_for_type;
 use rmcp::model::{CallToolResult, Tool};
@@ -77,23 +78,18 @@ impl GitIrisTool for CommitTool {
             return Err(anyhow::anyhow!("Cannot auto-commit to a remote repository"));
         }
 
-        // Create the commit service
-        let provider_name = &config.default_provider;
         let repo_path = git_repo.repo_path().clone();
         let verify = !self.no_verify;
 
-        // Create a new GitRepo instance rather than trying to clone it
-        let service = IrisCommitService::new(
-            config.clone(),
-            &repo_path,
-            provider_name,
+        // Create GitCommitService for commit operations
+        let commit_service = GitCommitService::new(
+            Arc::new(GitRepo::new(&repo_path)?),
             self.use_gitmoji,
             verify,
-            GitRepo::new(&repo_path)?,
-        )?;
+        );
 
         // First check if we have staged changes
-        let git_info = service.get_git_info().await?;
+        let git_info = git_repo.get_git_info(&config).await?;
         if git_info.staged_files.is_empty() {
             return Err(anyhow::anyhow!(
                 "No staged changes. Please stage your changes before generating a commit message."
@@ -101,25 +97,37 @@ impl GitIrisTool for CommitTool {
         }
 
         // Run pre-commit hook
-        if let Err(e) = service.pre_commit() {
+        if let Err(e) = commit_service.pre_commit() {
             return Err(anyhow::anyhow!("Pre-commit failed: {}", e));
         }
 
-        // Generate a commit message
-        let preset = if self.preset.is_empty() {
-            "default"
-        } else {
-            &self.preset
+        // Create IrisAgentService for LLM operations
+        let mut agent_config = config.clone();
+        if !self.custom_instructions.is_empty() {
+            agent_config
+                .instructions
+                .clone_from(&self.custom_instructions);
+        }
+
+        // Create the service from config directly
+        let backend = crate::agents::AgentBackend::from_config(&agent_config)?;
+        let agent_service =
+            IrisAgentService::new(agent_config, backend.provider_name, backend.model);
+
+        // Generate a commit message using agent
+        let context = TaskContext::for_gen();
+        let response = agent_service.execute_task("commit", context).await?;
+
+        // Extract the commit message from the response
+        let StructuredResponse::CommitMessage(message) = response else {
+            return Err(anyhow::anyhow!("Expected commit message response"));
         };
 
-        let message = service
-            .generate_message(preset, &self.custom_instructions)
-            .await?;
         let formatted_message = format_commit_message(&message);
 
         // If auto_commit is true, perform the commit
         if self.auto_commit {
-            match service.perform_commit(&formatted_message) {
+            match commit_service.perform_commit(&formatted_message) {
                 Ok(result) => {
                     // Create result with commit info
                     let result_text = format!(

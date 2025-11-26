@@ -29,6 +29,7 @@ pub mod llm;
 pub mod logger;
 pub mod mcp;
 pub mod messages;
+pub mod services;
 pub mod token_optimizer;
 pub mod tui;
 pub mod ui;

@@ -6,7 +6,10 @@
 use anyhow::Result;
 use rig::client::builder::DynClientBuilder;
 use std::collections::HashMap;
+use std::sync::Arc;
 
+use crate::agents::context::TaskContext;
+use crate::agents::iris::StructuredResponse;
 use crate::agents::{AgentBackend, IrisAgent, IrisAgentBuilder};
 use crate::common::CommonParams;
 use crate::config::Config;
@@ -179,4 +182,182 @@ pub fn create_agent_from_env() -> Result<IrisAgent> {
     });
 
     create_agent_with_defaults(&provider, &model)
+}
+
+// =============================================================================
+// IrisAgentService - The primary interface for agent task execution
+// =============================================================================
+
+/// High-level service for executing agent tasks with structured context.
+///
+/// This is the primary interface for all agent-based operations in git-iris.
+/// It handles:
+/// - Configuration management
+/// - Agent lifecycle
+/// - Task context validation and formatting
+/// - Environment validation
+///
+/// # Example
+/// ```ignore
+/// let service = IrisAgentService::from_common_params(&params, None)?;
+/// let context = TaskContext::for_gen();
+/// let result = service.execute_task("commit", context).await?;
+/// ```
+pub struct IrisAgentService {
+    config: Config,
+    git_repo: Option<Arc<GitRepo>>,
+    provider: String,
+    model: String,
+}
+
+impl IrisAgentService {
+    /// Create a new service with explicit provider configuration
+    pub fn new(config: Config, provider: String, model: String) -> Self {
+        Self {
+            config,
+            git_repo: None,
+            provider,
+            model,
+        }
+    }
+
+    /// Create service from common CLI parameters
+    ///
+    /// This is the primary constructor for CLI usage. It:
+    /// - Loads and applies configuration
+    /// - Sets up the git repository (local or remote)
+    /// - Validates the environment
+    pub fn from_common_params(
+        common_params: &CommonParams,
+        repository_url: Option<String>,
+    ) -> Result<Self> {
+        let mut config = Config::load()?;
+        common_params.apply_to_config(&mut config)?;
+
+        // Determine backend (provider/model) from config
+        let backend = AgentBackend::from_config(&config)?;
+
+        let mut service = Self::new(config, backend.provider_name, backend.model);
+
+        // Setup git repo
+        if let Some(repo_url) = repository_url {
+            service.git_repo = Some(Arc::new(GitRepo::new_from_url(Some(repo_url))?));
+        } else {
+            service.git_repo = Some(Arc::new(GitRepo::new(&std::env::current_dir()?)?));
+        }
+
+        Ok(service)
+    }
+
+    /// Check that the environment is properly configured
+    pub fn check_environment(&self) -> Result<()> {
+        self.config.check_environment()
+    }
+
+    /// Execute an agent task with structured context
+    ///
+    /// # Arguments
+    /// * `capability` - The capability to invoke (e.g., "commit", "review", "pr")
+    /// * `context` - Structured context describing what to analyze
+    ///
+    /// # Returns
+    /// The structured response from the agent
+    pub async fn execute_task(
+        &self,
+        capability: &str,
+        context: TaskContext,
+    ) -> Result<StructuredResponse> {
+        // Create the agent
+        let mut agent = self.create_agent()?;
+
+        // Build task prompt with context information
+        let task_prompt = Self::build_task_prompt(capability, &context);
+
+        // Execute the task
+        agent.execute_task(capability, &task_prompt).await
+    }
+
+    /// Execute a task with a custom prompt (for backwards compatibility)
+    pub async fn execute_task_with_prompt(
+        &self,
+        capability: &str,
+        task_prompt: &str,
+    ) -> Result<StructuredResponse> {
+        let mut agent = self.create_agent()?;
+        agent.execute_task(capability, task_prompt).await
+    }
+
+    /// Build a task prompt incorporating the context information
+    fn build_task_prompt(capability: &str, context: &TaskContext) -> String {
+        let context_json = context.to_prompt_context();
+        let diff_hint = context.diff_hint();
+
+        match capability {
+            "commit" => format!(
+                "Generate a commit message for the following context:\n{}\n\nUse: {}",
+                context_json, diff_hint
+            ),
+            "review" => format!(
+                "Review the code changes for the following context:\n{}\n\nUse: {}",
+                context_json, diff_hint
+            ),
+            "pr" => format!(
+                "Generate a pull request description for:\n{}\n\nUse: {}",
+                context_json, diff_hint
+            ),
+            "changelog" => format!(
+                "Generate a changelog for:\n{}\n\nUse: {}",
+                context_json, diff_hint
+            ),
+            "release_notes" => format!(
+                "Generate release notes for:\n{}\n\nUse: {}",
+                context_json, diff_hint
+            ),
+            _ => format!(
+                "Execute task with context:\n{}\n\nHint: {}",
+                context_json, diff_hint
+            ),
+        }
+    }
+
+    /// Create a configured Iris agent
+    fn create_agent(&self) -> Result<IrisAgent> {
+        let client_builder = DynClientBuilder::new();
+
+        let mut agent = IrisAgentBuilder::new()
+            .with_client(client_builder)
+            .with_provider(&self.provider)
+            .with_model(&self.model)
+            .build()?;
+
+        // Pass config to agent for gitmoji and other features
+        agent.set_config(self.config.clone());
+
+        Ok(agent)
+    }
+
+    /// Get the configuration
+    pub fn config(&self) -> &Config {
+        &self.config
+    }
+
+    /// Get a mutable reference to the configuration
+    pub fn config_mut(&mut self) -> &mut Config {
+        &mut self.config
+    }
+
+    /// Get the git repository if available
+    pub fn git_repo(&self) -> Option<&Arc<GitRepo>> {
+        self.git_repo.as_ref()
+    }
+
+    /// Get the provider name
+    pub fn provider(&self) -> &str {
+        &self.provider
+    }
+
+    /// Get the model name
+    pub fn model(&self) -> &str {
+        &self.model
+    }
 }

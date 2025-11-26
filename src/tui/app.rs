@@ -1,6 +1,8 @@
+use crate::agents::{IrisAgentService, StructuredResponse, TaskContext};
+use crate::commit::format_commit_result;
 use crate::commit::types::GeneratedMessage;
-use crate::commit::{IrisCommitService, format_commit_result};
 use crate::log_debug;
+use crate::services::GitCommitService;
 use anyhow::{Error, Result};
 use crossterm::event::KeyEventKind;
 use ratatui::Terminal;
@@ -19,9 +21,14 @@ use super::spinner::SpinnerState;
 use super::state::{EmojiMode, Mode, TuiState};
 use super::ui::draw_ui;
 
+/// TUI commit interface
+///
+/// Uses `GitCommitService` for commit operations and `IrisAgentService` for
+/// message regeneration.
 pub struct TuiCommit {
     pub state: TuiState,
-    service: Arc<IrisCommitService>,
+    commit_service: Arc<GitCommitService>,
+    agent_service: Arc<IrisAgentService>,
 }
 
 impl TuiCommit {
@@ -31,7 +38,8 @@ impl TuiCommit {
         preset: String,
         user_name: String,
         user_email: String,
-        service: Arc<IrisCommitService>,
+        commit_service: Arc<GitCommitService>,
+        agent_service: Arc<IrisAgentService>,
         use_gitmoji: bool,
     ) -> Self {
         let state = TuiState::new(
@@ -43,7 +51,11 @@ impl TuiCommit {
             use_gitmoji,
         );
 
-        Self { state, service }
+        Self {
+            state,
+            commit_service,
+            agent_service,
+        }
     }
 
     #[allow(clippy::unused_async)]
@@ -53,7 +65,8 @@ impl TuiCommit {
         selected_preset: String,
         user_name: String,
         user_email: String,
-        service: Arc<IrisCommitService>,
+        commit_service: Arc<GitCommitService>,
+        agent_service: Arc<IrisAgentService>,
         use_gitmoji: bool,
     ) -> Result<()> {
         let mut app = Self::new(
@@ -62,7 +75,8 @@ impl TuiCommit {
             selected_preset,
             user_name,
             user_email,
-            service,
+            commit_service,
+            agent_service,
             use_gitmoji,
         );
 
@@ -123,15 +137,21 @@ impl TuiCommit {
 
             // Spawn the task only once when entering the Generating mode
             if self.state.mode == Mode::Generating && !task_spawned {
-                let service = self.service.clone();
-                let preset = self.state.selected_preset.clone();
-                let instructions = self.state.custom_instructions.clone();
+                let agent_service = self.agent_service.clone();
                 let tx = tx.clone();
 
                 tokio::spawn(async move {
-                    log_debug!("Generating message...");
-                    let result = service.generate_message(&preset, &instructions).await;
-                    let _ = tx.send(result).await;
+                    log_debug!("Generating message via agent...");
+                    let context = TaskContext::for_gen();
+                    let result = agent_service.execute_task("commit", context).await;
+
+                    // Extract GeneratedMessage from StructuredResponse
+                    let message_result = result.and_then(|response| match response {
+                        StructuredResponse::CommitMessage(msg) => Ok(msg),
+                        _ => Err(anyhow::anyhow!("Expected commit message response")),
+                    });
+
+                    let _ = tx.send(message_result).await;
                 });
 
                 task_spawned = true; // Ensure we only spawn the task once
@@ -218,7 +238,7 @@ impl TuiCommit {
     }
 
     pub fn perform_commit(&self, message: &str) -> Result<ExitStatus, Error> {
-        match self.service.perform_commit(message) {
+        match self.commit_service.perform_commit(message) {
             Ok(result) => {
                 let output = format_commit_result(&result, message);
                 Ok(ExitStatus::Committed(output))
@@ -235,7 +255,8 @@ pub async fn run_tui_commit(
     selected_preset: String,
     user_name: String,
     user_email: String,
-    service: Arc<IrisCommitService>,
+    commit_service: Arc<GitCommitService>,
+    agent_service: Arc<IrisAgentService>,
     use_gitmoji: bool,
 ) -> Result<()> {
     TuiCommit::run(
@@ -244,7 +265,8 @@ pub async fn run_tui_commit(
         selected_preset,
         user_name,
         user_email,
-        service,
+        commit_service,
+        agent_service,
         use_gitmoji,
     )
     .await

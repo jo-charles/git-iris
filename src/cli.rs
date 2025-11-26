@@ -1,6 +1,4 @@
-use crate::changes;
 use crate::commands;
-use crate::commit;
 use crate::common::CommonParams;
 use crate::llm::get_available_provider_names;
 use crate::log_debug;
@@ -71,23 +69,6 @@ pub struct Cli {
         help = "Repository URL to use instead of local repository"
     )]
     pub repository_url: Option<String>,
-
-    /// Use agent framework for enhanced AI-powered operations (default: enabled)
-    #[arg(
-        long = "agent",
-        global = true,
-        default_value = "true",
-        help = "Use agent framework for enhanced AI-powered operations (enabled by default)"
-    )]
-    pub agent: bool,
-
-    /// Use legacy non-agent implementation
-    #[arg(
-        long = "legacy",
-        global = true,
-        help = "Use legacy non-agent implementation (fallback mode)"
-    )]
-    pub legacy: bool,
 
     /// Enable debug mode for detailed agent observability
     #[arg(
@@ -433,9 +414,7 @@ pub async fn main() -> anyhow::Result<()> {
     }
 
     if let Some(command) = cli.command {
-        // --legacy overrides --agent (which defaults to true)
-        let use_agent = cli.agent && !cli.legacy;
-        handle_command(command, cli.repository_url, use_agent).await
+        handle_command(command, cli.repository_url).await
     } else {
         // If no subcommand is provided, print the help
         let _ = Cli::parse_from(["git-iris", "--help"]);
@@ -459,11 +438,13 @@ async fn handle_gen_with_agent(
     config: GenConfig,
     repository_url: Option<String>,
 ) -> anyhow::Result<()> {
+    use crate::agents::{IrisAgentService, StructuredResponse, TaskContext};
+    use crate::commit::format_commit_result;
     use crate::commit::types::format_commit_message;
-    use crate::commit::{IrisCommitService, format_commit_result};
     use crate::config::Config;
     use crate::git::GitRepo;
     use crate::instruction_presets::PresetType;
+    use crate::services::GitCommitService;
     use crate::tui::run_tui_commit;
     use anyhow::Context;
     use std::sync::Arc;
@@ -482,30 +463,26 @@ async fn handle_gen_with_agent(
     let mut cfg = Config::load()?;
     common.apply_to_config(&mut cfg)?;
 
-    // Create the service
+    // Create git repo and services
     let repo_url = repository_url.clone().or(common.repository_url.clone());
-    let git_repo = GitRepo::new_from_url(repo_url).context("Failed to create GitRepo")?;
-    let repo_path = git_repo.repo_path().clone();
+    let git_repo = Arc::new(GitRepo::new_from_url(repo_url).context("Failed to create GitRepo")?);
+    let use_gitmoji = config.use_gitmoji && cfg.use_gitmoji;
 
-    let service = Arc::new(IrisCommitService::new(
-        cfg.clone(),
-        &repo_path,
-        &cfg.default_provider,
-        config.use_gitmoji && cfg.use_gitmoji,
+    // Create GitCommitService for commit operations
+    let commit_service = Arc::new(GitCommitService::new(
+        git_repo.clone(),
+        use_gitmoji,
         config.verify,
-        git_repo,
-    ).map_err(|e| {
-        ui::print_error(&format!("Error: {e}"));
-        ui::print_info("\nPlease ensure the following:");
-        ui::print_info("1. Git is installed and accessible from the command line.");
-        ui::print_info(
-            "2. You are running this command from within a Git repository or provide a repository URL with --repo.",
-        );
-        ui::print_info("3. You have set up your configuration using 'git-iris config'.");
-        e
-    })?);
+    ));
 
-    let git_info = service.get_git_info().await?;
+    // Create IrisAgentService for LLM operations
+    let agent_service = Arc::new(IrisAgentService::from_common_params(
+        &common,
+        repository_url.clone(),
+    )?);
+
+    // Get git info for staged files check and user info
+    let git_info = git_repo.get_git_info(&cfg).await?;
 
     if git_info.staged_files.is_empty() {
         ui::print_warning(
@@ -516,12 +493,12 @@ async fn handle_gen_with_agent(
     }
 
     // Run pre-commit hook before we do anything else
-    if let Err(e) = service.pre_commit() {
+    if let Err(e) = commit_service.pre_commit() {
         ui::print_error(&format!("Pre-commit failed: {e}"));
         return Err(e);
     }
 
-    // Extract values we need from common before passing it to agent
+    // Extract values we need for TUI
     let effective_instructions = common
         .instructions
         .as_ref()
@@ -529,29 +506,17 @@ async fn handle_gen_with_agent(
         .unwrap_or_else(|| cfg.instructions.clone());
     let preset_str = common.preset.clone().unwrap_or_default();
 
-    // Use agent framework for commit message generation
-    let task_prompt = if config.use_gitmoji {
-        "Generate a commit message using gitmoji and following best practices"
-    } else {
-        "Generate a commit message following best practices"
-    };
-
-    // Create spinner for agent mode - it will poll IRIS_STATUS for dynamic updates
+    // Create spinner for agent mode
     let spinner = ui::create_spinner("Initializing Iris...");
 
-    let generated_message = crate::agents::handle_with_agent(
-        common,
-        repository_url,
-        "commit",
-        task_prompt,
-        |response| async move {
-            match response {
-                crate::agents::iris::StructuredResponse::CommitMessage(msg) => Ok(msg),
-                _ => Err(anyhow::anyhow!("Expected commit message response")),
-            }
-        },
-    )
-    .await?;
+    // Use IrisAgentService for commit message generation
+    let context = TaskContext::for_gen();
+    let response = agent_service.execute_task("commit", context).await?;
+
+    // Extract commit message from response
+    let StructuredResponse::CommitMessage(generated_message) = response else {
+        return Err(anyhow::anyhow!("Expected commit message response"));
+    };
 
     // Finish spinner after agent completes
     spinner.finish_and_clear();
@@ -563,7 +528,7 @@ async fn handle_gen_with_agent(
 
     if config.auto_commit {
         // Only allow auto-commit for local repositories
-        if service.is_remote_repository() {
+        if commit_service.is_remote() {
             ui::print_error(
                 "Cannot automatically commit to a remote repository. Use --print instead.",
             );
@@ -572,7 +537,7 @@ async fn handle_gen_with_agent(
             ));
         }
 
-        match service.perform_commit(&format_commit_message(&generated_message)) {
+        match commit_service.perform_commit(&format_commit_message(&generated_message)) {
             Ok(result) => {
                 let output =
                     format_commit_result(&result, &format_commit_message(&generated_message));
@@ -587,7 +552,7 @@ async fn handle_gen_with_agent(
     }
 
     // Only allow interactive commit for local repositories
-    if service.is_remote_repository() {
+    if commit_service.is_remote() {
         ui::print_warning(
             "Interactive commit not available for remote repositories. Using print mode instead.",
         );
@@ -601,8 +566,9 @@ async fn handle_gen_with_agent(
         preset_str,
         git_info.user_name,
         git_info.user_email,
-        service,
-        cfg.use_gitmoji,
+        commit_service,
+        agent_service,
+        use_gitmoji,
     )
     .await?;
 
@@ -614,36 +580,20 @@ async fn handle_gen(
     common: CommonParams,
     config: GenConfig,
     repository_url: Option<String>,
-    use_agent: bool,
 ) -> anyhow::Result<()> {
     log_debug!(
-        "Handling 'gen' command with common: {:?}, auto_commit: {}, use_gitmoji: {}, print: {}, verify: {}, use_agent: {}",
+        "Handling 'gen' command with common: {:?}, auto_commit: {}, use_gitmoji: {}, print: {}, verify: {}",
         common,
         config.auto_commit,
         config.use_gitmoji,
         config.print_only,
-        config.verify,
-        use_agent
+        config.verify
     );
 
     ui::print_version(crate_version!());
     ui::print_newline();
 
-    if use_agent {
-        // Use agent-based generation with TUI integration
-        handle_gen_with_agent(common, config, repository_url).await
-    } else {
-        // Use existing implementation
-        commit::handle_gen_command(
-            common,
-            config.auto_commit,
-            config.use_gitmoji,
-            config.print_only,
-            config.verify,
-            repository_url,
-        )
-        .await
-    }
+    handle_gen_with_agent(common, config, repository_url).await
 }
 
 /// Handle the `Config` command
@@ -676,57 +626,36 @@ async fn handle_review(
     commit: Option<String>,
     from: Option<String>,
     to: Option<String>,
-    use_agent: bool,
 ) -> anyhow::Result<()> {
     log_debug!(
-        "Handling 'review' command with common: {:?}, print: {}, include_unstaged: {}, commit: {:?}, from: {:?}, to: {:?}, use_agent: {}",
+        "Handling 'review' command with common: {:?}, print: {}, include_unstaged: {}, commit: {:?}, from: {:?}, to: {:?}",
         common,
         print,
         include_unstaged,
         commit,
         from,
-        to,
-        use_agent
+        to
     );
 
     ui::print_version(crate_version!());
     ui::print_newline();
 
-    if use_agent {
-        // Use agent framework for code review
-        let task_prompt = format!(
-            "Review the code changes. Include unstaged: {include_unstaged}, commit: {commit:?}, from: {from:?}, to: {to:?}"
-        );
+    use crate::agents::{IrisAgentService, TaskContext};
 
-        crate::agents::handle_with_agent(
-            common,
-            repository_url,
-            "review",
-            &task_prompt,
-            |response| async move {
-                if print {
-                    println!("{response}");
-                } else {
-                    ui::print_success("Code review completed successfully");
-                    println!("{response}");
-                }
-                Ok(())
-            },
-        )
-        .await
+    // Validate parameters and create structured context
+    let context = TaskContext::for_review(commit, from, to, include_unstaged)?;
+
+    // Use IrisAgentService for agent execution
+    let service = IrisAgentService::from_common_params(&common, repository_url)?;
+    let response = service.execute_task("review", context).await?;
+
+    if print {
+        println!("{response}");
     } else {
-        // Use existing implementation
-        commit::handle_review_command(
-            common,
-            print,
-            repository_url,
-            include_unstaged,
-            commit,
-            from,
-            to,
-        )
-        .await
+        ui::print_success("Code review completed successfully");
+        println!("{response}");
     }
+    Ok(())
 }
 
 /// Handle the `Changelog` command
@@ -738,108 +667,80 @@ async fn handle_changelog(
     update: bool,
     file: Option<String>,
     version_name: Option<String>,
-    use_agent: bool,
 ) -> anyhow::Result<()> {
     log_debug!(
-        "Handling 'changelog' command with common: {:?}, from: {}, to: {:?}, update: {}, file: {:?}, version_name: {:?}, use_agent: {}",
+        "Handling 'changelog' command with common: {:?}, from: {}, to: {:?}, update: {}, file: {:?}, version_name: {:?}",
         common,
         from,
         to,
         update,
         file,
-        version_name,
-        use_agent
+        version_name
     );
 
-    if use_agent {
-        use crate::changes::ChangelogGenerator;
-        use crate::git::GitRepo;
-        use anyhow::Context;
-        use std::sync::Arc;
+    use crate::agents::{IrisAgentService, TaskContext};
+    use crate::changes::ChangelogGenerator;
+    use crate::git::GitRepo;
+    use anyhow::Context;
+    use std::sync::Arc;
 
-        // Use agent framework for changelog generation
-        let to_ref = to.clone().unwrap_or_else(|| "HEAD".to_string());
-        let task_prompt = format!(
-            "Generate a changelog from {} to {}. Version: {:?}. Detail level: {}",
-            from, to_ref, version_name, common.detail_level
-        );
+    // Create structured context for changelog
+    let context = TaskContext::for_changelog(from.clone(), to.clone());
+    let to_ref = to.unwrap_or_else(|| "HEAD".to_string());
 
-        // Capture values needed for the closure
-        let changelog_path = file.clone().unwrap_or_else(|| "CHANGELOG.md".to_string());
-        let version_for_update = version_name.clone();
-        let to_ref_for_update = to_ref.clone();
-        let repo_url_for_update = repository_url.clone().or(common.repository_url.clone());
+    // Use IrisAgentService for agent execution
+    let service = IrisAgentService::from_common_params(&common, repository_url.clone())?;
+    let response = service.execute_task("changelog", context).await?;
 
-        crate::agents::handle_with_agent(
-            common,
-            repository_url,
-            "changelog",
-            &task_prompt,
-            |response| async move {
-                // Print the changelog
-                println!("{response}");
+    // Print the changelog
+    println!("{response}");
 
-                if update {
-                    // Extract the formatted content for file update
-                    let formatted_content = response.to_string();
+    if update {
+        // Extract the formatted content for file update
+        let formatted_content = response.to_string();
+        let changelog_path = file.unwrap_or_else(|| "CHANGELOG.md".to_string());
+        let repo_url_for_update = repository_url.or(common.repository_url.clone());
 
-                    // Create GitRepo for file update
-                    let git_repo = if let Some(url) = repo_url_for_update {
-                        Arc::new(
-                            GitRepo::clone_remote_repository(&url)
-                                .context("Failed to clone repository for changelog update")?,
-                        )
-                    } else {
-                        let repo_path = std::env::current_dir()?;
-                        Arc::new(
-                            GitRepo::new(&repo_path)
-                                .context("Failed to create GitRepo for changelog update")?,
-                        )
-                    };
+        // Create GitRepo for file update
+        let git_repo = if let Some(url) = repo_url_for_update {
+            Arc::new(
+                GitRepo::clone_remote_repository(&url)
+                    .context("Failed to clone repository for changelog update")?,
+            )
+        } else {
+            let repo_path = std::env::current_dir()?;
+            Arc::new(
+                GitRepo::new(&repo_path)
+                    .context("Failed to create GitRepo for changelog update")?,
+            )
+        };
 
-                    // Update changelog file
-                    let update_spinner = ui::create_spinner(&format!(
-                        "Updating changelog file at {changelog_path}..."
-                    ));
+        // Update changelog file
+        let update_spinner =
+            ui::create_spinner(&format!("Updating changelog file at {changelog_path}..."));
 
-                    match ChangelogGenerator::update_changelog_file(
-                        &formatted_content,
-                        &changelog_path,
-                        &git_repo,
-                        &to_ref_for_update,
-                        version_for_update,
-                    ) {
-                        Ok(()) => {
-                            update_spinner.finish_and_clear();
-                            ui::print_success(&format!(
-                                "✨ Changelog successfully updated at {}",
-                                changelog_path.bright_green()
-                            ));
-                        }
-                        Err(e) => {
-                            update_spinner.finish_and_clear();
-                            ui::print_error(&format!("Failed to update changelog file: {e}"));
-                            return Err(e);
-                        }
-                    }
-                }
-                Ok(())
-            },
-        )
-        .await
-    } else {
-        // Use existing implementation
-        changes::handle_changelog_command(
-            common,
-            from,
-            to,
-            repository_url,
-            update,
-            file,
+        match ChangelogGenerator::update_changelog_file(
+            &formatted_content,
+            &changelog_path,
+            &git_repo,
+            &to_ref,
             version_name,
-        )
-        .await
+        ) {
+            Ok(()) => {
+                update_spinner.finish_and_clear();
+                ui::print_success(&format!(
+                    "✨ Changelog successfully updated at {}",
+                    changelog_path.bright_green()
+                ));
+            }
+            Err(e) => {
+                update_spinner.finish_and_clear();
+                ui::print_error(&format!("Failed to update changelog file: {e}"));
+                return Err(e);
+            }
+        }
     }
+    Ok(())
 }
 
 /// Handle the `Release Notes` command
@@ -848,43 +749,26 @@ async fn handle_release_notes(
     from: String,
     to: Option<String>,
     repository_url: Option<String>,
-    version_name: Option<String>,
-    use_agent: bool,
+    _version_name: Option<String>,
 ) -> anyhow::Result<()> {
     log_debug!(
-        "Handling 'release-notes' command with common: {:?}, from: {}, to: {:?}, version_name: {:?}, use_agent: {}",
+        "Handling 'release-notes' command with common: {:?}, from: {}, to: {:?}",
         common,
         from,
-        to,
-        version_name,
-        use_agent
+        to
     );
 
-    if use_agent {
-        // Use agent framework for release notes generation
-        let task_prompt = format!(
-            "Generate release notes from {} to {}. Version: {:?}. Detail level: {}",
-            from,
-            to.as_deref().unwrap_or("HEAD"),
-            version_name,
-            common.detail_level
-        );
+    use crate::agents::{IrisAgentService, TaskContext};
 
-        crate::agents::handle_with_agent(
-            common,
-            repository_url,
-            "release_notes",
-            &task_prompt,
-            |response| async move {
-                println!("{response}");
-                Ok(())
-            },
-        )
-        .await
-    } else {
-        // Use existing implementation
-        changes::handle_release_notes_command(common, from, to, repository_url, version_name).await
-    }
+    // Create structured context for release notes
+    let context = TaskContext::for_changelog(from, to);
+
+    // Use IrisAgentService for agent execution
+    let service = IrisAgentService::from_common_params(&common, repository_url)?;
+    let response = service.execute_task("release_notes", context).await?;
+
+    println!("{response}");
+    Ok(())
 }
 
 /// Handle the `Serve` command
@@ -909,7 +793,6 @@ async fn handle_serve(
 pub async fn handle_command(
     command: Commands,
     repository_url: Option<String>,
-    use_agent: bool,
 ) -> anyhow::Result<()> {
     match command {
         Commands::Gen {
@@ -928,7 +811,6 @@ pub async fn handle_command(
                     verify: !no_verify,
                 },
                 repository_url,
-                use_agent,
             )
             .await
         }
@@ -956,7 +838,6 @@ pub async fn handle_command(
                 commit,
                 from,
                 to,
-                use_agent,
             )
             .await
         }
@@ -967,25 +848,13 @@ pub async fn handle_command(
             update,
             file,
             version_name,
-        } => {
-            handle_changelog(
-                common,
-                from,
-                to,
-                repository_url,
-                update,
-                file,
-                version_name,
-                use_agent,
-            )
-            .await
-        }
+        } => handle_changelog(common, from, to, repository_url, update, file, version_name).await,
         Commands::ReleaseNotes {
             common,
             from,
             to,
             version_name,
-        } => handle_release_notes(common, from, to, repository_url, version_name, use_agent).await,
+        } => handle_release_notes(common, from, to, repository_url, version_name).await,
         Commands::Serve {
             dev,
             transport,
@@ -1013,7 +882,7 @@ pub async fn handle_command(
             print,
             from,
             to,
-        } => handle_pr(common, print, from, to, repository_url, use_agent).await,
+        } => handle_pr(common, print, from, to, repository_url).await,
     }
 }
 
@@ -1025,13 +894,9 @@ async fn handle_pr_with_agent(
     to: Option<String>,
     repository_url: Option<String>,
 ) -> anyhow::Result<()> {
-    use crate::commit::IrisCommitService;
+    use crate::agents::{IrisAgentService, StructuredResponse, TaskContext};
     use crate::commit::types::format_pull_request;
-    use crate::config::Config;
-    use crate::git::GitRepo;
     use crate::instruction_presets::PresetType;
-    use anyhow::Context;
-    use std::sync::Arc;
 
     // Enable agent mode for enhanced status display
     crate::agents::status::enable_agent_mode();
@@ -1046,52 +911,17 @@ async fn handle_pr_with_agent(
         ui::print_info("Run 'git-iris list-presets' to see available presets for PRs.");
     }
 
-    let mut cfg = Config::load()?;
-    common.apply_to_config(&mut cfg)?;
+    // Create structured context for PR (handles defaults: from=main, to=HEAD)
+    let context = TaskContext::for_pr(from, to);
 
-    // Create the service
-    let repo_url = repository_url.clone().or(common.repository_url.clone());
-    let git_repo = GitRepo::new_from_url(repo_url).context("Failed to create GitRepo")?;
-    let repo_path = git_repo.repo_path().clone();
+    // Use IrisAgentService for agent execution
+    let service = IrisAgentService::from_common_params(&common, repository_url)?;
+    let response = service.execute_task("pr", context).await?;
 
-    let _service = Arc::new(IrisCommitService::new(
-        cfg.clone(),
-        &repo_path,
-        &cfg.default_provider,
-        cfg.use_gitmoji,
-        false, // verification not needed for PR descriptions
-        git_repo,
-    ).map_err(|e| {
-        ui::print_error(&format!("Error: {e}"));
-        ui::print_info("\nPlease ensure the following:");
-        ui::print_info("1. Git is installed and accessible from the command line.");
-        ui::print_info(
-            "2. You are running this command from within a Git repository or provide a repository URL with --repo.",
-        );
-        ui::print_info("3. You have set up your configuration using 'git-iris config'.");
-        e
-    })?);
-
-    // Use agent framework for PR description generation
-    let task_prompt = format!(
-        "Generate a pull request description comparing changes. From: {:?}, To: {:?}",
-        from.as_deref().unwrap_or("main"),
-        to.as_deref().unwrap_or("HEAD")
-    );
-
-    let generated_pr = crate::agents::handle_with_agent(
-        common,
-        repository_url,
-        "pr",
-        &task_prompt,
-        |response| async move {
-            match response {
-                crate::agents::iris::StructuredResponse::PullRequest(pr) => Ok(pr),
-                _ => Err(anyhow::anyhow!("Expected pull request response")),
-            }
-        },
-    )
-    .await?;
+    // Extract PR from response
+    let StructuredResponse::PullRequest(generated_pr) = response else {
+        return Err(anyhow::anyhow!("Expected pull request response"));
+    };
 
     if print {
         println!("{}", format_pull_request(&generated_pr));
@@ -1110,25 +940,17 @@ async fn handle_pr(
     from: Option<String>,
     to: Option<String>,
     repository_url: Option<String>,
-    use_agent: bool,
 ) -> anyhow::Result<()> {
     log_debug!(
-        "Handling 'pr' command with common: {:?}, print: {}, from: {:?}, to: {:?}, use_agent: {}",
+        "Handling 'pr' command with common: {:?}, print: {}, from: {:?}, to: {:?}",
         common,
         print,
         from,
-        to,
-        use_agent
+        to
     );
 
     ui::print_version(crate_version!());
     ui::print_newline();
 
-    if use_agent {
-        // Use agent-based generation with structured output
-        handle_pr_with_agent(common, print, from, to, repository_url).await
-    } else {
-        // Use existing implementation
-        commit::handle_pr_command(common, print, repository_url, from, to).await
-    }
+    handle_pr_with_agent(common, print, from, to, repository_url).await
 }

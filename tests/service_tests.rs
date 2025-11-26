@@ -1,8 +1,6 @@
 use anyhow::Result;
-use git_iris::commit::IrisCommitService;
-use git_iris::config::Config;
 use git_iris::git::GitRepo;
-use std::path::PathBuf;
+use git_iris::services::GitCommitService;
 use std::sync::Arc;
 use tempfile::TempDir;
 
@@ -19,29 +17,19 @@ fn setup_test_repo() -> Result<(TempDir, Arc<GitRepo>)> {
 #[tokio::test]
 async fn test_perform_commit() -> Result<()> {
     let (temp_dir, _git_repo) = setup_test_repo()?;
-    let config = Config::default();
-    let repo_path = PathBuf::from(temp_dir.path());
-    let provider_name = "test";
     let use_gitmoji = true;
     let verify = true;
 
     // Create a new GitRepo for the service
-    let service_repo = GitRepo::new(temp_dir.path())?;
+    let service_repo = Arc::new(GitRepo::new(temp_dir.path())?);
 
-    let service = IrisCommitService::new(
-        config,
-        &repo_path,
-        provider_name,
-        use_gitmoji,
-        verify,
-        service_repo,
-    )?;
+    let service = GitCommitService::new(service_repo, use_gitmoji, verify);
 
     let result = service.perform_commit("Test commit message")?;
     println!("Perform commit result: {result:?}");
 
     // Verify the commit was made
-    let repo = git2::Repository::open(&repo_path)?;
+    let repo = git2::Repository::open(temp_dir.path())?;
     let head_commit = repo.head()?.peel_to_commit()?;
     assert_eq!(
         head_commit.message().expect("Failed to get commit message"),

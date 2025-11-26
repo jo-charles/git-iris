@@ -3,7 +3,7 @@
 //! This module provides the MCP tool for generating code reviews with options for
 //! staged changes, unstaged changes, and specific commits.
 
-use crate::commit::service::IrisCommitService;
+use crate::agents::{IrisAgentService, StructuredResponse, TaskContext};
 use crate::config::Config as GitIrisConfig;
 use crate::git::GitRepo;
 use crate::log_debug;
@@ -112,63 +112,48 @@ impl GitIrisTool for CodeReviewTool {
             ));
         }
 
-        // Create a commit service for processing
-        let repo_path = git_repo.repo_path().clone();
-        let provider_name = &config.default_provider;
-
-        let service = IrisCommitService::new(
-            config.clone(),
-            &repo_path,
-            provider_name,
-            false, // gitmoji not needed for review
-            false, // verification not needed for review
-            GitRepo::new(&repo_path)?,
-        )?;
-
         // Set up config with custom instructions if provided
         let mut config_clone = config.clone();
         apply_custom_instructions(&mut config_clone, &self.custom_instructions);
 
-        // Process the preset
-        let preset = if self.preset.trim().is_empty() {
-            "default"
-        } else {
-            &self.preset
-        };
-
-        // Generate the code review based on parameters
-        let review = if has_branches {
+        // Create the appropriate TaskContext based on parameters
+        let context = if has_branches {
             // Branch comparison review
             let from_branch = if self.from.trim().is_empty() {
-                "main"
+                "main".to_string()
             } else {
-                self.from.trim()
+                self.from.trim().to_string()
             };
-            let to_branch = self.to.trim();
+            let to_branch = self.to.trim().to_string();
 
-            service
-                .generate_review_for_branch_diff(
-                    preset,
-                    &self.custom_instructions,
-                    from_branch,
-                    to_branch,
-                )
-                .await?
+            TaskContext::Range {
+                from: from_branch,
+                to: to_branch,
+            }
         } else if has_commit {
             // Review a specific commit
-            service
-                .generate_review_for_commit(preset, &self.custom_instructions, &self.commit_id)
-                .await?
-        } else if self.include_unstaged {
-            // Review including unstaged changes
-            service
-                .generate_review_with_unstaged(preset, &self.custom_instructions, true)
-                .await?
+            TaskContext::Commit {
+                commit_id: self.commit_id.clone(),
+            }
         } else {
-            // Review only staged changes (default behavior)
-            service
-                .generate_review(preset, &self.custom_instructions)
-                .await?
+            // Review staged changes (optionally with unstaged)
+            TaskContext::Staged {
+                include_unstaged: self.include_unstaged,
+            }
+        };
+
+        // Create IrisAgentService for LLM operations
+        let backend = crate::agents::AgentBackend::from_config(&config_clone)?;
+        let agent_service =
+            IrisAgentService::new(config_clone, backend.provider_name, backend.model);
+
+        // Generate the code review using agent
+        let response = agent_service.execute_task("review", context).await?;
+
+        // Extract the review from the response
+        let review = match response {
+            StructuredResponse::Review(review) => *review,
+            _ => return Err(anyhow::anyhow!("Expected code review response")),
         };
 
         // Format and return the review

@@ -353,7 +353,13 @@ impl IrisAgent {
 
         let agent_builder = client_builder
             .agent(&self.provider, &self.model)
-            .map_err(|e| anyhow::anyhow!("Failed to create agent builder for provider '{}': {}", self.provider, e))?;
+            .map_err(|e| {
+                anyhow::anyhow!(
+                    "Failed to create agent builder for provider '{}': {}",
+                    self.provider,
+                    e
+                )
+            })?;
         let agent_builder = self.apply_reasoning_defaults(agent_builder);
 
         let preamble = self.preamble.as_deref().unwrap_or(
