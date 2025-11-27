@@ -162,9 +162,185 @@ fn render_semantic_blame(
     let header = Paragraph::new(header_lines);
     frame.render_widget(header, chunks[0]);
 
-    // Body: explanation with word wrap
-    let explanation = Paragraph::new(blame.explanation.clone())
-        .style(Style::default().fg(theme::TEXT_PRIMARY))
-        .wrap(Wrap { trim: true });
+    // Body: explanation with markdown rendering
+    let lines = render_markdown_lines(&blame.explanation);
+    let explanation = Paragraph::new(lines).wrap(Wrap { trim: true });
     frame.render_widget(explanation, chunks[1]);
+}
+
+/// Render markdown text into styled Lines
+fn render_markdown_lines(text: &str) -> Vec<Line<'static>> {
+    let mut lines: Vec<Line<'static>> = Vec::new();
+
+    for paragraph in text.split("\n\n") {
+        if paragraph.trim().is_empty() {
+            continue;
+        }
+
+        for line in paragraph.lines() {
+            let trimmed = line.trim();
+
+            if trimmed.is_empty() {
+                lines.push(Line::from(""));
+                continue;
+            }
+
+            // Handle headers
+            if let Some(header) = trimmed.strip_prefix("### ") {
+                lines.push(Line::from(Span::styled(
+                    header.to_string(),
+                    Style::default()
+                        .fg(theme::NEON_CYAN)
+                        .add_modifier(Modifier::BOLD),
+                )));
+                continue;
+            }
+            if let Some(header) = trimmed.strip_prefix("## ") {
+                lines.push(Line::from(Span::styled(
+                    header.to_string(),
+                    Style::default()
+                        .fg(theme::ELECTRIC_PURPLE)
+                        .add_modifier(Modifier::BOLD),
+                )));
+                continue;
+            }
+            if let Some(header) = trimmed.strip_prefix("# ") {
+                lines.push(Line::from(Span::styled(
+                    header.to_string(),
+                    Style::default()
+                        .fg(theme::ELECTRIC_PURPLE)
+                        .add_modifier(Modifier::BOLD),
+                )));
+                continue;
+            }
+
+            // Handle bullet points
+            if let Some(bullet_text) = trimmed.strip_prefix("- ") {
+                let mut spans = vec![Span::styled(
+                    "  • ",
+                    Style::default().fg(theme::CORAL),
+                )];
+                spans.extend(parse_inline_markdown(bullet_text));
+                lines.push(Line::from(spans));
+                continue;
+            }
+            if let Some(bullet_text) = trimmed.strip_prefix("* ") {
+                let mut spans = vec![Span::styled(
+                    "  • ",
+                    Style::default().fg(theme::CORAL),
+                )];
+                spans.extend(parse_inline_markdown(bullet_text));
+                lines.push(Line::from(spans));
+                continue;
+            }
+
+            // Handle numbered lists
+            if trimmed.chars().next().is_some_and(|c| c.is_ascii_digit())
+                && let Some(dot_pos) = trimmed.find(". ") {
+                    let num = &trimmed[..dot_pos];
+                    if num.chars().all(|c| c.is_ascii_digit()) {
+                        let rest = &trimmed[dot_pos + 2..];
+                        let mut spans = vec![Span::styled(
+                            format!("  {}. ", num),
+                            Style::default().fg(theme::CORAL),
+                        )];
+                        spans.extend(parse_inline_markdown(rest));
+                        lines.push(Line::from(spans));
+                        continue;
+                    }
+                }
+
+            // Regular paragraph text with inline formatting
+            let spans = parse_inline_markdown(trimmed);
+            lines.push(Line::from(spans));
+        }
+
+        // Add spacing between paragraphs
+        lines.push(Line::from(""));
+    }
+
+    // Remove trailing empty line
+    if lines.last().is_some_and(|l| l.spans.is_empty()) {
+        lines.pop();
+    }
+
+    lines
+}
+
+/// Parse inline markdown (bold, italic, code) into spans
+fn parse_inline_markdown(text: &str) -> Vec<Span<'static>> {
+    let mut spans = Vec::new();
+    let mut current = String::new();
+    let mut chars = text.chars().peekable();
+
+    while let Some(c) = chars.next() {
+        match c {
+            '*' if chars.peek() == Some(&'*') => {
+                // Bold: **text**
+                chars.next(); // consume second *
+                if !current.is_empty() {
+                    spans.push(Span::styled(
+                        std::mem::take(&mut current),
+                        Style::default().fg(theme::TEXT_PRIMARY),
+                    ));
+                }
+                // Collect bold text
+                let mut bold_text = String::new();
+                while let Some(bc) = chars.next() {
+                    if bc == '*' && chars.peek() == Some(&'*') {
+                        chars.next(); // consume closing **
+                        break;
+                    }
+                    bold_text.push(bc);
+                }
+                if !bold_text.is_empty() {
+                    spans.push(Span::styled(
+                        bold_text,
+                        Style::default()
+                            .fg(theme::ELECTRIC_YELLOW)
+                            .add_modifier(Modifier::BOLD),
+                    ));
+                }
+            }
+            '`' => {
+                // Inline code: `code`
+                if !current.is_empty() {
+                    spans.push(Span::styled(
+                        std::mem::take(&mut current),
+                        Style::default().fg(theme::TEXT_PRIMARY),
+                    ));
+                }
+                let mut code_text = String::new();
+                for cc in chars.by_ref() {
+                    if cc == '`' {
+                        break;
+                    }
+                    code_text.push(cc);
+                }
+                if !code_text.is_empty() {
+                    spans.push(Span::styled(
+                        code_text,
+                        Style::default().fg(theme::NEON_CYAN),
+                    ));
+                }
+            }
+            _ => current.push(c),
+        }
+    }
+
+    if !current.is_empty() {
+        spans.push(Span::styled(
+            current,
+            Style::default().fg(theme::TEXT_PRIMARY),
+        ));
+    }
+
+    if spans.is_empty() {
+        spans.push(Span::styled(
+            text.to_string(),
+            Style::default().fg(theme::TEXT_PRIMARY),
+        ));
+    }
+
+    spans
 }

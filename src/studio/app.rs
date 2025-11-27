@@ -277,7 +277,7 @@ impl StudioApp {
                     start_line,
                     end_line,
                 } => {
-                    self.gather_blame_and_spawn(file, start_line, end_line);
+                    self.gather_blame_and_spawn(&file, start_line, end_line);
                 }
 
                 SideEffect::LoadData {
@@ -1240,7 +1240,7 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
     }
 
     /// Gather blame information from git and spawn the semantic blame agent
-    fn gather_blame_and_spawn(&self, file: std::path::PathBuf, start_line: usize, end_line: usize) {
+    fn gather_blame_and_spawn(&self, file: &std::path::Path, start_line: usize, end_line: usize) {
         use std::fs;
         use std::process::Command;
 
@@ -1253,7 +1253,7 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
         };
 
         // Read the file content for the specified range
-        let code_content = match fs::read_to_string(&file) {
+        let code_content = match fs::read_to_string(file) {
             Ok(content) => {
                 let lines: Vec<&str> = content.lines().collect();
                 if start_line == 0 || start_line > lines.len() {
@@ -1306,7 +1306,7 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
         };
 
         let blame_info = BlameInfo {
-            file: file.clone(),
+            file: file.to_path_buf(),
             start_line,
             end_line,
             commit_hash,
