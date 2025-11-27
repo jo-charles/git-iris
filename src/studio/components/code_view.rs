@@ -1,6 +1,6 @@
 //! Code view component for Iris Studio
 //!
-//! Displays file content with line numbers and scrolling support.
+//! Displays file content with line numbers and syntax highlighting.
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -12,6 +12,7 @@ use ratatui::widgets::{
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use super::syntax::SyntaxHighlighter;
 use crate::studio::theme;
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -202,6 +203,9 @@ pub fn render_code_view(
     let scroll_offset = state.scroll_offset();
     let line_num_width = lines.len().to_string().len().max(3);
 
+    // Create syntax highlighter based on file extension
+    let highlighter = state.current_file().map(SyntaxHighlighter::for_path);
+
     let display_lines: Vec<Line> = lines
         .iter()
         .enumerate()
@@ -215,6 +219,7 @@ pub fn render_code_view(
                 inner.width as usize,
                 state.selected_line,
                 state.selection(),
+                highlighter.as_ref(),
             )
         })
         .collect();
@@ -241,7 +246,7 @@ pub fn render_code_view(
     }
 }
 
-/// Render a single code line with line number
+/// Render a single code line with line number and optional syntax highlighting
 fn render_code_line(
     line_num: usize,
     content: &str,
@@ -249,6 +254,7 @@ fn render_code_line(
     max_width: usize,
     selected_line: usize,
     selection: Option<(usize, usize)>,
+    highlighter: Option<&SyntaxHighlighter>,
 ) -> Line<'static> {
     let is_selected = line_num == selected_line;
     let is_in_selection =
@@ -263,30 +269,6 @@ fn render_code_line(
         Style::default().fg(theme::TEXT_MUTED)
     };
 
-    // Content style
-    let content_style = if is_in_selection {
-        Style::default()
-            .fg(theme::TEXT_PRIMARY)
-            .bg(theme::SELECTION_BG)
-    } else if is_selected {
-        Style::default().fg(theme::TEXT_PRIMARY)
-    } else {
-        Style::default().fg(theme::TEXT_SECONDARY)
-    };
-
-    // Truncate content if too long (use char count, not byte count for UTF-8 safety)
-    let available_width = max_width.saturating_sub(line_num_width + 3); // 3 = " | "
-    let char_count = content.chars().count();
-    let display_content = if char_count > available_width {
-        let truncated: String = content
-            .chars()
-            .take(available_width.saturating_sub(3))
-            .collect();
-        format!("{}...", truncated)
-    } else {
-        content.to_string()
-    };
-
     // Selection indicator
     let indicator = if is_selected { ">" } else { " " };
     let indicator_style = if is_selected {
@@ -297,13 +279,75 @@ fn render_code_line(
         Style::default()
     };
 
-    Line::from(vec![
+    // Build the line prefix (indicator + line number + separator)
+    let mut spans = vec![
         Span::styled(indicator.to_string(), indicator_style),
         Span::styled(
             format!("{:>width$}", line_num, width = line_num_width),
             line_num_style,
         ),
         Span::styled(" │ ", Style::default().fg(theme::TEXT_MUTED)),
-        Span::styled(display_content, content_style),
-    ])
+    ];
+
+    // Calculate available width for content
+    let available_width = max_width.saturating_sub(line_num_width + 4); // 4 = "> " + " │ "
+
+    // Add syntax-highlighted content
+    if let Some(hl) = highlighter {
+        let styled_spans = hl.highlight_line(content);
+        let mut char_count = 0;
+
+        for (style, text) in styled_spans {
+            if char_count >= available_width {
+                break;
+            }
+
+            let remaining = available_width - char_count;
+            let text_chars: String = text.chars().take(remaining).collect();
+            char_count += text_chars.chars().count();
+
+            // Apply selection/highlight overlay
+            let final_style = if is_in_selection {
+                style.bg(theme::SELECTION_BG)
+            } else if is_selected {
+                // Keep syntax colors but ensure visibility
+                style
+            } else {
+                style
+            };
+
+            spans.push(Span::styled(text_chars, final_style));
+        }
+
+        // Add truncation indicator if needed
+        if content.chars().count() > available_width {
+            spans.push(Span::styled("...", Style::default().fg(theme::TEXT_MUTED)));
+        }
+    } else {
+        // Fallback: no syntax highlighting
+        let content_style = if is_in_selection {
+            Style::default()
+                .fg(theme::TEXT_PRIMARY)
+                .bg(theme::SELECTION_BG)
+        } else if is_selected {
+            Style::default().fg(theme::TEXT_PRIMARY)
+        } else {
+            Style::default().fg(theme::TEXT_SECONDARY)
+        };
+
+        let char_count = content.chars().count();
+        let display_content = if char_count > available_width {
+            let truncated: String = content
+                .chars()
+                .take(available_width.saturating_sub(3))
+                .collect();
+            format!("{}...", truncated)
+        } else {
+            content.to_string()
+        };
+
+        spans.push(Span::styled(display_content, content_style));
+    }
+
+    Line::from(spans)
 }

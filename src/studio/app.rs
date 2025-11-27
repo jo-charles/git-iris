@@ -66,6 +66,14 @@ pub enum IrisTaskResult {
     ChatUpdate(ChatUpdateType),
     /// Tool call status update (for streaming tool calls to chat)
     ToolStatus { tool_name: String, message: String },
+    /// Streaming text chunk received
+    StreamingChunk {
+        task_type: TaskType,
+        chunk: String,
+        aggregated: String,
+    },
+    /// Streaming completed
+    StreamingComplete { task_type: TaskType },
     /// Semantic blame result
     SemanticBlame(SemanticBlameResult),
     /// Error from the task
@@ -641,6 +649,20 @@ impl StudioApp {
                     }
                     self.state.mark_dirty();
                     continue; // Already handled, skip event push
+                }
+
+                IrisTaskResult::StreamingChunk {
+                    task_type,
+                    chunk,
+                    aggregated,
+                } => StudioEvent::StreamingChunk {
+                    task_type,
+                    chunk,
+                    aggregated,
+                },
+
+                IrisTaskResult::StreamingComplete { task_type } => {
+                    StudioEvent::StreamingComplete { task_type }
                 }
 
                 IrisTaskResult::Error(err) => {
@@ -2028,7 +2050,7 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
             }
             Mode::Explore => match self.state.focused_panel {
                 PanelId::Left => format!("{} · [↑↓]nav [Enter]open", base),
-                PanelId::Center => format!("{} · [↑↓]scroll", base),
+                PanelId::Center => format!("{} · [↑↓]nav [w]why [y]copy line [Y]copy file", base),
                 PanelId::Right => format!("{} · [c]chat", base),
             },
         }

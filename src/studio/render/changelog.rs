@@ -88,48 +88,18 @@ pub fn render_changelog_panel(
             let inner = block.inner(area);
             frame.render_widget(block, area);
 
-            if state.modes.changelog.changelog_content.is_empty() {
-                // Show generating state or hint
-                if state.modes.changelog.generating {
-                    let spinner_frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
-                    let frame_idx = (std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_millis()
-                        / 100) as usize
-                        % spinner_frames.len();
-                    let spinner = spinner_frames[frame_idx];
-
-                    let text = Paragraph::new(vec![
-                        Line::from(""),
-                        Line::from(vec![
-                            Span::styled(
-                                format!("{} ", spinner),
-                                Style::default().fg(theme::ELECTRIC_PURPLE),
-                            ),
-                            Span::styled(
-                                "Analyzing commits...",
-                                Style::default().fg(theme::TEXT_PRIMARY),
-                            ),
-                        ]),
-                        Line::from(""),
-                        Line::from(Span::styled(
-                            "Iris is crafting your changelog",
-                            Style::default().fg(theme::TEXT_DIM),
-                        )),
-                    ]);
-                    frame.render_widget(text, inner);
+            // Prefer streaming content if available, then final content
+            let content_to_display = state.modes.changelog.streaming_content.as_ref().or(
+                if state.modes.changelog.changelog_content.is_empty() {
+                    None
                 } else {
-                    let text = Paragraph::new("Press 'r' to generate a changelog")
-                        .style(Style::default().fg(theme::TEXT_DIM));
-                    frame.render_widget(text, inner);
-                }
-            } else {
-                // Render changelog content with scroll
-                let lines: Vec<Line> = state
-                    .modes
-                    .changelog
-                    .changelog_content
+                    Some(&state.modes.changelog.changelog_content)
+                },
+            );
+
+            if let Some(content) = content_to_display {
+                // Render content with scroll
+                let lines: Vec<Line> = content
                     .lines()
                     .skip(state.modes.changelog.changelog_scroll)
                     .take(inner.height as usize)
@@ -137,6 +107,14 @@ pub fn render_changelog_panel(
                     .collect();
                 let paragraph = Paragraph::new(lines);
                 frame.render_widget(paragraph, inner);
+            } else {
+                let hint = if state.modes.changelog.generating {
+                    "Generating changelog..."
+                } else {
+                    "Press 'r' to generate a changelog"
+                };
+                let text = Paragraph::new(hint).style(Style::default().fg(theme::TEXT_DIM));
+                frame.render_widget(text, inner);
             }
         }
         PanelId::Right => {

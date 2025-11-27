@@ -95,6 +95,16 @@ pub enum StudioEvent {
     /// Agent task failed
     AgentError { task_type: TaskType, error: String },
 
+    /// Streaming text chunk received
+    StreamingChunk {
+        task_type: TaskType,
+        chunk: String,
+        aggregated: String,
+    },
+
+    /// Streaming completed (final response)
+    StreamingComplete { task_type: TaskType },
+
     // ─────────────────────────────────────────────────────────────────────────
     // Tool-Triggered Events (agent controls UI)
     // ─────────────────────────────────────────────────────────────────────────

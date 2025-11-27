@@ -216,19 +216,13 @@ fn render_markdown_lines(text: &str) -> Vec<Line<'static>> {
 
             // Handle bullet points
             if let Some(bullet_text) = trimmed.strip_prefix("- ") {
-                let mut spans = vec![Span::styled(
-                    "  • ",
-                    Style::default().fg(theme::CORAL),
-                )];
+                let mut spans = vec![Span::styled("  • ", Style::default().fg(theme::CORAL))];
                 spans.extend(parse_inline_markdown(bullet_text));
                 lines.push(Line::from(spans));
                 continue;
             }
             if let Some(bullet_text) = trimmed.strip_prefix("* ") {
-                let mut spans = vec![Span::styled(
-                    "  • ",
-                    Style::default().fg(theme::CORAL),
-                )];
+                let mut spans = vec![Span::styled("  • ", Style::default().fg(theme::CORAL))];
                 spans.extend(parse_inline_markdown(bullet_text));
                 lines.push(Line::from(spans));
                 continue;
@@ -236,19 +230,20 @@ fn render_markdown_lines(text: &str) -> Vec<Line<'static>> {
 
             // Handle numbered lists
             if trimmed.chars().next().is_some_and(|c| c.is_ascii_digit())
-                && let Some(dot_pos) = trimmed.find(". ") {
-                    let num = &trimmed[..dot_pos];
-                    if num.chars().all(|c| c.is_ascii_digit()) {
-                        let rest = &trimmed[dot_pos + 2..];
-                        let mut spans = vec![Span::styled(
-                            format!("  {}. ", num),
-                            Style::default().fg(theme::CORAL),
-                        )];
-                        spans.extend(parse_inline_markdown(rest));
-                        lines.push(Line::from(spans));
-                        continue;
-                    }
+                && let Some(dot_pos) = trimmed.find(". ")
+            {
+                let num = &trimmed[..dot_pos];
+                if num.chars().all(|c| c.is_ascii_digit()) {
+                    let rest = &trimmed[dot_pos + 2..];
+                    let mut spans = vec![Span::styled(
+                        format!("  {}. ", num),
+                        Style::default().fg(theme::CORAL),
+                    )];
+                    spans.extend(parse_inline_markdown(rest));
+                    lines.push(Line::from(spans));
+                    continue;
                 }
+            }
 
             // Regular paragraph text with inline formatting
             let spans = parse_inline_markdown(trimmed);

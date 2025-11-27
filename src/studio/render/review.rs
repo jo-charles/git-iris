@@ -43,20 +43,18 @@ pub fn render_review_panel(
             let inner = block.inner(area);
             frame.render_widget(block, area);
 
-            if state.modes.review.review_content.is_empty() {
-                let hint = if state.modes.review.generating {
-                    "Generating review..."
+            // Prefer streaming content if available, then final content
+            let content_to_display = state.modes.review.streaming_content.as_ref().or(
+                if state.modes.review.review_content.is_empty() {
+                    None
                 } else {
-                    "Press 'r' to generate a code review"
-                };
-                let text = Paragraph::new(hint).style(Style::default().fg(theme::TEXT_DIM));
-                frame.render_widget(text, inner);
-            } else {
-                // Render review content with scroll
-                let lines: Vec<Line> = state
-                    .modes
-                    .review
-                    .review_content
+                    Some(&state.modes.review.review_content)
+                },
+            );
+
+            if let Some(content) = content_to_display {
+                // Render content with scroll
+                let lines: Vec<Line> = content
                     .lines()
                     .skip(state.modes.review.review_scroll)
                     .take(inner.height as usize)
@@ -64,6 +62,14 @@ pub fn render_review_panel(
                     .collect();
                 let paragraph = Paragraph::new(lines);
                 frame.render_widget(paragraph, inner);
+            } else {
+                let hint = if state.modes.review.generating {
+                    "Generating review..."
+                } else {
+                    "Press 'r' to generate a code review"
+                };
+                let text = Paragraph::new(hint).style(Style::default().fg(theme::TEXT_DIM));
+                frame.render_widget(text, inner);
             }
         }
         PanelId::Right => {

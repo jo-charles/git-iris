@@ -4,7 +4,10 @@ use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
+
 use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph};
+#[allow(unused_imports)]
+use std::time::SystemTime;
 
 use crate::studio::components::render_diff_view;
 use crate::studio::state::{PanelId, StudioState};
@@ -82,48 +85,18 @@ pub fn render_pr_panel(state: &mut StudioState, frame: &mut Frame, area: Rect, p
             let inner = block.inner(area);
             frame.render_widget(block, area);
 
-            if state.modes.pr.pr_content.is_empty() {
-                // Show generating state or hint
-                if state.modes.pr.generating {
-                    let spinner_frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
-                    let frame_idx = (std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_millis()
-                        / 100) as usize
-                        % spinner_frames.len();
-                    let spinner = spinner_frames[frame_idx];
-
-                    let text = Paragraph::new(vec![
-                        Line::from(""),
-                        Line::from(vec![
-                            Span::styled(
-                                format!("{} ", spinner),
-                                Style::default().fg(theme::ELECTRIC_PURPLE),
-                            ),
-                            Span::styled(
-                                "Analyzing commits...",
-                                Style::default().fg(theme::TEXT_PRIMARY),
-                            ),
-                        ]),
-                        Line::from(""),
-                        Line::from(Span::styled(
-                            "Iris is crafting your PR description",
-                            Style::default().fg(theme::TEXT_DIM),
-                        )),
-                    ]);
-                    frame.render_widget(text, inner);
+            // Prefer streaming content if available, then final content
+            let content_to_display = state.modes.pr.streaming_content.as_ref().or(
+                if state.modes.pr.pr_content.is_empty() {
+                    None
                 } else {
-                    let text = Paragraph::new("Press 'r' to generate a PR description")
-                        .style(Style::default().fg(theme::TEXT_DIM));
-                    frame.render_widget(text, inner);
-                }
-            } else {
-                // Render PR content with scroll
-                let lines: Vec<Line> = state
-                    .modes
-                    .pr
-                    .pr_content
+                    Some(&state.modes.pr.pr_content)
+                },
+            );
+
+            if let Some(content) = content_to_display {
+                // Render content with scroll
+                let lines: Vec<Line> = content
                     .lines()
                     .skip(state.modes.pr.pr_scroll)
                     .take(inner.height as usize)
@@ -131,6 +104,14 @@ pub fn render_pr_panel(state: &mut StudioState, frame: &mut Frame, area: Rect, p
                     .collect();
                 let paragraph = Paragraph::new(lines);
                 frame.render_widget(paragraph, inner);
+            } else {
+                let hint = if state.modes.pr.generating {
+                    "Generating PR description..."
+                } else {
+                    "Press 'r' to generate a PR description"
+                };
+                let text = Paragraph::new(hint).style(Style::default().fg(theme::TEXT_DIM));
+                frame.render_widget(text, inner);
             }
         }
         PanelId::Right => {

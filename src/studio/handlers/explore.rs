@@ -198,6 +198,40 @@ fn handle_code_view_key(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffec
             }
         }
 
+        // Copy current line to clipboard
+        KeyCode::Char('y') => {
+            let line_idx = state
+                .modes
+                .explore
+                .code_view
+                .selected_line()
+                .saturating_sub(1);
+            let line_content = state.modes.explore.code_view.lines().get(line_idx).cloned();
+            if let Some(content) = line_content {
+                state.notify(Notification::success("Line copied to clipboard"));
+                state.mark_dirty();
+                vec![SideEffect::CopyToClipboard(content)]
+            } else {
+                state.notify(Notification::warning("Nothing to copy"));
+                state.mark_dirty();
+                vec![]
+            }
+        }
+
+        // Copy entire file content
+        KeyCode::Char('Y') => {
+            let content = state.modes.explore.code_view.lines().join("\n");
+            if content.is_empty() {
+                state.notify(Notification::warning("No content to copy"));
+                state.mark_dirty();
+                vec![]
+            } else {
+                state.notify(Notification::success("File content copied to clipboard"));
+                state.mark_dirty();
+                vec![SideEffect::CopyToClipboard(content)]
+            }
+        }
+
         // Open in $EDITOR
         KeyCode::Char('o') => {
             if state.modes.explore.current_file.is_some() {

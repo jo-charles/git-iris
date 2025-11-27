@@ -370,6 +370,71 @@ pub fn reduce(
             )));
         }
 
+        StudioEvent::StreamingChunk {
+            task_type,
+            chunk: _,
+            aggregated,
+        } => {
+            // Update streaming content for the appropriate mode
+            match task_type {
+                TaskType::Review => {
+                    state.modes.review.streaming_content = Some(aggregated);
+                }
+                TaskType::PR => {
+                    state.modes.pr.streaming_content = Some(aggregated);
+                }
+                TaskType::Changelog => {
+                    state.modes.changelog.streaming_content = Some(aggregated);
+                }
+                TaskType::ReleaseNotes => {
+                    state.modes.release_notes.streaming_content = Some(aggregated);
+                }
+                TaskType::Chat => {
+                    // For chat, append to the current response
+                    if let Some(Modal::Chat(ref mut chat)) = state.modal {
+                        chat.streaming_response = Some(aggregated.clone());
+                    }
+                    state.chat_state.streaming_response = Some(aggregated);
+                }
+                TaskType::SemanticBlame => {
+                    state.modes.explore.streaming_blame = Some(aggregated);
+                }
+                TaskType::Commit => {
+                    // Commit doesn't stream (structured JSON)
+                }
+            }
+            state.mark_dirty();
+        }
+
+        StudioEvent::StreamingComplete { task_type } => {
+            // Clear streaming state - the final AgentComplete event will set the real content
+            match task_type {
+                TaskType::Review => {
+                    state.modes.review.streaming_content = None;
+                }
+                TaskType::PR => {
+                    state.modes.pr.streaming_content = None;
+                }
+                TaskType::Changelog => {
+                    state.modes.changelog.streaming_content = None;
+                }
+                TaskType::ReleaseNotes => {
+                    state.modes.release_notes.streaming_content = None;
+                }
+                TaskType::Chat => {
+                    if let Some(Modal::Chat(ref mut chat)) = state.modal {
+                        chat.streaming_response = None;
+                    }
+                    state.chat_state.streaming_response = None;
+                }
+                TaskType::SemanticBlame => {
+                    state.modes.explore.streaming_blame = None;
+                }
+                TaskType::Commit => {}
+            }
+            state.mark_dirty();
+        }
+
         // ─────────────────────────────────────────────────────────────────────────
         // Tool-Triggered Events (agent controls UI)
         // ─────────────────────────────────────────────────────────────────────────
