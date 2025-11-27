@@ -1,0 +1,251 @@
+//! Tests for the Reducer
+
+use crate::config::Config;
+use crate::studio::events::{
+    AgentResult, AgentTask, NotificationLevel, SideEffect, StudioEvent, TaskType,
+};
+use crate::studio::history::History;
+use crate::studio::reducer::reduce;
+use crate::studio::state::{Mode, PanelId, StudioState};
+use crate::types::GeneratedMessage;
+
+fn test_state() -> StudioState {
+    StudioState::new(Config::default(), None)
+}
+
+#[test]
+fn test_mode_switch() {
+    let mut state = test_state();
+    let mut history = History::new();
+
+    let effects = reduce(
+        &mut state,
+        StudioEvent::SwitchMode(Mode::Commit),
+        &mut history,
+    );
+
+    assert_eq!(state.active_mode, Mode::Commit);
+    assert!(!effects.is_empty()); // Should have LoadData effect
+}
+
+#[test]
+fn test_focus_panel() {
+    let mut state = test_state();
+    let mut history = History::new();
+
+    let _ = reduce(
+        &mut state,
+        StudioEvent::FocusPanel(PanelId::Right),
+        &mut history,
+    );
+
+    assert_eq!(state.focused_panel, PanelId::Right);
+}
+
+#[test]
+fn test_notify() {
+    let mut state = test_state();
+    let mut history = History::new();
+
+    let _ = reduce(
+        &mut state,
+        StudioEvent::Notify {
+            level: NotificationLevel::Success,
+            message: "Test notification".to_string(),
+        },
+        &mut history,
+    );
+
+    assert!(!state.notifications.is_empty());
+}
+
+#[test]
+fn test_quit_produces_effect() {
+    let mut state = test_state();
+    let mut history = History::new();
+
+    let effects = reduce(&mut state, StudioEvent::Quit, &mut history);
+
+    assert!(effects.iter().any(|e| matches!(e, SideEffect::Quit)));
+}
+
+#[test]
+fn test_agent_result_commit_messages() {
+    let mut state = test_state();
+    let mut history = History::new();
+    state.active_mode = Mode::Commit;
+
+    let messages = vec![
+        GeneratedMessage {
+            emoji: Some("✨".to_string()),
+            title: "Add feature".to_string(),
+            message: "Details here".to_string(),
+        },
+        GeneratedMessage {
+            emoji: Some("🐛".to_string()),
+            title: "Fix bug".to_string(),
+            message: "More details".to_string(),
+        },
+    ];
+
+    let _ = reduce(
+        &mut state,
+        StudioEvent::AgentComplete {
+            task_type: TaskType::Commit,
+            result: AgentResult::CommitMessages(messages.clone()),
+        },
+        &mut history,
+    );
+
+    assert_eq!(state.modes.commit.messages.len(), 2);
+    assert_eq!(state.modes.commit.messages[0].title, "Add feature");
+    assert!(!state.modes.commit.generating);
+}
+
+#[test]
+fn test_agent_result_review_content() {
+    let mut state = test_state();
+    let mut history = History::new();
+    state.active_mode = Mode::Review;
+    state.modes.review.generating = true;
+
+    let content = "## Code Review\n\nLooks good!".to_string();
+
+    let _ = reduce(
+        &mut state,
+        StudioEvent::AgentComplete {
+            task_type: TaskType::Review,
+            result: AgentResult::ReviewContent(content.clone()),
+        },
+        &mut history,
+    );
+
+    assert_eq!(state.modes.review.review_content, content);
+    assert!(!state.modes.review.generating);
+}
+
+#[test]
+fn test_message_variant_navigation() {
+    let mut state = test_state();
+    let mut history = History::new();
+    state.active_mode = Mode::Commit;
+
+    // Set up multiple messages
+    state.modes.commit.messages = vec![
+        GeneratedMessage {
+            emoji: None,
+            title: "First".to_string(),
+            message: String::new(),
+        },
+        GeneratedMessage {
+            emoji: None,
+            title: "Second".to_string(),
+            message: String::new(),
+        },
+        GeneratedMessage {
+            emoji: None,
+            title: "Third".to_string(),
+            message: String::new(),
+        },
+    ];
+    state
+        .modes
+        .commit
+        .message_editor
+        .set_messages(state.modes.commit.messages.clone());
+
+    // Navigate forward
+    let _ = reduce(&mut state, StudioEvent::NextMessageVariant, &mut history);
+    assert_eq!(state.modes.commit.current_index, 1);
+
+    let _ = reduce(&mut state, StudioEvent::NextMessageVariant, &mut history);
+    assert_eq!(state.modes.commit.current_index, 2);
+
+    // Wrap around
+    let _ = reduce(&mut state, StudioEvent::NextMessageVariant, &mut history);
+    assert_eq!(state.modes.commit.current_index, 0);
+
+    // Navigate backward (wraps to end)
+    let _ = reduce(&mut state, StudioEvent::PrevMessageVariant, &mut history);
+    assert_eq!(state.modes.commit.current_index, 2);
+}
+
+#[test]
+fn test_copy_to_clipboard_effect() {
+    let mut state = test_state();
+    let mut history = History::new();
+
+    let text = "Copy this!".to_string();
+    let effects = reduce(
+        &mut state,
+        StudioEvent::CopyToClipboard(text.clone()),
+        &mut history,
+    );
+
+    assert!(
+        effects
+            .iter()
+            .any(|e| matches!(e, SideEffect::CopyToClipboard(t) if t == &text))
+    );
+}
+
+#[test]
+fn test_toggle_edit_mode() {
+    let mut state = test_state();
+    let mut history = History::new();
+    state.active_mode = Mode::Commit;
+
+    assert!(!state.modes.commit.editing_message);
+
+    let _ = reduce(&mut state, StudioEvent::ToggleEditMode, &mut history);
+    assert!(state.modes.commit.editing_message);
+
+    let _ = reduce(&mut state, StudioEvent::ToggleEditMode, &mut history);
+    assert!(!state.modes.commit.editing_message);
+}
+
+#[test]
+fn test_generate_commit_produces_agent_effect() {
+    let mut state = test_state();
+    let mut history = History::new();
+    state.active_mode = Mode::Commit;
+
+    let effects = reduce(
+        &mut state,
+        StudioEvent::GenerateCommit {
+            instructions: None,
+            preset: "default".to_string(),
+            use_gitmoji: true,
+        },
+        &mut history,
+    );
+
+    assert!(state.modes.commit.generating);
+    assert!(effects.iter().any(|e| matches!(
+        e,
+        SideEffect::SpawnAgent {
+            task: AgentTask::Commit { .. }
+        }
+    )));
+}
+
+#[test]
+fn test_agent_error_clears_generating_flag() {
+    let mut state = test_state();
+    let mut history = History::new();
+    state.active_mode = Mode::Commit;
+    state.modes.commit.generating = true;
+
+    let _ = reduce(
+        &mut state,
+        StudioEvent::AgentError {
+            task_type: TaskType::Commit,
+            error: "Something failed".to_string(),
+        },
+        &mut history,
+    );
+
+    assert!(!state.modes.commit.generating);
+    // Should have a notification
+    assert!(!state.notifications.is_empty());
+}
