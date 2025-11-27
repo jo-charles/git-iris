@@ -5,6 +5,7 @@ use ratatui::prelude::Stylize;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 
+use crate::studio::components::syntax::SyntaxHighlighter;
 use crate::studio::state::{ChatRole, ChatState};
 use crate::studio::theme;
 
@@ -200,6 +201,9 @@ pub fn format_markdown(content: &str, max_width: usize, base_style: Style) -> Ve
     let mut code_lang = String::new();
     let mut list_depth: usize = 0;
     let mut ordered_list_num: Option<u64> = None;
+    let mut _in_link = false;
+    let mut in_table = false;
+    let mut table_row: Vec<String> = Vec::new();
 
     // Enable all markdown options
     let options = Options::ENABLE_STRIKETHROUGH
@@ -256,14 +260,26 @@ pub fn format_markdown(content: &str, max_width: usize, base_style: Style) -> Ve
                     }
                 }
                 Tag::Emphasis => {
+                    // Add space before if needed
+                    if needs_space_before(&current_spans) {
+                        current_spans.push(Span::styled(" ", base_style));
+                    }
                     let current = style_stack.last().copied().unwrap_or(base_style);
                     style_stack.push(current.add_modifier(Modifier::ITALIC));
                 }
                 Tag::Strong => {
+                    // Add space before if needed
+                    if needs_space_before(&current_spans) {
+                        current_spans.push(Span::styled(" ", base_style));
+                    }
                     let current = style_stack.last().copied().unwrap_or(base_style);
                     style_stack.push(current.add_modifier(Modifier::BOLD));
                 }
                 Tag::Strikethrough => {
+                    // Add space before if needed
+                    if needs_space_before(&current_spans) {
+                        current_spans.push(Span::styled(" ", base_style));
+                    }
                     let current = style_stack.last().copied().unwrap_or(base_style);
                     style_stack.push(current.add_modifier(Modifier::CROSSED_OUT));
                 }
@@ -272,7 +288,22 @@ pub fn format_markdown(content: &str, max_width: usize, base_style: Style) -> Ve
                     current_spans.push(Span::styled("  │ ", Style::default().fg(theme::TEXT_DIM)));
                 }
                 Tag::Link { .. } | Tag::Image { .. } => {
-                    style_stack.push(Style::default().fg(theme::NEON_CYAN));
+                    // Add space before link if needed
+                    if needs_space_before(&current_spans) {
+                        current_spans.push(Span::styled(" ", base_style));
+                    }
+                    _in_link = true;
+                    style_stack.push(
+                        Style::default()
+                            .fg(theme::NEON_CYAN)
+                            .add_modifier(Modifier::UNDERLINED),
+                    );
+                }
+                Tag::Table(_) | Tag::TableHead | Tag::TableRow => {
+                    in_table = true;
+                }
+                Tag::TableCell => {
+                    // Cell content handled in text
                 }
                 _ => {}
             },
@@ -304,53 +335,49 @@ pub fn format_markdown(content: &str, max_width: usize, base_style: Style) -> Ve
                 }
                 TagEnd::Emphasis | TagEnd::Strong | TagEnd::Strikethrough => {
                     style_stack.pop();
+                    // Add space after if next text might need it
+                    // (will be trimmed if next char is punctuation)
                 }
                 TagEnd::BlockQuote(_) => {
                     flush_line(&mut lines, &mut current_spans, list_depth);
                 }
                 TagEnd::Link | TagEnd::Image => {
                     style_stack.pop();
+                    _in_link = false;
+                    // Add space after link
+                    current_spans.push(Span::styled(" ", base_style));
+                }
+                TagEnd::Table => {
+                    in_table = false;
+                    flush_line(&mut lines, &mut current_spans, list_depth);
+                    lines.push(Line::from("")); // Space after table
+                }
+                TagEnd::TableHead | TagEnd::TableRow => {
+                    // Render the row
+                    if !table_row.is_empty() {
+                        let row_text = table_row.join(" │ ");
+                        flush_line(&mut lines, &mut current_spans, list_depth);
+                        current_spans.push(Span::styled(
+                            format!("  │ {} │", row_text),
+                            Style::default().fg(theme::TEXT_SECONDARY),
+                        ));
+                        flush_line(&mut lines, &mut current_spans, list_depth);
+                        table_row.clear();
+                    }
+                }
+                TagEnd::TableCell => {
+                    // Cell completed - handled in text
                 }
                 _ => {}
             },
             Event::Text(text) => {
                 if in_code_block {
                     code_block_lines.extend(text.lines().map(String::from));
+                } else if in_table {
+                    table_row.push(text.to_string());
                 } else {
                     let style = style_stack.last().copied().unwrap_or(base_style);
-
-                    // Add space after inline code if text doesn't start with punctuation/space
-                    if let Some(last_span) = current_spans.last() {
-                        let last_content = last_span.content.as_ref();
-                        if last_content.ends_with('`') {
-                            let first_char = text.chars().next().unwrap_or(' ');
-                            if !first_char.is_whitespace()
-                                && !matches!(
-                                    first_char,
-                                    '.' | ',' | ':' | ';' | ')' | ']' | '-' | '!' | '?'
-                                )
-                            {
-                                current_spans.push(Span::styled(" ", style));
-                            }
-                        }
-                    }
-
-                    // Word wrap the text
-                    let effective_width = max_width.saturating_sub(4 + list_depth * 2);
-                    for chunk in wrap_text(&text, effective_width) {
-                        if !current_spans.is_empty() && !chunk.is_empty() {
-                            current_spans.push(Span::styled(chunk, style));
-                        } else if !chunk.is_empty() {
-                            // Base indent + list depth indent (aligns with bullet text)
-                            let indent = if list_depth > 0 {
-                                // 2 spaces per depth level + 2 for bullet alignment
-                                "  ".repeat(list_depth) + "  "
-                            } else {
-                                "  ".to_string()
-                            };
-                            current_spans.push(Span::styled(format!("{}{}", indent, chunk), style));
-                        }
-                    }
+                    process_text(&text, style, &mut current_spans, list_depth, max_width);
                 }
             }
             Event::Code(code) => {
@@ -417,6 +444,63 @@ fn flush_line(lines: &mut Vec<Line<'static>>, spans: &mut Vec<Span<'static>>, _l
     }
 }
 
+/// Check if we need to add a space before a new styled element
+fn needs_space_before(spans: &[Span<'static>]) -> bool {
+    if let Some(last_span) = spans.last() {
+        let last_content = last_span.content.as_ref();
+        !last_content.is_empty()
+            && !last_content.ends_with(' ')
+            && !last_content.ends_with('\n')
+            && !last_content.ends_with('(')
+            && !last_content.ends_with('[')
+            && !last_content.ends_with('"')
+            && !last_content.ends_with('\'')
+    } else {
+        false
+    }
+}
+
+/// Process text content with proper spacing and word wrapping
+fn process_text(
+    text: &str,
+    style: Style,
+    current_spans: &mut Vec<Span<'static>>,
+    list_depth: usize,
+    max_width: usize,
+) {
+    // Add space after inline code if text doesn't start with punctuation/space
+    if let Some(last_span) = current_spans.last() {
+        let last_content = last_span.content.as_ref();
+        if last_content.ends_with('`') {
+            let first_char = text.chars().next().unwrap_or(' ');
+            if !first_char.is_whitespace()
+                && !matches!(
+                    first_char,
+                    '.' | ',' | ':' | ';' | ')' | ']' | '-' | '!' | '?'
+                )
+            {
+                current_spans.push(Span::styled(" ", style));
+            }
+        }
+    }
+
+    // Word wrap the text
+    let effective_width = max_width.saturating_sub(4 + list_depth * 2);
+    for chunk in wrap_text(text, effective_width) {
+        if !current_spans.is_empty() && !chunk.is_empty() {
+            current_spans.push(Span::styled(chunk, style));
+        } else if !chunk.is_empty() {
+            // Base indent + list depth indent (aligns with bullet text)
+            let indent = if list_depth > 0 {
+                "  ".repeat(list_depth) + "  "
+            } else {
+                "  ".to_string()
+            };
+            current_spans.push(Span::styled(format!("{}{}", indent, chunk), style));
+        }
+    }
+}
+
 fn render_code_block(
     lines: &mut Vec<Line<'static>>,
     code_lines: &[String],
@@ -429,16 +513,33 @@ fn render_code_block(
         Style::default().fg(theme::TEXT_DIM),
     )));
 
+    // Create syntax highlighter for the language
+    let highlighter = SyntaxHighlighter::for_extension(lang);
+
     for code_line in code_lines {
         let truncated = if code_line.len() > max_width.saturating_sub(4) {
             format!("{}…", &code_line[..max_width.saturating_sub(5)])
         } else {
             code_line.clone()
         };
-        lines.push(Line::from(vec![
-            Span::styled("  │ ", Style::default().fg(theme::TEXT_DIM)),
-            Span::styled(truncated, Style::default().fg(theme::SUCCESS_GREEN)),
-        ]));
+
+        // Build spans for this line
+        let mut line_spans = vec![Span::styled("  │ ", Style::default().fg(theme::TEXT_DIM))];
+
+        if highlighter.is_available() {
+            // Syntax highlighted
+            for (style, text) in highlighter.highlight_line(&truncated) {
+                line_spans.push(Span::styled(text, style));
+            }
+        } else {
+            // Fallback to plain green
+            line_spans.push(Span::styled(
+                truncated,
+                Style::default().fg(theme::SUCCESS_GREEN),
+            ));
+        }
+
+        lines.push(Line::from(line_spans));
     }
 
     lines.push(Line::from(Span::styled(
@@ -453,19 +554,32 @@ fn wrap_text(text: &str, max_width: usize) -> Vec<String> {
         return vec![text.to_string()];
     }
 
+    // Preserve leading/trailing whitespace
+    let has_leading_space = text.starts_with(char::is_whitespace);
+    let has_trailing_space = text.ends_with(char::is_whitespace);
+
     let mut lines = Vec::new();
     let mut current_line = String::new();
+    let mut first_word = true;
 
     for word in text.split_whitespace() {
+        // Add leading space to first word if original had it
+        let word_to_add = if first_word && has_leading_space {
+            first_word = false;
+            format!(" {}", word)
+        } else {
+            first_word = false;
+            word.to_string()
+        };
         // Handle words longer than max_width by breaking them
-        if word.len() > max_width {
+        if word_to_add.len() > max_width {
             // Push current line if not empty
             if !current_line.is_empty() {
                 lines.push(current_line);
                 current_line = String::new();
             }
             // Break the long word into chunks
-            let mut remaining = word;
+            let mut remaining = word_to_add.as_str();
             while remaining.len() > max_width {
                 let (chunk, rest) = remaining.split_at(max_width);
                 lines.push(chunk.to_string());
@@ -475,14 +589,19 @@ fn wrap_text(text: &str, max_width: usize) -> Vec<String> {
                 current_line = remaining.to_string();
             }
         } else if current_line.is_empty() {
-            current_line = word.to_string();
-        } else if current_line.len() + 1 + word.len() <= max_width {
+            current_line = word_to_add;
+        } else if current_line.len() + 1 + word_to_add.len() <= max_width {
             current_line.push(' ');
-            current_line.push_str(word);
+            current_line.push_str(&word_to_add);
         } else {
             lines.push(current_line);
-            current_line = word.to_string();
+            current_line = word_to_add;
         }
+    }
+
+    // Add trailing space if original had it
+    if has_trailing_space && !current_line.is_empty() {
+        current_line.push(' ');
     }
 
     if !current_line.is_empty() {
