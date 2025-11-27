@@ -875,6 +875,22 @@ Guidelines:
                     aggregated_text.push_str(&text.text);
                     on_chunk(&text.text, &aggregated_text);
                 }
+                Ok(MultiTurnStreamItem::StreamAssistantItem(
+                    StreamedAssistantContent::ToolCall(tool_call),
+                )) => {
+                    // Update status to show tool execution
+                    let tool_name = &tool_call.function.name;
+                    let reason = format!("Calling {}", tool_name);
+                    crate::iris_status_dynamic!(
+                        IrisPhase::ToolExecution {
+                            tool_name: tool_name.clone(),
+                            reason: reason.clone()
+                        },
+                        format!("🔧 {}", reason),
+                        3,
+                        4
+                    );
+                }
                 Ok(MultiTurnStreamItem::FinalResponse(_)) => {
                     // Stream complete
                     break;
@@ -883,7 +899,7 @@ Guidelines:
                     return Err(anyhow::anyhow!("Streaming error: {}", e));
                 }
                 _ => {
-                    // Tool calls, reasoning, etc. - continue
+                    // Reasoning, etc. - continue
                 }
             }
         }

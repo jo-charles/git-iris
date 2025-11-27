@@ -424,8 +424,15 @@ pub fn reduce(
                 TaskType::Chat => {
                     if let Some(Modal::Chat(ref mut chat)) = state.modal {
                         chat.streaming_response = None;
+                        // Move final current_tool to history before clearing
+                        if let Some(tool) = chat.current_tool.take() {
+                            chat.tool_history.push(tool);
+                        }
                     }
                     state.chat_state.streaming_response = None;
+                    if let Some(tool) = state.chat_state.current_tool.take() {
+                        state.chat_state.tool_history.push(tool);
+                    }
                 }
                 TaskType::SemanticBlame => {
                     state.modes.explore.streaming_blame = None;

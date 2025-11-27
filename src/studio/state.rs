@@ -274,6 +274,10 @@ pub struct ChatState {
     pub streaming_response: Option<String>,
     /// Whether to auto-scroll to bottom on new content
     pub auto_scroll: bool,
+    /// Current tool being executed (shown with spinner)
+    pub current_tool: Option<String>,
+    /// History of tools called during this response
+    pub tool_history: Vec<String>,
 }
 
 impl Default for ChatState {
@@ -285,6 +289,8 @@ impl Default for ChatState {
             is_responding: false,
             streaming_response: None,
             auto_scroll: true,
+            current_tool: None,
+            tool_history: Vec::new(),
         }
     }
 }
@@ -331,6 +337,9 @@ impl ChatState {
     pub fn add_iris_response(&mut self, content: &str) {
         self.messages.push(ChatMessage::iris(content));
         self.is_responding = false;
+        self.streaming_response = None;
+        self.current_tool = None;
+        self.tool_history.clear();
         self.auto_scroll = true; // Re-enable auto-scroll on new messages
     }
 
@@ -355,6 +364,9 @@ impl ChatState {
         self.input.clear();
         self.scroll_offset = 0;
         self.is_responding = false;
+        self.streaming_response = None;
+        self.current_tool = None;
+        self.tool_history.clear();
         self.auto_scroll = true;
     }
 }

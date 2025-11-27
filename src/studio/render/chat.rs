@@ -78,6 +78,19 @@ pub fn render_messages(
             let formatted_lines = format_markdown(streaming, content_width, content_style);
             lines.extend(formatted_lines);
 
+            // Show tool activity history
+            for tool in &chat_state.tool_history {
+                lines.push(Line::from(vec![
+                    Span::styled("  ⚙ ", Style::default().fg(theme::NEON_CYAN)),
+                    Span::styled(
+                        tool.clone(),
+                        Style::default()
+                            .fg(theme::TEXT_MUTED)
+                            .add_modifier(Modifier::ITALIC),
+                    ),
+                ]));
+            }
+
             // Add streaming cursor
             let spinner =
                 theme::SPINNER_BRAILLE[last_render_ms as usize / 80 % theme::SPINNER_BRAILLE.len()];
@@ -89,19 +102,55 @@ pub fn render_messages(
             // Just show thinking indicator when no streaming content yet
             let spinner =
                 theme::SPINNER_BRAILLE[last_render_ms as usize / 80 % theme::SPINNER_BRAILLE.len()];
-            lines.push(Line::from(vec![
-                Span::styled(
-                    format!("{} ", spinner),
+
+            // Show tool history when thinking
+            for tool in &chat_state.tool_history {
+                lines.push(Line::from(vec![
+                    Span::styled("  ⚙ ", Style::default().fg(theme::NEON_CYAN)),
+                    Span::styled(
+                        tool.clone(),
+                        Style::default()
+                            .fg(theme::TEXT_MUTED)
+                            .add_modifier(Modifier::ITALIC),
+                    ),
+                ]));
+            }
+
+            // Show current tool activity prominently
+            if let Some(ref tool) = chat_state.current_tool {
+                lines.push(Line::from(vec![
+                    Span::styled(
+                        format!("{} ⚙ ", spinner),
+                        Style::default().fg(theme::NEON_CYAN),
+                    ),
+                    Span::styled(
+                        tool.clone(),
+                        Style::default()
+                            .fg(theme::TEXT_SECONDARY)
+                            .add_modifier(Modifier::ITALIC),
+                    ),
+                ]));
+            } else if chat_state.tool_history.is_empty() {
+                lines.push(Line::from(vec![
+                    Span::styled(
+                        format!("{} ", spinner),
+                        Style::default().fg(theme::ELECTRIC_PURPLE),
+                    ),
+                    Span::styled(
+                        "Iris is thinking",
+                        Style::default()
+                            .fg(theme::ELECTRIC_PURPLE)
+                            .add_modifier(Modifier::ITALIC),
+                    ),
+                    Span::styled("...", Style::default().fg(theme::TEXT_DIM)),
+                ]));
+            } else {
+                // Show spinner after tool history
+                lines.push(Line::from(Span::styled(
+                    format!("  {}", spinner),
                     Style::default().fg(theme::ELECTRIC_PURPLE),
-                ),
-                Span::styled(
-                    "Iris is thinking",
-                    Style::default()
-                        .fg(theme::ELECTRIC_PURPLE)
-                        .add_modifier(Modifier::ITALIC),
-                ),
-                Span::styled("...", Style::default().fg(theme::TEXT_DIM)),
-            ]));
+                )));
+            }
         }
     }
 
@@ -127,6 +176,13 @@ pub fn render_messages(
             Span::styled("  • ", Style::default().fg(theme::ELECTRIC_PURPLE)),
             Span::styled("\"Explain what this change does\"", theme::dimmed()),
         ]));
+    }
+
+    // Add bottom padding for scrolling - ensures last message can scroll into view
+    if !chat_state.messages.is_empty() || chat_state.is_responding {
+        lines.push(Line::from(""));
+        lines.push(Line::from(""));
+        lines.push(Line::from(""));
     }
 
     lines
@@ -234,11 +290,13 @@ pub fn format_markdown(content: &str, max_width: usize, base_style: Style) -> Ve
                     code_block_lines.clear();
                     code_lang.clear();
                     in_code_block = false;
+                    lines.push(Line::from("")); // Add spacing after code blocks
                 }
                 TagEnd::List(_) => {
                     list_depth = list_depth.saturating_sub(1);
                     if list_depth == 0 {
                         ordered_list_num = None;
+                        lines.push(Line::from("")); // Add spacing after top-level lists
                     }
                 }
                 TagEnd::Item => {
@@ -260,20 +318,60 @@ pub fn format_markdown(content: &str, max_width: usize, base_style: Style) -> Ve
                     code_block_lines.extend(text.lines().map(String::from));
                 } else {
                     let style = style_stack.last().copied().unwrap_or(base_style);
+
+                    // Add space after inline code if text doesn't start with punctuation/space
+                    if let Some(last_span) = current_spans.last() {
+                        let last_content = last_span.content.as_ref();
+                        if last_content.ends_with('`') {
+                            let first_char = text.chars().next().unwrap_or(' ');
+                            if !first_char.is_whitespace()
+                                && !matches!(
+                                    first_char,
+                                    '.' | ',' | ':' | ';' | ')' | ']' | '-' | '!' | '?'
+                                )
+                            {
+                                current_spans.push(Span::styled(" ", style));
+                            }
+                        }
+                    }
+
                     // Word wrap the text
                     let effective_width = max_width.saturating_sub(4 + list_depth * 2);
                     for chunk in wrap_text(&text, effective_width) {
                         if !current_spans.is_empty() && !chunk.is_empty() {
                             current_spans.push(Span::styled(chunk, style));
                         } else if !chunk.is_empty() {
-                            let indent = if list_depth > 0 { "" } else { "  " };
+                            // Base indent + list depth indent (aligns with bullet text)
+                            let indent = if list_depth > 0 {
+                                // 2 spaces per depth level + 2 for bullet alignment
+                                "  ".repeat(list_depth) + "  "
+                            } else {
+                                "  ".to_string()
+                            };
                             current_spans.push(Span::styled(format!("{}{}", indent, chunk), style));
                         }
                     }
                 }
             }
             Event::Code(code) => {
+                // Add space before inline code if needed (prevents "text`code`" from merging)
+                if let Some(last_span) = current_spans.last() {
+                    let last_content = last_span.content.as_ref();
+                    if !last_content.is_empty()
+                        && !last_content.ends_with(' ')
+                        && !last_content.ends_with('\n')
+                        && !last_content.ends_with('(')
+                        && !last_content.ends_with('[')
+                    {
+                        let style = style_stack.last().copied().unwrap_or(base_style);
+                        current_spans.push(Span::styled(" ", style));
+                    }
+                }
+                // Render without backticks - just styled text
                 current_spans.push(Span::styled(code.to_string(), theme::inline_code()));
+                // Add trailing space after inline code
+                let style = style_stack.last().copied().unwrap_or(base_style);
+                current_spans.push(Span::styled(" ", style));
             }
             Event::SoftBreak => {
                 // Treat as space

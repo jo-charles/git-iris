@@ -41,7 +41,7 @@ use super::render::{
     render_changelog_panel, render_commit_panel, render_explore_panel, render_modal,
     render_pr_panel, render_release_notes_panel, render_review_panel,
 };
-use super::state::{ChatMessage, GitStatus, IrisStatus, Mode, Notification, PanelId, StudioState};
+use super::state::{GitStatus, IrisStatus, Mode, Notification, PanelId, StudioState};
 use super::theme;
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -640,13 +640,19 @@ impl StudioApp {
                 },
 
                 IrisTaskResult::ToolStatus { tool_name, message } => {
-                    // Tool status updates go to chat progress
-                    // For now, handle directly since it's UI-only (chat bubble updates)
+                    // Tool status updates - move current tool to history, set new current
+                    let tool_desc = format!("{} - {}", tool_name, message);
                     if let Some(Modal::Chat(chat)) = &mut self.state.modal {
-                        let tool_msg = format!("🔧 {} - {}", tool_name, message);
-                        chat.messages.push(ChatMessage::iris(tool_msg));
-                        chat.auto_scroll = true;
+                        // Move previous tool to history
+                        if let Some(prev) = chat.current_tool.take() {
+                            chat.tool_history.push(prev);
+                        }
+                        chat.current_tool = Some(tool_desc.clone());
                     }
+                    if let Some(prev) = self.state.chat_state.current_tool.take() {
+                        self.state.chat_state.tool_history.push(prev);
+                    }
+                    self.state.chat_state.current_tool = Some(tool_desc);
                     self.state.mark_dirty();
                     continue; // Already handled, skip event push
                 }
