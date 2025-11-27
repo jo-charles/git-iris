@@ -343,7 +343,11 @@ pub enum Modal {
     /// Help overlay showing keybindings
     Help,
     /// Search modal for files/symbols
-    Search { query: String, results: Vec<String> },
+    Search {
+        query: String,
+        results: Vec<String>,
+        selected: usize,
+    },
     /// Confirmation dialog
     Confirm { message: String, action: String },
     /// Instructions input for commit message generation

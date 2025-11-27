@@ -133,16 +133,27 @@ impl StudioApp {
                 .map(|f| f.iter().map(|s| s.path.clone().into()).collect())
                 .unwrap_or_default();
 
+            // Get untracked files
+            let untracked_files: Vec<std::path::PathBuf> = repo
+                .get_untracked_files()
+                .unwrap_or_default()
+                .into_iter()
+                .map(std::path::PathBuf::from)
+                .collect();
+
+            // Get ahead/behind counts
+            let (commits_ahead, commits_behind) = repo.get_ahead_behind();
+
             let status = GitStatus {
                 branch: repo.get_current_branch().unwrap_or_default(),
                 staged_count: staged_files.len(),
                 staged_files,
                 modified_count: modified_files.len(),
                 modified_files,
-                untracked_count: 0, // TODO: Separate untracked from modified
-                untracked_files: Vec::new(),
-                commits_ahead: 0, // TODO: Calculate from remote
-                commits_behind: 0,
+                untracked_count: untracked_files.len(),
+                untracked_files,
+                commits_ahead,
+                commits_behind,
             };
             self.state.git_status = status;
 

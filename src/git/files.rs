@@ -212,3 +212,77 @@ pub fn get_diff_for_unstaged_file(repo: &Repository, path: &str) -> Result<Strin
         Ok(diff_string)
     }
 }
+
+/// Gets only untracked files from the repository (new files not in the index)
+///
+/// # Returns
+///
+/// A Result containing a Vec of file paths for untracked files or an error.
+pub fn get_untracked_files(repo: &Repository) -> Result<Vec<String>> {
+    log_debug!("Getting untracked files");
+    let mut untracked = Vec::new();
+
+    let mut opts = StatusOptions::new();
+    opts.include_untracked(true);
+    opts.exclude_submodules(true);
+    let statuses = repo.statuses(Some(&mut opts))?;
+
+    for entry in statuses.iter() {
+        let status = entry.status();
+        // Only include files that are untracked (not in index, not ignored)
+        if status.is_wt_new()
+            && !status.is_index_new()
+            && let Some(path) = entry.path()
+        {
+            untracked.push(path.to_string());
+        }
+    }
+
+    log_debug!("Found {} untracked files", untracked.len());
+    Ok(untracked)
+}
+
+/// Gets the number of commits ahead and behind the upstream tracking branch
+///
+/// # Returns
+///
+/// A tuple of (ahead, behind) counts, or (0, 0) if no upstream
+pub fn get_ahead_behind(repo: &Repository) -> (usize, usize) {
+    log_debug!("Getting ahead/behind counts");
+
+    // Get the current branch
+    let Ok(head) = repo.head() else {
+        return (0, 0); // No HEAD
+    };
+
+    let Some(branch_name) = head.shorthand() else {
+        return (0, 0);
+    };
+
+    // Try to find the upstream branch
+    let Ok(branch) = repo.find_branch(branch_name, git2::BranchType::Local) else {
+        return (0, 0);
+    };
+
+    let Ok(upstream) = branch.upstream() else {
+        return (0, 0); // No upstream configured
+    };
+
+    // Get the OIDs for local and upstream
+    let Some(local_oid) = head.target() else {
+        return (0, 0);
+    };
+
+    let Some(upstream_oid) = upstream.get().target() else {
+        return (0, 0);
+    };
+
+    // Calculate ahead/behind
+    match repo.graph_ahead_behind(local_oid, upstream_oid) {
+        Ok((ahead, behind)) => {
+            log_debug!("Branch is {} ahead, {} behind upstream", ahead, behind);
+            (ahead, behind)
+        }
+        Err(_) => (0, 0),
+    }
+}

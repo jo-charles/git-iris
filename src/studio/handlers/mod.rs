@@ -176,9 +176,12 @@ fn handle_global_key(state: &mut StudioState, key: KeyEvent) -> Option<Action> {
 
         // Search (global)
         KeyCode::Char('/') if !is_editing(state) => {
+            // Populate results with current mode's files
+            let results = get_searchable_files(state);
             state.modal = Some(Modal::Search {
                 query: String::new(),
-                results: Vec::new(),
+                results,
+                selected: 0,
             });
             Some(Action::Redraw)
         }
@@ -203,6 +206,53 @@ pub fn is_editing(state: &StudioState) -> bool {
     match state.active_mode {
         Mode::Commit => state.modes.commit.editing_message,
         _ => false,
+    }
+}
+
+/// Get searchable files for the current mode
+fn get_searchable_files(state: &StudioState) -> Vec<String> {
+    match state.active_mode {
+        Mode::Commit => {
+            // Get staged files
+            state
+                .git_status
+                .staged_files
+                .iter()
+                .map(|p| p.to_string_lossy().to_string())
+                .collect()
+        }
+        Mode::Review => {
+            // Get files from review diff view
+            state
+                .modes
+                .review
+                .diff_view
+                .file_paths()
+                .into_iter()
+                .map(|p| p.to_string_lossy().to_string())
+                .collect()
+        }
+        Mode::PR => {
+            // Get files from PR diff view
+            state
+                .modes
+                .pr
+                .diff_view
+                .file_paths()
+                .into_iter()
+                .map(|p| p.to_string_lossy().to_string())
+                .collect()
+        }
+        _ => {
+            // For other modes, show all tracked files
+            state
+                .git_status
+                .staged_files
+                .iter()
+                .chain(state.git_status.modified_files.iter())
+                .map(|p| p.to_string_lossy().to_string())
+                .collect()
+        }
     }
 }
 
