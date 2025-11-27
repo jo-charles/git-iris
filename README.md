@@ -10,9 +10,9 @@
 [![Rust](https://img.shields.io/badge/rust-stable-EBCB8B?style=for-the-badge&logo=rust&logoColor=white&color=EFBB4D)](https://www.rust-lang.org/)
 [![ko-fi](https://img.shields.io/badge/Ko--fi-Support%20Me-A3BE8C?style=for-the-badge&logo=ko-fi&logoColor=white&color=82B062)](https://ko-fi.com/hyperb1iss)
 
-_An intelligent agent that understands your code and crafts perfect Git artifacts_ ✨
+✨ _An intelligent agent that understands your code and crafts perfect Git artifacts_ ✨
 
-[Installation](#installation) • [Docker](#docker) • [Configuration](#configuration) • [Usage](#usage) • [Contributing](#contributing) • [License](#license)
+[Installation](#-installation) • [Studio TUI](#-iris-studio) • [Commands](#-usage) • [Configuration](#%EF%B8%8F-configuration) • [Contributing](#-contributing) • [License](#-license)
 
 </div>
 
@@ -24,39 +24,54 @@ _An intelligent agent that understands your code and crafts perfect Git artifact
 
 _Iris exploring your codebase and generating contextual commit messages_
 
-## 🌟 Overview
+## 💜 Overview
 
 Git-Iris is powered by **Iris**, an intelligent agent that actively explores your codebase to understand what you're building. Rather than dumping context and hoping for the best, Iris uses tools to gather precisely the information she needs—analyzing diffs, exploring file relationships, and building understanding iteratively.
 
 This agent-first architecture means Iris adapts to your project. She crafts meaningful commit messages, generates insightful changelogs, creates detailed release notes, and provides thorough code reviews—all informed by genuine understanding of your code.
 
-## ✨ Features
+## ⚡ Features
 
-### 🧠 Agentic Intelligence
+### 🌌 Iris Studio — The Unified TUI
+
+**Studio** is a stunning, context-aware terminal interface that brings all of Git-Iris's capabilities together in one beautiful experience. Built with the **SilkCircuit Neon** design language, it adapts to your workflow with six specialized modes:
+
+| Mode | Description | Shortcut |
+|------|-------------|----------|
+| 🔭 **Explore** | Navigate and understand your codebase with AI-powered semantic insights | `Shift+E` |
+| 💫 **Commit** | Generate and refine commit messages for your staged changes | `Shift+C` |
+| 🔬 **Review** | Get comprehensive AI-powered code reviews with severity ratings | `Shift+R` |
+| 📜 **PR** | Generate complete pull request descriptions | `Shift+P` |
+| 🗂️ **Changelog** | Create structured changelogs in Keep a Changelog format | `Shift+L` |
+| 🎊 **Release Notes** | Generate detailed release documentation | `Shift+N` |
+
+**💬 Chat with Iris** — Press `/` in any mode to open an interactive conversation with Iris. Ask her to refine your commit message, explain changes, or improve the generated content. She can update content directly through intelligent tool calls!
+
+### 🧿 Agentic Intelligence
 
 - **Context-Aware Understanding**: Iris explores your codebase using tools, not templates—she understands what changed and why it matters
 - **Adaptive Analysis**: For large changesets, Iris spawns subagents to analyze different parts concurrently, then synthesizes findings
 - **Intelligent Focus**: Relevance scoring helps Iris prioritize what matters, ignoring noise in large diffs
 - **Iterative Exploration**: Iris can dig deeper into specific files, search for patterns, and examine commit history when needed
 
-### 🛠️ Core Capabilities
+### 🪄 Core Capabilities
 
-- **Commit Messages**: Contextual messages that capture the essence of your changes
-- **Code Reviews**: Thorough reviews that identify security issues, performance problems, and architectural concerns
-- **Changelogs**: Structured changelogs following Keep a Changelog format
-- **Release Notes**: Comprehensive release notes with highlights and categorized changes
-- **PR Descriptions**: Complete pull request descriptions for single commits or branch comparisons
+- **✍️ Commit Messages**: Contextual messages that capture the essence of your changes
+- **🔬 Code Reviews**: Thorough reviews that identify security issues, performance problems, and architectural concerns
+- **🗂️ Changelogs**: Structured changelogs following Keep a Changelog format
+- **🎊 Release Notes**: Comprehensive release notes with highlights and categorized changes
+- **📜 PR Descriptions**: Complete pull request descriptions for single commits or branch comparisons
 
-### 💪 Developer Experience
+### 💎 Developer Experience
 
-- **Multi-Provider Support**: Works with OpenAI, Anthropic, and Google
-- **Remote Repository Support**: Work with remote repositories without manual cloning
-- **Customizable Presets**: Style presets from Conventional Commits to Cosmic Oracle
-- **Interactive CLI**: Refine generated content through an intuitive TUI
-- **Gitmoji Integration**: Expressive emojis for your Git documentation
-- **Docker Support**: Run in CI/CD pipelines without installation
+- **🤖 Multi-Provider Support**: Works with OpenAI, Anthropic, and Google
+- **🌐 Remote Repository Support**: Work with remote repositories without manual cloning
+- **🎨 Customizable Presets**: Style presets from Conventional Commits to Cosmic Oracle
+- **✨ Gitmoji Integration**: Expressive emojis for your Git documentation
+- **🐳 Docker Support**: Run in CI/CD pipelines without installation
+- **🔮 Debug Mode**: Gorgeous color-coded output showing agent execution details
 
-## 🛠️ Installation
+## 📦 Installation
 
 ### Prerequisites
 
@@ -166,7 +181,6 @@ git-iris config --provider openai --api-key YOUR_OPENAI_API_KEY
 
 # For Anthropic
 git-iris config --provider anthropic --api-key YOUR_ANTHROPIC_API_KEY
-# Note: "claude" is still supported for backward compatibility
 
 # For Google
 git-iris config --provider google --api-key YOUR_GOOGLE_API_KEY
@@ -220,7 +234,7 @@ git-iris config --preset conventional
 git-iris config --provider openai --token-limit 4000
 
 # Set model for a provider
-git-iris config --provider openai --model gpt-5.1
+git-iris config --provider openai --model gpt-4o
 
 # Set additional parameters for a provider
 git-iris config --provider openai --param temperature=0.7 --param max_tokens=150
@@ -228,7 +242,84 @@ git-iris config --provider openai --param temperature=0.7 --param max_tokens=150
 
 For more detailed configuration information, please refer to our [Configuration Guide](CONFIG.md).
 
-## 📖 Usage
+## 🌌 Iris Studio
+
+**Iris Studio** is the crown jewel of Git-Iris—a unified terminal interface that brings all capabilities together in one beautiful, intuitive experience.
+
+### ⚡ Launching Studio
+
+```bash
+git-iris              # Launch Studio (default command)
+git-iris studio       # Explicit studio command
+git-iris studio --mode commit    # Start in a specific mode
+```
+
+### ⌨️ Keyboard Navigation
+
+**Global Controls:**
+
+| Key | Action |
+|-----|--------|
+| `Tab` / `Shift+Tab` | Navigate between panels |
+| `/` | Open chat with Iris |
+| `?` | Show help overlay |
+| `Shift+S` | Open settings modal |
+| `Esc` | Close modal / Cancel |
+| `q` | Quit Studio |
+
+**Mode Switching:**
+
+| Key | Mode |
+|-----|------|
+| `Shift+E` | 🔭 Explore Mode |
+| `Shift+C` | 💫 Commit Mode |
+| `Shift+R` | 🔬 Review Mode |
+| `Shift+P` | 📜 PR Mode |
+| `Shift+L` | 🗂️ Changelog Mode |
+| `Shift+N` | 🎊 Release Notes Mode |
+
+**Commit Mode Controls:**
+
+| Key | Action |
+|-----|--------|
+| `g` | Generate commit message |
+| `c` | Commit changes |
+| `s` | Toggle stage/unstage file |
+| `j` / `k` or `↓` / `↑` | Navigate files |
+| `[` / `]` | Cycle through generated messages |
+| `e` | Edit current message |
+
+**Reference Selection (Review, PR, Changelog, Release Notes):**
+
+| Key | Action |
+|-----|--------|
+| `f` | Select "from" reference |
+| `t` | Select "to" reference |
+| `g` | Generate content |
+
+### 💬 Chatting with Iris
+
+Press `/` in any mode to open the chat panel. Iris can:
+
+- **Refine content**: "Make the commit title shorter" or "Add more detail to the description"
+- **Explain changes**: "What does this refactor accomplish?"
+- **Update directly**: Iris can modify the generated content through tool calls
+- **Answer questions**: Ask about the codebase, the changes, or Git in general
+
+The chat supports full markdown rendering with syntax highlighting!
+
+### 🎨 SilkCircuit Neon Design
+
+Studio follows the **SilkCircuit Neon** color palette for a cohesive, electric aesthetic:
+
+- **Electric Purple** `#e135ff` — Active modes, markers, emphasis
+- **Neon Cyan** `#80ffea` — Paths, interactions, focus states
+- **Coral** `#ff6ac1` — Commit hashes, numbers, constants
+- **Electric Yellow** `#f1fa8c` — Warnings, timestamps
+- **Success Green** `#50fa7b` — Confirmations, success states
+- **Error Red** `#ff6363` — Errors, danger indicators
+
+## 🎯 Usage
 
 ### Global Options
 
@@ -239,9 +330,9 @@ These options apply to all commands:
 - `-q`, `--quiet`: Suppress non-essential output (spinners, waiting messages, etc.)
 - `-v`, `--version`: Display version information
 - `-r`, `--repo`: Use a remote repository URL instead of local repository
-- `--debug`: Enable debug mode with detailed agent execution output
+- `--debug`: Enable debug mode with gorgeous color-coded output showing agent execution details
 
-### Generate Commit Messages
+### 💫 Generate Commit Messages
 
 Generate a commit message with Iris:
 
@@ -271,7 +362,7 @@ To generate a commit message and print it to stdout without starting the interac
 git-iris gen --print
 ```
 
-### Code Reviews
+### 🔬 Code Reviews
 
 Have Iris review your staged changes:
 
@@ -287,6 +378,8 @@ Options:
 - `-p`, `--print`: Print the generated review to stdout and exit
 - `--include-unstaged`: Include unstaged changes in the review
 - `--commit`: Review a specific commit by ID (hash, branch, or reference)
+- `--from`: Starting branch for comparison (defaults to 'main')
+- `--to`: Target branch for comparison
 
 Example:
 
@@ -329,19 +422,19 @@ git-iris review --to feature-branch  # --from defaults to 'main'
 
 Iris analyzes your code across multiple quality dimensions, focusing on what matters most for each specific changeset:
 
-- **Security**: Vulnerabilities, auth issues, insecure patterns
-- **Performance**: Inefficient algorithms, resource leaks, blocking operations
-- **Error Handling**: Missing try-catch, swallowed exceptions, unclear errors
-- **Complexity**: Overly complex logic, deep nesting, god functions
-- **Abstraction**: Poor design patterns, leaky abstractions
-- **Duplication**: Copy-pasted code, repeated logic
-- **Testing**: Coverage gaps, brittle tests
-- **Style**: Inconsistencies, naming, formatting
-- **Best Practices**: Anti-patterns, deprecated APIs
+- **🛡️ Security**: Vulnerabilities, auth issues, insecure patterns
+- **⚡ Performance**: Inefficient algorithms, resource leaks, blocking operations
+- **🚨 Error Handling**: Missing try-catch, swallowed exceptions, unclear errors
+- **🌀 Complexity**: Overly complex logic, deep nesting, god functions
+- **🏛️ Abstraction**: Poor design patterns, leaky abstractions
+- **🔄 Duplication**: Copy-pasted code, repeated logic
+- **🧪 Testing**: Coverage gaps, brittle tests
+- **🎨 Style**: Inconsistencies, naming, formatting
+- **💡 Best Practices**: Anti-patterns, deprecated APIs
 
-Each issue includes severity level, exact file:line location, explanation, and a concrete fix recommendation.
+Each issue includes severity level (CRITICAL, HIGH, MEDIUM, LOW), exact file:line location, explanation, and a concrete fix recommendation.
 
-### Generate Pull Request Descriptions
+### 📜 Generate Pull Request Descriptions
 
 Create comprehensive PR descriptions for changesets spanning multiple commits or single commits:
 
@@ -422,7 +515,7 @@ This is particularly useful for:
 
 **Supported commitish syntax**: `HEAD~2`, `HEAD^`, `@~3`, `main~1`, `origin/main^`, and other Git commitish references.
 
-### Generate Changelogs
+### 🗂️ Generate Changelogs
 
 Create a detailed changelog between Git references:
 
@@ -454,7 +547,7 @@ Example using explicit version name (useful in release workflows):
 git-iris changelog --from v1.0.0 --to HEAD --update --version-name v1.1.0
 ```
 
-### Generate Release Notes
+### 🎊 Generate Release Notes
 
 Create comprehensive release notes:
 
@@ -484,7 +577,7 @@ Example using explicit version name:
 git-iris release-notes --from v1.0.0 --to HEAD --version-name v1.1.0
 ```
 
-### Project Configuration
+### 🔧 Project Configuration
 
 Create or update project-specific settings:
 
@@ -509,7 +602,7 @@ Example:
 git-iris project-config --provider anthropic --preset security --model claude-sonnet-4-5-20250929
 ```
 
-### Working with Remote Repositories
+### 🌍 Working with Remote Repositories
 
 Git-Iris supports working with remote repositories directly without having to clone them manually:
 
@@ -529,21 +622,7 @@ git-iris gen --repo https://github.com/example/repo.git --print
 
 Note: When working with remote repositories, Git-Iris operates in read-only mode. You can't commit changes directly to remote repositories.
 
-### Interactive Commit Process
-
-The interactive CLI allows you to refine and perfect your commit messages:
-
-- Use arrow keys to navigate through suggestions
-- Press 'e' to edit the current message
-- Press 'i' to modify AI instructions
-- Press 'g' to change the emoji
-- Press 'p' to change the preset
-- Press 'u' to edit user info
-- Press 'r' to regenerate the message
-- Press Enter to commit
-- Press Esc to cancel
-
-## 🎛️ Custom Instructions and Presets
+## 🎭 Custom Instructions and Presets
 
 Git-Iris offers two powerful ways to guide the AI in generating commit messages: custom instructions and presets.
 
@@ -565,7 +644,7 @@ Some key presets include:
 - `conventional`: Follows the Conventional Commits specification
 - `detailed`: Provides more context and explanation
 - `concise`: Short and to-the-point responses
-- `cosmic`: Mystical, space-themed language
+- `cosmic`: Mystical, space-themed language ✨
 
 For code reviews specifically, Git-Iris includes specialized presets:
 
@@ -667,7 +746,7 @@ Custom instructions and presets allow you to tailor Git-Iris to your specific pr
 
 We welcome contributions! Please see our [CONTRIBUTING.md](CONTRIBUTING.md) for details on how to get started, our code of conduct, and the process for submitting pull requests.
 
-## 📄 License
+## ⚖️ License
 
 Distributed under the Apache 2.0 License. See `LICENSE` for more information.
 

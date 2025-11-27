@@ -1,77 +1,26 @@
-# Git-Iris Configuration Guide
+# 🔧 Git-Iris Configuration Guide
 
 Git-Iris uses a TOML configuration file located at `~/.config/git-iris/config.toml`. This document outlines all available configuration options and their usage.
 
-## Configuration Structure
+## 📁 Configuration Structure
 
 The configuration file is organized into these main sections:
 
-1. Global settings
-2. Default provider
-3. Provider-specific configurations
+1. **Global settings** — Apply to all operations
+2. **Default provider** — Which LLM to use by default
+3. **Provider-specific configurations** — API keys, models, and parameters per provider
 
-## Configuration Options
+## ⚙️ Configuration Options
 
 ### Global Settings
 
-- `use_gitmoji`: Boolean (optional)
-  - Description: Enables Gitmoji in commit messages.
-  - Default: `false`
-  - Example: `use_gitmoji = true`
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `use_gitmoji` | Boolean | `false` | Enable Gitmoji in commit messages |
+| `custom_instructions` | String | `""` | Custom instructions included in all LLM prompts |
+| `instruction_preset` | String | `"default"` | Default preset for AI instructions |
 
-- `custom_instructions`: String (optional)
-  - Description: Custom instructions included in all LLM prompts for commit messages, code reviews, changelogs, and release notes.
-  - Default: `""`
-  - Example: `custom_instructions = "Always mention the ticket number and focus on the impact of changes."`
-
-- `instruction_preset`: String (optional)
-  - Description: Default preset for AI instructions.
-  - Default: `"default"`
-  - Example: `instruction_preset = "conventional"`
-
-### Default Provider
-
-- `default_provider`: String (required)
-  - Description: The default LLM provider.
-  - Default: `"openai"`
-  - Example: `default_provider = "claude"`
-
-### Provider-Specific Configurations
-
-Each provider has its own subtable under `[providers]` with these fields:
-
-- `api_key`: String (required)
-  - Description: The provider's API key.
-  - Example: `api_key = "sk-1234567890abcdef"`
-
-- `model`: String (optional)
-  - Description: The specific model to use.
-  - Default: Provider-dependent
-  - Example: `model = "gpt-4o"`
-
-- `additional_params`: Table (optional)
-  - Description: Additional provider or model-specific parameters.
-  - Example: `additional_params = { temperature = "0.7", max_tokens = "150" }`
-
-- `custom_token_limit`: Integer (optional)
-  - Description: Custom token limit for this provider.
-  - Default: Provider-dependent
-  - Example: `custom_token_limit = 8000`
-
-## Supported Providers and Default Models
-
-| Provider  | Default Model              | Notes                      |
-| --------- | -------------------------- | -------------------------- |
-| openai    | gpt-4o                     | Requires OPENAI_API_KEY    |
-| anthropic | claude-3-7-sonnet-20250219 | Requires ANTHROPIC_API_KEY |
-| google    | gemini-2.0-flash           | Requires GOOGLE_API_KEY    |
-| groq      | llama-3.1-70b-versatile    | Requires GROQ_API_KEY      |
-| ollama    | llama3                     | Local, no API key needed   |
-| xai       | grok-2-beta                | Requires XAI_API_KEY       |
-| deepseek  | deepseek-chat              | Requires DEEPSEEK_API_KEY  |
-| phind     | phind-v2                   | No API key needed          |
-
-## Example Configuration File
+**Examples:**
 
 ```toml
 use_gitmoji = true
@@ -79,82 +28,212 @@ custom_instructions = """
 Always mention the ticket number if applicable.
 Focus on the impact of changes rather than implementation details.
 """
-default_provider = "openai"
+instruction_preset = "conventional"
+```
+
+### Default Provider
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `default_provider` | String | `"openai"` | The default LLM provider to use |
+
+**Example:**
+
+```toml
+default_provider = "anthropic"
+```
+
+### Provider-Specific Configurations
+
+Each provider has its own subtable under `[providers]` with these fields:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `api_key` | String | Yes | The provider's API key |
+| `model` | String | No | Primary model for complex analysis tasks |
+| `fast_model` | String | No | Fast model for simple tasks (status updates, parsing) |
+| `additional_params` | Table | No | Additional provider-specific parameters |
+| `custom_token_limit` | Integer | No | Custom token limit override |
+
+## 🤖 Supported Providers
+
+Git-Iris supports three LLM providers:
+
+| Provider | Default Model | Fast Model | Context Window | API Key Env |
+|----------|---------------|------------|----------------|-------------|
+| **openai** | gpt-5.1 | gpt-5.1-mini | 128,000 | `OPENAI_API_KEY` |
+| **anthropic** | claude-sonnet-4-5-20250929 | claude-haiku-4-5-20251001 | 200,000 | `ANTHROPIC_API_KEY` |
+| **google** | gemini-3-pro-preview | gemini-2.5-flash | 1,000,000 | `GOOGLE_API_KEY` |
+
+> **Note:** The `claude` provider name is still supported as a legacy alias for `anthropic`.
+
+## 📝 Example Configuration File
+
+```toml
+# Global settings
+use_gitmoji = true
+default_provider = "anthropic"
 instruction_preset = "conventional"
 
+custom_instructions = """
+Always mention the ticket number if applicable.
+Focus on the impact of changes rather than implementation details.
+"""
+
+# OpenAI configuration
 [providers.openai]
-api_key = "sk-1234567890abcdef"
-model = "gpt-4"
-additional_params = { temperature = "0.7", max_tokens = "150" }
+api_key = "sk-your-openai-api-key"
+model = "gpt-5.1"
+fast_model = "gpt-5.1-mini"
+additional_params = { temperature = "0.7", max_tokens = "4096" }
 custom_token_limit = 8000
 
+# Anthropic configuration
 [providers.anthropic]
-api_key = "sk-abcdef1234567890"
-model = "claude-3-7-sonnet-20250219"
+api_key = "sk-ant-your-anthropic-api-key"
+model = "claude-sonnet-4-5-20250929"
+fast_model = "claude-haiku-4-5-20251001"
 additional_params = { temperature = "0.8" }
 custom_token_limit = 200000
 
-[providers.gemini]
-api_key = "your-gemini-api-key"
-model = "gemini-2.0-flash"
+# Google configuration
+[providers.google]
+api_key = "your-google-api-key"
+model = "gemini-3-pro-preview"
+fast_model = "gemini-2.5-flash"
 additional_params = { temperature = "0.7" }
 custom_token_limit = 1048576
 ```
 
-## Changing Configuration
+## 🖥️ CLI Configuration Commands
 
-Use the `git-iris config` command to modify settings:
+### Global Configuration
 
 ```bash
+# Set provider and API key
 git-iris config --provider openai --api-key YOUR_API_KEY
-git-iris config --provider openai --model gpt-4
-git-iris config --provider openai --param temperature=0.7 --param max_tokens=150
+
+# Set models
+git-iris config --provider anthropic --model claude-sonnet-4-5-20250929
+git-iris config --provider anthropic --fast-model claude-haiku-4-5-20251001
+
+# Set token limit
+git-iris config --provider openai --token-limit 8000
+
+# Set additional parameters
+git-iris config --provider openai --param temperature=0.7 --param max_tokens=4096
+
+# Enable Gitmoji
 git-iris config --gitmoji true
-git-iris config --custom-instructions "Your custom instructions here"
-git-iris config --token-limit 8000
+
+# Set custom instructions
+git-iris config --instructions "Your custom instructions here"
+
+# Set default preset
 git-iris config --preset conventional
 ```
 
-You can also edit the `~/.config/git-iris/config.toml` file directly with a text editor.
+### Project Configuration
 
-## Adding a New Provider
+Project settings are stored in `.irisconfig` in your repository root:
 
-To add a new provider, create a new section under `[providers]`:
+```bash
+# Set project-specific provider
+git-iris project-config --provider anthropic
 
-```toml
-[providers.new_provider]
-api_key = "your-api-key-here"
-model = "model-name"
-additional_params = { param1 = "value1", param2 = "value2" }
-custom_token_limit = 10000
+# Set project-specific model
+git-iris project-config --model claude-sonnet-4-5-20250929
+
+# Set project-specific preset
+git-iris project-config --preset security
+
+# View current project configuration
+git-iris project-config --print
 ```
 
-Set it as the default provider if desired:
+> **Security:** Project configuration files do not store API keys—only models, presets, and custom instructions.
 
-```toml
-default_provider = "new_provider"
+## 🔧 Environment Variables
+
+You can also configure Git-Iris using environment variables:
+
+| Variable | Description |
+|----------|-------------|
+| `OPENAI_API_KEY` | OpenAI API key |
+| `ANTHROPIC_API_KEY` | Anthropic API key |
+| `GOOGLE_API_KEY` | Google API key |
+| `GITIRIS_PROVIDER` | Default provider (for Docker/CI) |
+| `GITIRIS_API_KEY` | API key (for Docker/CI) |
+
+**Example (Docker/CI):**
+
+```bash
+docker run --rm -v "$(pwd):/git-repo" \
+  -e GITIRIS_PROVIDER="anthropic" \
+  -e GITIRIS_API_KEY="$ANTHROPIC_API_KEY" \
+  hyperb1iss/git-iris gen --print
 ```
 
-Note: The application code must support the new provider's API for it to function.
+## 🎛️ Instruction Presets
 
-## Token Optimization
+Git-Iris includes built-in instruction presets for different styles:
 
-Git-Iris automatically optimizes token usage to maximize context while staying within provider limits. You can set a custom token limit for each provider using the `custom_token_limit` option.
+**General Presets:**
+- `default` — Standard professional style
+- `conventional` — Conventional Commits specification
+- `detailed` — More context and explanation
+- `concise` — Short and to-the-point
+- `cosmic` — Mystical, space-themed language ✨
 
-## Security Notes
+**Review-Specific Presets:**
+- `security` — Focus on security vulnerabilities
+- `performance` — Analyze performance optimizations
+- `architecture` — Evaluate design patterns
+- `testing` — Focus on test coverage
+- `maintainability` — Long-term maintenance
+- `conventions` — Coding standards
 
-- Keep your API keys secret and never share your configuration file containing API keys.
-- Git-Iris stores API keys in the configuration file. Ensure the file has appropriate permissions (readable only by you).
-- Consider using environment variables for API keys in shared environments.
+```bash
+# List all available presets
+git-iris list-presets
+```
 
-## Troubleshooting
+## ⚡ Token Optimization
 
-If you encounter issues:
+Git-Iris automatically optimizes token usage to maximize context while staying within provider limits. The optimization strategy adapts based on:
 
-1. Verify your API keys are correct and have the necessary permissions.
-2. Check that you're using supported models for each provider.
-3. Ensure your custom instructions don't exceed token limits.
-4. Review the Git-Iris logs for any error messages.
-5. For code review or changelog generation issues, try using a higher token limit.
+- **Changeset size**: Small changes get full context; large changes use relevance scoring
+- **File count**: 20+ files triggers parallel subagent analysis
+- **Provider limits**: Respects each provider's context window
 
-For further assistance, please refer to the [Git-Iris documentation](https://github.com/hyperb1iss/git-iris/wiki) or [open an issue](https://github.com/hyperb1iss/git-iris/issues) on the GitHub repository.
+You can override limits per provider:
+
+```bash
+git-iris config --provider openai --token-limit 4000
+```
+
+## 🔒 Security Notes
+
+- **Keep API keys secret** — Never share your configuration file containing API keys
+- **File permissions** — Ensure `~/.config/git-iris/config.toml` is readable only by you
+- **Environment variables** — Consider using env vars for API keys in shared environments
+- **Project configs** — `.irisconfig` files don't store API keys for team safety
+
+## 🐛 Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| **Authentication failed** | Verify API key is correct and has required permissions |
+| **Model not found** | Check you're using a supported model for your provider |
+| **Token limit exceeded** | Reduce `custom_token_limit` or use a smaller changeset |
+| **Slow responses** | Try a faster model with `--fast-model` |
+| **Debug issues** | Enable logging with `-l` or use `--debug` for agent details |
+
+**Enable debug logging:**
+
+```bash
+git-iris gen --log --log-file debug.log
+git-iris gen --debug  # Gorgeous color-coded agent execution
+```
+
+For further assistance, please refer to the [Git-Iris documentation](https://github.com/hyperb1iss/git-iris/wiki) or [open an issue](https://github.com/hyperb1iss/git-iris/issues).
