@@ -19,11 +19,13 @@ pub fn render_modal(state: &StudioState, frame: &mut Frame, last_render: Instant
     };
     let area = frame.area();
 
-    // Center modal in screen - chat is larger
+    // Center modal in screen - chat takes most of the screen
     let (modal_width, modal_height) = match modal {
         Modal::Chat(_) => (
-            80.min(area.width.saturating_sub(4)),
-            (area.height * 3 / 4).min(area.height.saturating_sub(4)),
+            (area.width * 4 / 5)
+                .max(100)
+                .min(area.width.saturating_sub(4)),
+            (area.height * 4 / 5).min(area.height.saturating_sub(4)),
         ),
         Modal::Help => (70.min(area.width.saturating_sub(4)), 30),
         Modal::Instructions { .. } => (60.min(area.width.saturating_sub(4)), 8),
@@ -290,8 +292,21 @@ fn render_chat(
 
     // Render messages using chat module
     let lines = chat::render_messages(chat_state, content_width, last_render.elapsed().as_millis());
+    let total_lines = lines.len();
+    let visible_lines = messages_height as usize;
+
+    // Calculate max scroll offset (can't scroll past content)
+    let max_scroll = total_lines.saturating_sub(visible_lines);
+
+    // If auto_scroll is enabled, scroll to bottom; otherwise use the current offset (clamped)
+    let effective_scroll = if chat_state.auto_scroll {
+        max_scroll
+    } else {
+        chat_state.scroll_offset.min(max_scroll)
+    };
+
     let messages_paragraph = Paragraph::new(lines)
-        .scroll((chat_state.scroll_offset as u16, 0))
+        .scroll((effective_scroll as u16, 0))
         .wrap(ratatui::widgets::Wrap { trim: false });
     frame.render_widget(messages_paragraph, messages_area);
 

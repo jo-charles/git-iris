@@ -4,7 +4,7 @@
 
 use crate::config::Config;
 use crate::git::GitRepo;
-use crate::types::GeneratedMessage;
+use crate::types::{format_commit_message, GeneratedMessage};
 use lru::LruCache;
 use std::collections::{HashMap, VecDeque};
 use std::num::NonZeroUsize;
@@ -260,7 +260,7 @@ impl ChatMessage {
 }
 
 /// State for the chat interface
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct ChatState {
     /// Conversation history
     pub messages: Vec<ChatMessage>,
@@ -270,6 +270,20 @@ pub struct ChatState {
     pub scroll_offset: usize,
     /// Whether Iris is currently responding
     pub is_responding: bool,
+    /// Whether to auto-scroll to bottom on new content
+    pub auto_scroll: bool,
+}
+
+impl Default for ChatState {
+    fn default() -> Self {
+        Self {
+            messages: Vec::new(),
+            input: String::new(),
+            scroll_offset: 0,
+            is_responding: false,
+            auto_scroll: true,
+        }
+    }
 }
 
 impl ChatState {
@@ -277,16 +291,59 @@ impl ChatState {
         Self::default()
     }
 
-    /// Add a user message
+    /// Create chat with initial context showing current content
+    pub fn with_context(mode_name: &str, current_content: Option<&str>) -> Self {
+        let mut state = Self::default();
+
+        // Add an initial Iris message with context
+        let context_msg = if let Some(content) = current_content {
+            let preview = if content.len() > 200 {
+                format!("{}...", &content[..200])
+            } else {
+                content.to_string()
+            };
+            format!(
+                "I'm ready to help with your {}. Here's what we have so far:\n\n```\n{}\n```\n\nWhat would you like to change?",
+                mode_name, preview
+            )
+        } else {
+            format!(
+                "I'm ready to help with your {}. What would you like to do?",
+                mode_name
+            )
+        };
+
+        state.messages.push(ChatMessage::iris(context_msg));
+        state
+    }
+
+    /// Add a user message and auto-scroll to bottom
     pub fn add_user_message(&mut self, content: &str) {
         self.messages.push(ChatMessage::user(content));
         self.input.clear();
+        self.auto_scroll = true; // Re-enable auto-scroll on new messages
     }
 
-    /// Add or update Iris response
+    /// Add or update Iris response and auto-scroll to bottom
     pub fn add_iris_response(&mut self, content: &str) {
         self.messages.push(ChatMessage::iris(content));
         self.is_responding = false;
+        self.auto_scroll = true; // Re-enable auto-scroll on new messages
+    }
+
+    /// Manually scroll up (disables auto-scroll)
+    pub fn scroll_up(&mut self, amount: usize) {
+        self.scroll_offset = self.scroll_offset.saturating_sub(amount);
+        self.auto_scroll = false; // User manually scrolled, disable auto-scroll
+    }
+
+    /// Manually scroll down
+    pub fn scroll_down(&mut self, amount: usize, max_scroll: usize) {
+        self.scroll_offset = (self.scroll_offset + amount).min(max_scroll);
+        // If scrolled to bottom, re-enable auto-scroll
+        if self.scroll_offset >= max_scroll {
+            self.auto_scroll = true;
+        }
     }
 
     /// Clear the chat history
@@ -295,6 +352,7 @@ impl ChatState {
         self.input.clear();
         self.scroll_offset = 0;
         self.is_responding = false;
+        self.auto_scroll = true;
     }
 }
 
@@ -1041,6 +1099,9 @@ pub struct StudioState {
     /// Active modal
     pub modal: Option<Modal>,
 
+    /// Persistent chat state (survives modal close, universal across modes)
+    pub chat_state: ChatState,
+
     /// Notification queue
     pub notifications: VecDeque<Notification>,
 
@@ -1067,6 +1128,7 @@ impl StudioState {
             semantic_cache: LruCache::new(NonZeroUsize::new(100).expect("non-zero")),
             diff_cache: HashMap::new(),
             modal: None,
+            chat_state: ChatState::new(),
             notifications: VecDeque::new(),
             iris_status: IrisStatus::Idle,
             dirty: true,
@@ -1183,14 +1245,85 @@ impl StudioState {
         self.dirty = true;
     }
 
-    /// Open chat modal
+    /// Open chat modal (universal, persists across modes)
     pub fn show_chat(&mut self) {
-        self.modal = Some(Modal::Chat(ChatState::new()));
+        // If chat is empty, initialize with context from all generated content
+        if self.chat_state.messages.is_empty() {
+            let context = self.build_chat_context();
+            self.chat_state = ChatState::with_context("git workflow", context.as_deref());
+        }
+
+        // Use the persistent chat state (cloned into modal)
+        self.modal = Some(Modal::Chat(self.chat_state.clone()));
         self.dirty = true;
+    }
+
+    /// Build context summary from all generated content for chat
+    fn build_chat_context(&self) -> Option<String> {
+        let mut sections = Vec::new();
+
+        // Commit message
+        if let Some(msg) = self.modes.commit.messages.get(self.modes.commit.current_index) {
+            let formatted = format_commit_message(msg);
+            if !formatted.trim().is_empty() {
+                sections.push(format!("Commit Message:\n{}", formatted));
+            }
+        }
+
+        // Code review
+        if !self.modes.review.review_content.is_empty() {
+            let preview = if self.modes.review.review_content.len() > 300 {
+                format!("{}...", &self.modes.review.review_content[..300])
+            } else {
+                self.modes.review.review_content.clone()
+            };
+            sections.push(format!("Code Review:\n{}", preview));
+        }
+
+        // PR description
+        if !self.modes.pr.pr_content.is_empty() {
+            let preview = if self.modes.pr.pr_content.len() > 300 {
+                format!("{}...", &self.modes.pr.pr_content[..300])
+            } else {
+                self.modes.pr.pr_content.clone()
+            };
+            sections.push(format!("PR Description:\n{}", preview));
+        }
+
+        // Changelog
+        if !self.modes.changelog.changelog_content.is_empty() {
+            let preview = if self.modes.changelog.changelog_content.len() > 300 {
+                format!("{}...", &self.modes.changelog.changelog_content[..300])
+            } else {
+                self.modes.changelog.changelog_content.clone()
+            };
+            sections.push(format!("Changelog:\n{}", preview));
+        }
+
+        // Release notes
+        if !self.modes.release_notes.release_notes_content.is_empty() {
+            let preview = if self.modes.release_notes.release_notes_content.len() > 300 {
+                format!("{}...", &self.modes.release_notes.release_notes_content[..300])
+            } else {
+                self.modes.release_notes.release_notes_content.clone()
+            };
+            sections.push(format!("Release Notes:\n{}", preview));
+        }
+
+        if sections.is_empty() {
+            None
+        } else {
+            Some(sections.join("\n\n"))
+        }
     }
 
     /// Close any open modal
     pub fn close_modal(&mut self) {
+        // Sync chat state back to persistent storage before closing
+        if let Some(Modal::Chat(chat)) = &self.modal {
+            self.chat_state = chat.clone();
+        }
+
         if self.modal.is_some() {
             self.modal = None;
             self.dirty = true;
@@ -1223,8 +1356,15 @@ impl StudioState {
         self.iris_status.tick();
         self.cleanup_notifications();
 
-        // Only mark dirty if we have active animations
+        // Mark dirty if we have active animations
         if matches!(self.iris_status, IrisStatus::Thinking { .. }) {
+            self.dirty = true;
+        }
+
+        // Also mark dirty if chat modal is responding (for spinner animation)
+        if let Some(Modal::Chat(chat)) = &self.modal
+            && chat.is_responding
+        {
             self.dirty = true;
         }
     }

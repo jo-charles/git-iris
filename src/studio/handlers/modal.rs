@@ -238,17 +238,35 @@ fn handle_chat_modal(state: &mut StudioState, key: KeyEvent) -> Action {
             Action::Redraw
         }
         KeyCode::Up => {
-            // Scroll up in chat history (decrease offset = show earlier content)
+            // Scroll up in chat history
             if let Some(Modal::Chat(chat)) = &mut state.modal {
-                chat.scroll_offset = chat.scroll_offset.saturating_sub(1);
+                chat.scroll_up(1);
             }
             state.mark_dirty();
             Action::Redraw
         }
         KeyCode::Down => {
-            // Scroll down in chat history (increase offset = show later content)
+            // Scroll down in chat history
             if let Some(Modal::Chat(chat)) = &mut state.modal {
+                // We don't know max_scroll here, so just increment and let render clamp
                 chat.scroll_offset = chat.scroll_offset.saturating_add(1);
+                // Don't re-enable auto_scroll here - let render handle it when at bottom
+            }
+            state.mark_dirty();
+            Action::Redraw
+        }
+        KeyCode::PageUp => {
+            // Scroll up faster
+            if let Some(Modal::Chat(chat)) = &mut state.modal {
+                chat.scroll_up(10);
+            }
+            state.mark_dirty();
+            Action::Redraw
+        }
+        KeyCode::PageDown => {
+            // Scroll down faster
+            if let Some(Modal::Chat(chat)) = &mut state.modal {
+                chat.scroll_offset = chat.scroll_offset.saturating_add(10);
             }
             state.mark_dirty();
             Action::Redraw

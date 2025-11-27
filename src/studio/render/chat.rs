@@ -153,18 +153,16 @@ pub fn format_markdown(content: &str, max_width: usize, base_style: Style) -> Ve
             continue;
         }
 
-        // Regular line with inline formatting
-        if line.len() > max_width.saturating_sub(2) {
-            // Word wrap long lines
-            for chunk in wrap_text(line, max_width.saturating_sub(2)) {
-                lines.push(Line::from(vec![
-                    Span::styled("  ", Style::default()),
-                    Span::styled(chunk, base_style),
-                ]));
+        // Regular line with inline formatting and word wrapping
+        if line.is_empty() {
+            lines.push(Line::from(""));
+        } else {
+            // Always wrap to ensure proper display
+            let effective_width = max_width.saturating_sub(4); // Account for indent
+            for chunk in wrap_text(line, effective_width) {
+                let formatted = format_inline(&chunk, base_style);
+                lines.push(Line::from(formatted));
             }
-        } else if !line.is_empty() {
-            let formatted = format_inline(line, base_style);
-            lines.push(Line::from(formatted));
         }
     }
 
@@ -219,20 +217,26 @@ fn render_tool_call(line: &str) -> Line<'static> {
 }
 
 fn render_header(line: &str) -> Option<Line<'static>> {
-    if line.starts_with("## ") {
-        Some(Line::from(Span::styled(
-            format!("  {}", line.trim_start_matches('#').trim()),
-            Style::default()
-                .fg(theme::NEON_CYAN)
-                .add_modifier(Modifier::BOLD),
-        )))
-    } else if line.starts_with("# ") {
-        Some(Line::from(Span::styled(
-            format!("  {}", line.trim_start_matches('#').trim()),
-            Style::default()
-                .fg(theme::ELECTRIC_PURPLE)
-                .add_modifier(Modifier::BOLD),
-        )))
+    // Count the number of # characters
+    let hash_count = line.chars().take_while(|c| *c == '#').count();
+    if hash_count > 0 && line.chars().nth(hash_count) == Some(' ') {
+        let header_text = line[hash_count..].trim();
+        let (color, prefix) = match hash_count {
+            1 => (theme::ELECTRIC_PURPLE, "# "),
+            2 => (theme::NEON_CYAN, "## "),
+            3 => (theme::CORAL, "### "),
+            _ => (theme::TEXT_SECONDARY, ""),
+        };
+        Some(Line::from(vec![
+            Span::styled(
+                format!("  {}", prefix),
+                Style::default().fg(color).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                header_text.to_string(),
+                Style::default().fg(color).add_modifier(Modifier::BOLD),
+            ),
+        ]))
     } else {
         None
     }
@@ -369,11 +373,32 @@ fn format_inline(text: &str, base_style: Style) -> Vec<Span<'static>> {
 
 /// Wrap text to fit within `max_width`
 fn wrap_text(text: &str, max_width: usize) -> Vec<String> {
+    if max_width == 0 {
+        return vec![text.to_string()];
+    }
+
     let mut lines = Vec::new();
     let mut current_line = String::new();
 
     for word in text.split_whitespace() {
-        if current_line.is_empty() {
+        // Handle words longer than max_width by breaking them
+        if word.len() > max_width {
+            // Push current line if not empty
+            if !current_line.is_empty() {
+                lines.push(current_line);
+                current_line = String::new();
+            }
+            // Break the long word into chunks
+            let mut remaining = word;
+            while remaining.len() > max_width {
+                let (chunk, rest) = remaining.split_at(max_width);
+                lines.push(chunk.to_string());
+                remaining = rest;
+            }
+            if !remaining.is_empty() {
+                current_line = remaining.to_string();
+            }
+        } else if current_line.is_empty() {
             current_line = word.to_string();
         } else if current_line.len() + 1 + word.len() <= max_width {
             current_line.push(' ');
@@ -386,6 +411,10 @@ fn wrap_text(text: &str, max_width: usize) -> Vec<String> {
 
     if !current_line.is_empty() {
         lines.push(current_line);
+    }
+
+    if lines.is_empty() {
+        lines.push(String::new());
     }
 
     lines
