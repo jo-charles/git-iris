@@ -804,6 +804,125 @@ Guidelines:
         }
     }
 
+    /// Execute a task with streaming, calling the callback with each text chunk
+    ///
+    /// This enables real-time display of LLM output in the TUI.
+    /// The callback receives `(chunk, aggregated_text)` for each delta.
+    ///
+    /// Returns the final structured response after streaming completes.
+    pub async fn execute_task_streaming<F>(
+        &mut self,
+        capability: &str,
+        user_prompt: &str,
+        mut on_chunk: F,
+    ) -> Result<StructuredResponse>
+    where
+        F: FnMut(&str, &str) + Send,
+    {
+        use crate::agents::status::IrisPhase;
+        use crate::messages::get_capability_message;
+        use futures::StreamExt;
+        use rig::agent::MultiTurnStreamItem;
+        use rig::streaming::{StreamedAssistantContent, StreamingPrompt};
+
+        // Show initializing status
+        let waiting_msg = get_capability_message(capability);
+        crate::iris_status_dynamic!(IrisPhase::Initializing, waiting_msg.text, 1, 4);
+
+        // Load the capability config
+        let (mut system_prompt, output_type) = self.load_capability_config(capability)?;
+
+        // Inject style instructions
+        self.inject_style_instructions(&mut system_prompt, capability);
+
+        // Set current capability
+        self.current_capability = Some(capability.to_string());
+
+        // Update status
+        crate::iris_status_dynamic!(
+            IrisPhase::Analysis,
+            "🔍 Iris is analyzing your changes...",
+            2,
+            4
+        );
+
+        // Build the agent
+        let agent = std::sync::Arc::new(self.build_agent()?);
+
+        // Build the full prompt (simplified for streaming - no JSON schema enforcement)
+        let full_prompt = format!(
+            "{}\n\n{}\n\n\
+            After using the available tools, respond with your analysis in markdown format.\n\
+            Keep it clear, well-structured, and informative.",
+            system_prompt, user_prompt
+        );
+
+        // Update status
+        let gen_msg = get_capability_message(capability);
+        crate::iris_status_dynamic!(IrisPhase::Generation, gen_msg.text, 3, 4);
+
+        // Use streaming prompt
+        let mut stream = agent.stream_prompt(&full_prompt).multi_turn(50).await;
+
+        let mut aggregated_text = String::new();
+
+        // Consume the stream
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(
+                    text,
+                ))) => {
+                    aggregated_text.push_str(&text.text);
+                    on_chunk(&text.text, &aggregated_text);
+                }
+                Ok(MultiTurnStreamItem::FinalResponse(_)) => {
+                    // Stream complete
+                    break;
+                }
+                Err(e) => {
+                    return Err(anyhow::anyhow!("Streaming error: {}", e));
+                }
+                _ => {
+                    // Tool calls, reasoning, etc. - continue
+                }
+            }
+        }
+
+        // Update status
+        crate::iris_status_dynamic!(
+            IrisPhase::Synthesis,
+            "✨ Iris is synthesizing results...",
+            4,
+            4
+        );
+
+        // Convert the aggregated text to structured response based on output type
+        let response = match output_type.as_str() {
+            "MarkdownReview" => StructuredResponse::MarkdownReview(crate::types::MarkdownReview {
+                content: aggregated_text,
+            }),
+            "MarkdownPullRequest" => {
+                StructuredResponse::PullRequest(crate::types::MarkdownPullRequest {
+                    content: aggregated_text,
+                })
+            }
+            "MarkdownChangelog" => StructuredResponse::Changelog(crate::types::MarkdownChangelog {
+                content: aggregated_text,
+            }),
+            "MarkdownReleaseNotes" => {
+                StructuredResponse::ReleaseNotes(crate::types::MarkdownReleaseNotes {
+                    content: aggregated_text,
+                })
+            }
+            "SemanticBlame" => StructuredResponse::SemanticBlame(aggregated_text),
+            _ => StructuredResponse::PlainText(aggregated_text),
+        };
+
+        crate::iris_status_completed!();
+
+        Ok(response)
+    }
+
     /// Load capability configuration from embedded TOML, returning both prompt and output type
     fn load_capability_config(&self, capability: &str) -> Result<(String, String)> {
         let _ = self; // Keep &self for method syntax consistency

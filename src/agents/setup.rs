@@ -372,6 +372,34 @@ impl IrisAgentService {
         agent.execute_task("chat", task_prompt).await
     }
 
+    /// Execute an agent task with streaming
+    ///
+    /// This method streams LLM output in real-time, calling the callback with each
+    /// text chunk as it arrives. Ideal for TUI display of generation progress.
+    ///
+    /// # Arguments
+    /// * `capability` - The capability to invoke (e.g., "review", "pr", "changelog")
+    /// * `context` - Structured context describing what to analyze
+    /// * `on_chunk` - Callback receiving `(chunk, aggregated_text)` for each delta
+    ///
+    /// # Returns
+    /// The final structured response after streaming completes
+    pub async fn execute_task_streaming<F>(
+        &self,
+        capability: &str,
+        context: TaskContext,
+        on_chunk: F,
+    ) -> Result<StructuredResponse>
+    where
+        F: FnMut(&str, &str) + Send,
+    {
+        let mut agent = self.create_agent()?;
+        let task_prompt = Self::build_task_prompt(capability, &context);
+        agent
+            .execute_task_streaming(capability, &task_prompt, on_chunk)
+            .await
+    }
+
     /// Get the configuration
     pub fn config(&self) -> &Config {
         &self.config
