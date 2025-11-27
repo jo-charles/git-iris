@@ -342,10 +342,7 @@ impl IrisAgent {
     ///
     /// When set, the agent will have access to tools for updating
     /// commit messages, PR descriptions, and reviews.
-    pub fn set_content_update_sender(
-        &mut self,
-        sender: crate::agents::tools::ContentUpdateSender,
-    ) {
+    pub fn set_content_update_sender(&mut self, sender: crate::agents::tools::ContentUpdateSender) {
         self.content_update_sender = Some(sender);
     }
 

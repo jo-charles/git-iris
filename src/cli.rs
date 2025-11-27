@@ -1034,6 +1034,9 @@ async fn handle_studio(
     use anyhow::Context;
     use std::sync::Arc;
 
+    // Disable stdout logging immediately for TUI mode - it owns the terminal
+    crate::logger::set_log_to_stdout(false);
+
     log_debug!(
         "Handling 'studio' command with common: {:?}, mode: {:?}, from: {:?}, to: {:?}",
         common,

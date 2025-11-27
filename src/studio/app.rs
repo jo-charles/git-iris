@@ -4,8 +4,7 @@
 
 use anyhow::Result;
 use crossterm::event::{
-    self, DisableMouseCapture, EnableMouseCapture, Event, KeyEventKind, MouseButton, MouseEvent,
-    MouseEventKind,
+    self, DisableMouseCapture, EnableMouseCapture, Event, KeyEventKind, MouseButton, MouseEventKind,
 };
 use crossterm::execute;
 use crossterm::terminal::{
@@ -18,6 +17,7 @@ use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
+use std::collections::VecDeque;
 use std::io::{self, Stdout};
 use std::sync::Arc;
 use std::time::Duration;
@@ -30,8 +30,10 @@ use crate::services::GitCommitService;
 use crate::types::GeneratedMessage;
 
 use super::components::{DiffHunk, DiffLine, FileDiff, FileGitStatus, parse_diff};
-use super::events::{Action, handle_key_event};
+use super::events::{AgentResult, ContentPayload, ContentType, SideEffect, StudioEvent, TaskType};
+use super::history::History;
 use super::layout::{LayoutAreas, calculate_layout, get_mode_layout};
+use super::reducer::reduce;
 use super::render::{
     render_changelog_panel, render_commit_panel, render_explore_panel, render_modal,
     render_pr_panel, render_release_notes_panel, render_review_panel,
@@ -84,6 +86,10 @@ pub enum ChatUpdateType {
 pub struct StudioApp {
     /// Application state
     pub state: StudioState,
+    /// History for all content, chat, and events
+    pub history: History,
+    /// Event queue for processing
+    event_queue: VecDeque<StudioEvent>,
     /// Git commit service for operations
     commit_service: Option<Arc<GitCommitService>>,
     /// Iris agent service for AI operations
@@ -106,11 +112,22 @@ impl StudioApp {
         commit_service: Option<Arc<GitCommitService>>,
         agent_service: Option<Arc<IrisAgentService>>,
     ) -> Self {
+        // Build history with repo context if available
+        let history = if let Some(ref r) = repo {
+            let repo_path = r.repo_path().clone();
+            let branch = r.get_current_branch().ok();
+            History::with_repo(repo_path, branch)
+        } else {
+            History::new()
+        };
+
         let state = StudioState::new(config, repo);
         let (iris_result_tx, iris_result_rx) = mpsc::unbounded_channel();
 
         Self {
             state,
+            history,
+            event_queue: VecDeque::new(),
             commit_service,
             agent_service,
             iris_result_rx,
@@ -124,6 +141,156 @@ impl StudioApp {
     pub fn set_initial_mode(&mut self, mode: Mode) {
         self.state.switch_mode(mode);
         self.explicit_mode_set = true;
+    }
+
+    /// Push an event to the queue
+    fn push_event(&mut self, event: StudioEvent) {
+        self.event_queue.push_back(event);
+    }
+
+    /// Process all queued events through the reducer
+    fn process_events(&mut self) -> Option<ExitResult> {
+        while let Some(event) = self.event_queue.pop_front() {
+            // Run through reducer which mutates state and returns effects
+            let effects = reduce(&mut self.state, event, &mut self.history);
+
+            // Execute side effects
+            if let Some(result) = self.execute_effects(effects) {
+                return Some(result);
+            }
+        }
+        None
+    }
+
+    /// Execute side effects from reducer
+    fn execute_effects(&mut self, effects: Vec<SideEffect>) -> Option<ExitResult> {
+        use super::events::{AgentTask, DataType};
+
+        for effect in effects {
+            match effect {
+                SideEffect::Quit => return Some(ExitResult::Quit),
+
+                SideEffect::ExecuteCommit { message } => {
+                    return Some(self.perform_commit(&message));
+                }
+
+                SideEffect::Redraw => {
+                    self.state.mark_dirty();
+                }
+
+                SideEffect::RefreshGitStatus => {
+                    let _ = self.refresh_git_status();
+                }
+
+                SideEffect::GitStage(path) => {
+                    self.stage_file(&path.to_string_lossy());
+                }
+
+                SideEffect::GitUnstage(path) => {
+                    self.unstage_file(&path.to_string_lossy());
+                }
+
+                SideEffect::GitStageAll => {
+                    self.stage_all();
+                }
+
+                SideEffect::GitUnstageAll => {
+                    self.unstage_all();
+                }
+
+                SideEffect::SaveSettings => {
+                    self.save_settings();
+                }
+
+                SideEffect::CopyToClipboard(text) => match arboard::Clipboard::new() {
+                    Ok(mut clipboard) => {
+                        if let Err(e) = clipboard.set_text(&text) {
+                            self.state
+                                .notify(Notification::error(format!("Failed to copy: {e}")));
+                        } else {
+                            self.state
+                                .notify(Notification::success("Copied to clipboard"));
+                        }
+                    }
+                    Err(e) => {
+                        self.state
+                            .notify(Notification::error(format!("Clipboard unavailable: {e}")));
+                    }
+                },
+
+                SideEffect::ShowNotification {
+                    level,
+                    message,
+                    duration_ms: _,
+                } => {
+                    let notif = match level {
+                        super::events::NotificationLevel::Info => Notification::info(&message),
+                        super::events::NotificationLevel::Success => {
+                            Notification::success(&message)
+                        }
+                        super::events::NotificationLevel::Warning => {
+                            Notification::warning(&message)
+                        }
+                        super::events::NotificationLevel::Error => Notification::error(&message),
+                    };
+                    self.state.notify(notif);
+                }
+
+                SideEffect::SpawnAgent { task } => match task {
+                    AgentTask::Commit {
+                        instructions,
+                        preset,
+                        use_gitmoji,
+                    } => {
+                        self.spawn_commit_generation(instructions, preset, use_gitmoji);
+                    }
+                    AgentTask::Review { from_ref, to_ref } => {
+                        self.spawn_review_generation(from_ref, to_ref);
+                    }
+                    AgentTask::PR {
+                        base_branch,
+                        to_ref,
+                    } => {
+                        self.spawn_pr_generation(base_branch, to_ref);
+                    }
+                    AgentTask::Changelog { from_ref, to_ref } => {
+                        self.spawn_changelog_generation(from_ref, to_ref);
+                    }
+                    AgentTask::ReleaseNotes { from_ref, to_ref } => {
+                        self.spawn_release_notes_generation(from_ref, to_ref);
+                    }
+                    AgentTask::Chat { message, context } => {
+                        self.spawn_chat_query(message, context);
+                    }
+                },
+
+                SideEffect::LoadData {
+                    data_type,
+                    from_ref,
+                    to_ref,
+                } => {
+                    // Trigger data refresh for the mode
+                    match data_type {
+                        DataType::GitStatus | DataType::CommitDiff => {
+                            let _ = self.refresh_git_status();
+                        }
+                        DataType::ReviewDiff => {
+                            self.update_review_data(from_ref, to_ref);
+                        }
+                        DataType::PRDiff => {
+                            self.update_pr_data(from_ref, to_ref);
+                        }
+                        DataType::ChangelogCommits => {
+                            self.update_changelog_data(from_ref, to_ref);
+                        }
+                        DataType::ReleaseNotesCommits => {
+                            self.update_release_notes_data(from_ref, to_ref);
+                        }
+                    }
+                }
+            }
+        }
+        None
     }
 
     /// Update git status from repository
@@ -309,19 +476,19 @@ impl StudioApp {
                 }
             }
             Mode::PR => {
-                self.update_pr_data();
+                self.update_pr_data(None, None);
                 self.auto_generate_pr();
             }
             Mode::Review => {
-                self.update_review_data();
+                self.update_review_data(None, None);
                 self.auto_generate_review();
             }
             Mode::Changelog => {
-                self.update_changelog_data();
+                self.update_changelog_data(None, None);
                 self.auto_generate_changelog();
             }
             Mode::ReleaseNotes => {
-                self.update_release_notes_data();
+                self.update_release_notes_data(None, None);
                 self.auto_generate_release_notes();
             }
             Mode::Explore => {}
@@ -330,6 +497,11 @@ impl StudioApp {
         loop {
             // Check for completed Iris tasks
             self.check_iris_results();
+
+            // Process any queued events through reducer
+            if let Some(result) = self.process_events() {
+                return Ok(result);
+            }
 
             // Render if dirty
             if self.state.check_dirty() {
@@ -342,79 +514,21 @@ impl StudioApp {
                     Event::Key(key) => {
                         // Only handle key press events
                         if key.kind == KeyEventKind::Press {
-                            let action = handle_key_event(&mut self.state, key);
-
-                            match action {
-                                Action::Quit => return Ok(ExitResult::Quit),
-                                Action::Redraw => self.state.mark_dirty(),
-                                Action::Commit(message) => {
-                                    return Ok(self.perform_commit(&message));
-                                }
-                                Action::IrisQuery(query) => {
-                                    self.handle_iris_query(query);
-                                }
-                                Action::SwitchMode(mode) => {
-                                    self.state.switch_mode(mode);
-                                    // Trigger mode-specific data loading and auto-generation
-                                    match mode {
-                                        Mode::PR => {
-                                            self.update_pr_data();
-                                            self.auto_generate_pr();
-                                        }
-                                        Mode::Review => {
-                                            self.update_review_data();
-                                            self.auto_generate_review();
-                                        }
-                                        Mode::Changelog => {
-                                            self.update_changelog_data();
-                                            self.auto_generate_changelog();
-                                        }
-                                        Mode::ReleaseNotes => {
-                                            self.update_release_notes_data();
-                                            self.auto_generate_release_notes();
-                                        }
-                                        Mode::Commit => {
-                                            if self.state.git_status.has_staged() {
-                                                self.auto_generate_commit();
-                                            }
-                                        }
-                                        Mode::Explore => {}
-                                    }
-                                    self.state.mark_dirty();
-                                }
-                                Action::ReloadPrData => {
-                                    self.update_pr_data();
-                                }
-                                Action::ReloadReviewData => {
-                                    self.update_review_data();
-                                }
-                                Action::ReloadChangelogData => {
-                                    self.update_changelog_data();
-                                }
-                                Action::ReloadReleaseNotesData => {
-                                    self.update_release_notes_data();
-                                }
-                                Action::StageFile(path) => {
-                                    self.stage_file(&path);
-                                }
-                                Action::UnstageFile(path) => {
-                                    self.unstage_file(&path);
-                                }
-                                Action::StageAll => {
-                                    self.stage_all();
-                                }
-                                Action::UnstageAll => {
-                                    self.unstage_all();
-                                }
-                                Action::SaveSettings => {
-                                    self.save_settings();
-                                }
-                                Action::None => {}
-                            }
+                            // Push to event queue - reducer will handle via existing handlers
+                            self.push_event(StudioEvent::KeyPressed(key));
                         }
                     }
                     Event::Mouse(mouse) => {
-                        self.handle_mouse_event(mouse);
+                        // Handle click-to-focus specially (needs layout info)
+                        if let MouseEventKind::Down(MouseButton::Left) = mouse.kind
+                            && let Some(panel) = self.panel_at(mouse.column, mouse.row)
+                            && self.state.focused_panel != panel
+                        {
+                            self.state.focused_panel = panel;
+                            self.state.mark_dirty();
+                        }
+                        // Push scroll events to queue
+                        self.push_event(StudioEvent::Mouse(mouse));
                     }
                     Event::Resize(_, _) => {
                         // Terminal resized, trigger redraw
@@ -424,189 +538,116 @@ impl StudioApp {
                 }
             }
 
-            // Tick animations
-            self.state.tick();
+            // Push tick event for animations
+            self.push_event(StudioEvent::Tick);
         }
     }
 
     /// Check for completed Iris task results
+    /// Convert async Iris results to events and push to queue
     fn check_iris_results(&mut self) {
         use super::state::Modal;
 
         while let Ok(result) = self.iris_result_rx.try_recv() {
-            match result {
-                IrisTaskResult::CommitMessages(messages) => {
-                    self.state.set_iris_idle();
-                    self.state.modes.commit.generating = false;
-                    // Store messages in both the old location and the new component
-                    self.state.modes.commit.messages.clone_from(&messages);
-                    self.state.modes.commit.current_index = 0;
-                    self.state
-                        .modes
-                        .commit
-                        .message_editor
-                        .set_messages(messages);
-                    self.state
-                        .notify(Notification::success("Commit message generated"));
-                    self.state.mark_dirty();
-                }
-                IrisTaskResult::ReviewContent(content) => {
-                    self.state.set_iris_idle();
-                    self.state.modes.review.review_content = content;
-                    self.state.modes.review.review_scroll = 0;
-                    self.state.modes.review.generating = false;
-                    self.state
-                        .notify(Notification::success("Code review generated"));
-                    self.state.mark_dirty();
-                }
-                IrisTaskResult::PRContent(content) => {
-                    self.state.set_iris_idle();
-                    self.state.modes.pr.pr_content = content;
-                    self.state.modes.pr.pr_scroll = 0;
-                    self.state.modes.pr.generating = false;
-                    self.state
-                        .notify(Notification::success("PR description generated"));
-                    self.state.mark_dirty();
-                }
-                IrisTaskResult::ChangelogContent(content) => {
-                    self.state.set_iris_idle();
-                    self.state.modes.changelog.changelog_content = content;
-                    self.state.modes.changelog.changelog_scroll = 0;
-                    self.state.modes.changelog.generating = false;
-                    self.state
-                        .notify(Notification::success("Changelog generated"));
-                    self.state.mark_dirty();
-                }
-                IrisTaskResult::ReleaseNotesContent(content) => {
-                    self.state.set_iris_idle();
-                    self.state.modes.release_notes.release_notes_content = content;
-                    self.state.modes.release_notes.release_notes_scroll = 0;
-                    self.state.modes.release_notes.generating = false;
-                    self.state
-                        .notify(Notification::success("Release notes generated"));
-                    self.state.mark_dirty();
-                }
-                IrisTaskResult::ChatResponse(response) => {
-                    // Add response to chat state
-                    if let Some(Modal::Chat(chat)) = &mut self.state.modal {
-                        chat.add_iris_response(&response);
-                    }
-                    self.state.mark_dirty();
-                }
+            let event = match result {
+                IrisTaskResult::CommitMessages(messages) => StudioEvent::AgentComplete {
+                    task_type: TaskType::Commit,
+                    result: AgentResult::CommitMessages(messages),
+                },
+
+                IrisTaskResult::ReviewContent(content) => StudioEvent::AgentComplete {
+                    task_type: TaskType::Review,
+                    result: AgentResult::ReviewContent(content),
+                },
+
+                IrisTaskResult::PRContent(content) => StudioEvent::AgentComplete {
+                    task_type: TaskType::PR,
+                    result: AgentResult::PRContent(content),
+                },
+
+                IrisTaskResult::ChangelogContent(content) => StudioEvent::AgentComplete {
+                    task_type: TaskType::Changelog,
+                    result: AgentResult::ChangelogContent(content),
+                },
+
+                IrisTaskResult::ReleaseNotesContent(content) => StudioEvent::AgentComplete {
+                    task_type: TaskType::ReleaseNotes,
+                    result: AgentResult::ReleaseNotesContent(content),
+                },
+
+                IrisTaskResult::ChatResponse(response) => StudioEvent::AgentComplete {
+                    task_type: TaskType::Chat,
+                    result: AgentResult::ChatResponse(response),
+                },
+
                 IrisTaskResult::ChatUpdate(update) => {
-                    tracing::info!("Received ChatUpdate from tool!");
-                    // Apply in-place update from chat
-                    match update {
+                    let (content_type, content) = match update {
                         ChatUpdateType::CommitMessage(msg) => {
-                            tracing::info!(
-                                "ChatUpdate: Updating commit message. Title: {}, messages.len: {}, current_index: {}",
-                                msg.title,
-                                self.state.modes.commit.messages.len(),
-                                self.state.modes.commit.current_index
-                            );
-                            let commit = &mut self.state.modes.commit;
-                            if commit.messages.is_empty() {
-                                commit.messages.push(msg.clone());
-                            } else {
-                                commit.messages[commit.current_index] = msg.clone();
-                            }
-                            // Also update the message editor so the UI reflects the change
-                            commit.message_editor.set_messages(commit.messages.clone());
-                            self.state
-                                .notify(Notification::success("Commit message updated"));
+                            (ContentType::CommitMessage, ContentPayload::Commit(msg))
                         }
-                        ChatUpdateType::PRDescription(content) => {
-                            tracing::debug!("ChatUpdate: Updating PR description");
-                            self.state.modes.pr.pr_content = content;
-                            self.state.modes.pr.pr_scroll = 0;
-                            self.state
-                                .notify(Notification::success("PR description updated"));
-                        }
+                        ChatUpdateType::PRDescription(content) => (
+                            ContentType::PRDescription,
+                            ContentPayload::Markdown(content),
+                        ),
                         ChatUpdateType::Review(content) => {
-                            tracing::debug!("ChatUpdate: Updating review");
-                            self.state.modes.review.review_content = content;
-                            self.state.modes.review.review_scroll = 0;
-                            self.state.notify(Notification::success("Review updated"));
+                            (ContentType::CodeReview, ContentPayload::Markdown(content))
                         }
+                    };
+                    StudioEvent::UpdateContent {
+                        content_type,
+                        content,
                     }
-                    self.state.mark_dirty();
                 }
+
                 IrisTaskResult::ToolStatus { tool_name, message } => {
-                    // Add tool status message to chat (streaming updates)
+                    // Tool status updates go to chat progress
+                    // For now, handle directly since it's UI-only (chat bubble updates)
                     if let Some(Modal::Chat(chat)) = &mut self.state.modal {
-                        // Add as a temporary status message (doesn't add to history)
                         let tool_msg = format!("🔧 {} - {}", tool_name, message);
-                        // Update the "thinking" message with tool info
                         chat.messages.push(ChatMessage::iris(tool_msg));
                         chat.auto_scroll = true;
                     }
                     self.state.mark_dirty();
+                    continue; // Already handled, skip event push
                 }
+
                 IrisTaskResult::Error(err) => {
-                    self.state.set_iris_error(&err);
-                    // Clear any generating states
-                    self.state.modes.commit.generating = false;
-                    self.state.modes.review.generating = false;
-                    self.state.modes.pr.generating = false;
-                    self.state.modes.changelog.generating = false;
-                    // If we're in chat, add error as Iris response
-                    if let Some(Modal::Chat(chat)) = &mut self.state.modal {
-                        chat.is_responding = false;
+                    // Determine which task failed based on what's currently generating
+                    let task_type = if self.state.modes.commit.generating {
+                        TaskType::Commit
+                    } else if self.state.modes.review.generating {
+                        TaskType::Review
+                    } else if self.state.modes.pr.generating {
+                        TaskType::PR
+                    } else if self.state.modes.changelog.generating {
+                        TaskType::Changelog
+                    } else if self.state.modes.release_notes.generating {
+                        TaskType::ReleaseNotes
+                    } else if matches!(&self.state.modal, Some(Modal::Chat(c)) if c.is_responding) {
+                        TaskType::Chat
+                    } else {
+                        // Default to commit if we can't determine
+                        TaskType::Commit
+                    };
+
+                    StudioEvent::AgentError {
+                        task_type,
+                        error: err,
                     }
-                    self.state
-                        .notify(Notification::error(format!("Iris error: {}", err)));
-                    self.state.mark_dirty();
                 }
-            }
+            };
+
+            self.push_event(event);
         }
     }
-
-    /// Handle an Iris query request
-    fn handle_iris_query(&self, query: super::events::IrisQueryRequest) {
-        use super::events::IrisQueryRequest;
-
-        match query {
-            IrisQueryRequest::GenerateCommit {
-                instructions,
-                preset,
-                use_gitmoji,
-            } => {
-                self.spawn_commit_generation(instructions, preset, use_gitmoji);
-            }
-            IrisQueryRequest::GenerateReview => {
-                self.spawn_review_generation();
-            }
-            IrisQueryRequest::GeneratePR => {
-                self.spawn_pr_generation();
-            }
-            IrisQueryRequest::GenerateChangelog { from_ref, to_ref } => {
-                self.spawn_changelog_generation(from_ref, to_ref);
-            }
-            IrisQueryRequest::GenerateReleaseNotes { from_ref, to_ref } => {
-                self.spawn_release_notes_generation(from_ref, to_ref);
-            }
-            IrisQueryRequest::SemanticBlame {
-                file,
-                start_line,
-                end_line,
-            } => {
-                // TODO: Implement semantic blame
-                let _ = (file, start_line, end_line);
-            }
-            IrisQueryRequest::Chat { message } => {
-                self.spawn_chat_query(message);
-            }
-        }
-    }
-
     /// Spawn a task for chat query - uses Iris agent with chat capability
-    fn spawn_chat_query(&self, message: String) {
+    fn spawn_chat_query(&self, message: String, context: super::events::ChatContext) {
+        use crate::agents::StructuredResponse;
         use crate::agents::status::IRIS_STATUS;
         use crate::agents::tools::{ContentUpdate, create_content_update_channel};
-        use crate::agents::StructuredResponse;
         use crate::studio::state::{ChatMessage, ChatRole, Modal};
-        use std::sync::atomic::{AtomicBool, Ordering};
         use std::sync::Arc;
+        use std::sync::atomic::{AtomicBool, Ordering};
 
         let Some(agent) = self.agent_service.clone() else {
             let tx = self.iris_result_tx.clone();
@@ -623,7 +664,7 @@ impl StudioApp {
         let tx = self.iris_result_tx.clone();
         let tx_status = self.iris_result_tx.clone();
         let tx_updates = self.iris_result_tx.clone();
-        let mode = self.state.active_mode;
+        let mode = context.mode;
 
         // Extract conversation history from chat modal
         let chat_history: Vec<ChatMessage> = if let Some(Modal::Chat(chat)) = &self.state.modal {
@@ -632,8 +673,10 @@ impl StudioApp {
             Vec::new()
         };
 
-        // Extract current content based on mode
-        let current_content = self.get_current_content_for_chat();
+        // Use context content if provided, otherwise extract from state
+        let current_content = context
+            .current_content
+            .or_else(|| self.get_current_content_for_chat());
 
         // Flag to signal when the main task is done
         let is_done = Arc::new(AtomicBool::new(false));
@@ -649,7 +692,11 @@ impl StudioApp {
                 let status = IRIS_STATUS.get_current();
 
                 // Check if we're in a tool execution phase
-                if let IrisPhase::ToolExecution { ref tool_name, ref reason } = status.phase {
+                if let IrisPhase::ToolExecution {
+                    ref tool_name,
+                    ref reason,
+                } = status.phase
+                {
                     // Only send if it's a new tool
                     if last_tool.as_ref() != Some(tool_name) {
                         let _ = tx_status.send(IrisTaskResult::ToolStatus {
@@ -670,7 +717,11 @@ impl StudioApp {
                 match content_rx.try_recv() {
                     Ok(update) => {
                         let chat_update = match update {
-                            ContentUpdate::Commit { emoji, title, message } => {
+                            ContentUpdate::Commit {
+                                emoji,
+                                title,
+                                message,
+                            } => {
                                 tracing::info!("Content update tool: commit - {}", title);
                                 ChatUpdateType::CommitMessage(crate::types::GeneratedMessage {
                                     emoji,
@@ -834,7 +885,7 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
     }
 
     /// Spawn a task for code review generation
-    fn spawn_review_generation(&self) {
+    fn spawn_review_generation(&self, from_ref: String, to_ref: String) {
         use crate::agents::{StructuredResponse, TaskContext};
 
         let Some(agent) = self.agent_service.clone() else {
@@ -848,8 +899,8 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
         let tx = self.iris_result_tx.clone();
 
         tokio::spawn(async move {
-            // Use review context (staged changes only)
-            let context = match TaskContext::for_review(None, None, None, false) {
+            // Use review context with specified refs
+            let context = match TaskContext::for_review(None, Some(from_ref), Some(to_ref), false) {
                 Ok(ctx) => ctx,
                 Err(e) => {
                     let _ = tx.send(IrisTaskResult::Error(format!("Context error: {}", e)));
@@ -875,7 +926,7 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
     }
 
     /// Spawn a task for PR description generation
-    fn spawn_pr_generation(&self) {
+    fn spawn_pr_generation(&self, base_branch: String, _to_ref: String) {
         use crate::agents::{StructuredResponse, TaskContext};
 
         let Some(agent) = self.agent_service.clone() else {
@@ -887,7 +938,6 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
         };
 
         let tx = self.iris_result_tx.clone();
-        let base_branch = self.state.modes.pr.base_branch.clone();
 
         tokio::spawn(async move {
             // Build context for PR (comparing current branch to base)
@@ -1008,7 +1058,9 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
 
         self.state.set_iris_thinking("Reviewing code changes...");
         self.state.modes.review.generating = true;
-        self.spawn_review_generation();
+        let from_ref = self.state.modes.review.from_ref.clone();
+        let to_ref = self.state.modes.review.to_ref.clone();
+        self.spawn_review_generation(from_ref, to_ref);
     }
 
     /// Auto-generate PR description on mode entry
@@ -1025,7 +1077,9 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
 
         self.state.set_iris_thinking("Drafting PR description...");
         self.state.modes.pr.generating = true;
-        self.spawn_pr_generation();
+        let base_branch = self.state.modes.pr.base_branch.clone();
+        let to_ref = self.state.modes.pr.to_ref.clone();
+        self.spawn_pr_generation(base_branch, to_ref);
     }
 
     /// Auto-generate changelog on mode entry
@@ -1074,30 +1128,6 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
         self.spawn_release_notes_generation(from_ref, to_ref);
     }
 
-    /// Handle mouse events for panel focus and scrolling
-    fn handle_mouse_event(&mut self, mouse: MouseEvent) {
-        match mouse.kind {
-            MouseEventKind::Down(MouseButton::Left) => {
-                // Click to focus panel
-                if let Some(panel) = self.panel_at(mouse.column, mouse.row)
-                    && self.state.focused_panel != panel
-                {
-                    self.state.focused_panel = panel;
-                    self.state.mark_dirty();
-                }
-            }
-            MouseEventKind::ScrollUp => {
-                // Scroll up in current panel
-                self.scroll_focused_panel(-3);
-            }
-            MouseEventKind::ScrollDown => {
-                // Scroll down in current panel
-                self.scroll_focused_panel(3);
-            }
-            _ => {}
-        }
-    }
-
     /// Determine which panel contains the given coordinates
     fn panel_at(&self, x: u16, y: u16) -> Option<PanelId> {
         let Some(layout) = &self.last_layout else {
@@ -1119,81 +1149,6 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
             }
         }
         None
-    }
-
-    /// Scroll the focused panel by the given delta
-    fn scroll_focused_panel(&mut self, delta: i32) {
-        match self.state.active_mode {
-            Mode::Explore => {
-                match self.state.focused_panel {
-                    PanelId::Left => {
-                        // File tree scroll
-                        if delta > 0 {
-                            for _ in 0..delta {
-                                self.state.modes.explore.file_tree.select_next();
-                            }
-                        } else {
-                            for _ in 0..(-delta) {
-                                self.state.modes.explore.file_tree.select_prev();
-                            }
-                        }
-                    }
-                    PanelId::Center => {
-                        // Code view scroll
-                        let scroll = &mut self.state.modes.explore.code_scroll;
-                        if delta > 0 {
-                            *scroll = scroll.saturating_add(delta as usize);
-                        } else {
-                            *scroll = scroll.saturating_sub((-delta) as usize);
-                        }
-                    }
-                    PanelId::Right => {
-                        // Context panel - no scroll yet
-                    }
-                }
-            }
-            Mode::Commit => {
-                match self.state.focused_panel {
-                    PanelId::Left => {
-                        // Staged files tree scroll + sync diff view
-                        if delta > 0 {
-                            for _ in 0..delta {
-                                self.state.modes.commit.file_tree.select_next();
-                            }
-                        } else {
-                            for _ in 0..(-delta) {
-                                self.state.modes.commit.file_tree.select_prev();
-                            }
-                        }
-                        // Sync diff view to selected file
-                        if let Some(path) = self.state.modes.commit.file_tree.selected_path() {
-                            self.state.modes.commit.diff_view.select_file_by_path(&path);
-                        }
-                    }
-                    PanelId::Center => {
-                        // Message editor - textarea handles scrolling
-                    }
-                    PanelId::Right => {
-                        // Diff view scroll
-                        if delta > 0 {
-                            self.state
-                                .modes
-                                .commit
-                                .diff_view
-                                .scroll_down(delta as usize);
-                        } else {
-                            self.state
-                                .modes
-                                .commit
-                                .diff_view
-                                .scroll_up((-delta) as usize);
-                        }
-                    }
-                }
-            }
-            _ => {}
-        }
-        self.state.mark_dirty();
     }
 
     /// Spawn a task to generate a commit message
@@ -1500,7 +1455,7 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
     }
 
     /// Update PR mode data - load commits and diff between refs
-    pub fn update_pr_data(&mut self) {
+    pub fn update_pr_data(&mut self, from_ref: Option<String>, to_ref: Option<String>) {
         use super::state::PrCommit;
 
         // Clone the Arc to avoid borrow conflicts with self.state mutations
@@ -1508,8 +1463,9 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
             return;
         };
 
-        let base = self.state.modes.pr.base_branch.clone();
-        let to = self.state.modes.pr.to_ref.clone();
+        // Use provided refs or fall back to state
+        let base = from_ref.unwrap_or_else(|| self.state.modes.pr.base_branch.clone());
+        let to = to_ref.unwrap_or_else(|| self.state.modes.pr.to_ref.clone());
 
         // Load commits between the refs
         match repo.get_commits_between_with_callback(&base, &to, |commit| {
@@ -1548,14 +1504,15 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
     }
 
     /// Update Review mode data - load diff between `from_ref` and `to_ref`
-    pub fn update_review_data(&mut self) {
+    pub fn update_review_data(&mut self, from_ref: Option<String>, to_ref: Option<String>) {
         // Clone the Arc to avoid borrow conflicts with self.state mutations
         let Some(repo) = self.state.repo.clone() else {
             return;
         };
 
-        let from = self.state.modes.review.from_ref.clone();
-        let to = self.state.modes.review.to_ref.clone();
+        // Use provided refs or fall back to state
+        let from = from_ref.unwrap_or_else(|| self.state.modes.review.from_ref.clone());
+        let to = to_ref.unwrap_or_else(|| self.state.modes.review.to_ref.clone());
 
         // Load diff between the refs
         match repo.get_ref_diff_full(&from, &to) {
@@ -1586,7 +1543,7 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
     }
 
     /// Update Changelog mode data - load commits and diff between `from_ref` and `to_ref`
-    pub fn update_changelog_data(&mut self) {
+    pub fn update_changelog_data(&mut self, from_ref: Option<String>, to_ref: Option<String>) {
         use super::state::ChangelogCommit;
 
         // Clone the Arc to avoid borrow conflicts with self.state mutations
@@ -1594,8 +1551,9 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
             return;
         };
 
-        let from = self.state.modes.changelog.from_ref.clone();
-        let to = self.state.modes.changelog.to_ref.clone();
+        // Use provided refs or fall back to state
+        let from = from_ref.unwrap_or_else(|| self.state.modes.changelog.from_ref.clone());
+        let to = to_ref.unwrap_or_else(|| self.state.modes.changelog.to_ref.clone());
 
         // Load commits between the refs
         match repo.get_commits_between_with_callback(&from, &to, |commit| {
@@ -1634,7 +1592,7 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
     }
 
     /// Update release notes mode data when refs change
-    pub fn update_release_notes_data(&mut self) {
+    pub fn update_release_notes_data(&mut self, from_ref: Option<String>, to_ref: Option<String>) {
         use super::state::ChangelogCommit;
 
         // Clone the Arc to avoid borrow conflicts with self.state mutations
@@ -1642,8 +1600,9 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
             return;
         };
 
-        let from = self.state.modes.release_notes.from_ref.clone();
-        let to = self.state.modes.release_notes.to_ref.clone();
+        // Use provided refs or fall back to state
+        let from = from_ref.unwrap_or_else(|| self.state.modes.release_notes.from_ref.clone());
+        let to = to_ref.unwrap_or_else(|| self.state.modes.release_notes.to_ref.clone());
 
         // Load commits between the refs
         match repo.get_commits_between_with_callback(&from, &to, |commit| {
@@ -1930,9 +1889,10 @@ pub fn run_studio(
     // Enable file logging for debugging (TUI owns stdout, so logs go to file only)
     // Only set up default log file if one wasn't specified via CLI (-l --log-file)
     if !crate::logger::has_log_file()
-        && let Err(e) = crate::logger::set_log_file(crate::cli::LOG_FILE) {
-            eprintln!("Warning: Could not set up log file: {}", e);
-        }
+        && let Err(e) = crate::logger::set_log_file(crate::cli::LOG_FILE)
+    {
+        eprintln!("Warning: Could not set up log file: {}", e);
+    }
     // Disable stdout logging - TUI owns the terminal, but debug goes to file
     crate::logger::set_log_to_stdout(false);
     tracing::info!("Iris Studio starting");

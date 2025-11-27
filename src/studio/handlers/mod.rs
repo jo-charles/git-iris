@@ -1,11 +1,12 @@
 //! Event handlers for Iris Studio
 //!
-//! Keyboard input processing split by mode for maintainability.
+//! Handlers process keyboard input and return side effects.
+//! State mutations happen directly; effects are returned for async/IO operations.
 
 mod changelog;
 mod commit;
 mod explore;
-mod modal;
+mod modals;
 mod pr;
 mod release_notes;
 mod review;
@@ -13,96 +14,31 @@ mod review;
 use arboard::Clipboard;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
+use crate::studio::events::{AgentTask, ChatContext, DataType, SideEffect};
 use crate::studio::state::{Modal, Mode, Notification, SettingsState, StudioState};
 
 pub use changelog::handle_changelog_key;
 pub use commit::handle_commit_key;
 pub use explore::handle_explore_key;
-pub use modal::handle_modal_key;
+pub use modals::handle_modal_key;
 pub use pr::handle_pr_key;
 pub use release_notes::handle_release_notes_key;
 pub use review::handle_review_key;
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Action Types
-// ═══════════════════════════════════════════════════════════════════════════════
-
-/// Result of processing an input event
-#[derive(Debug, Clone)]
-pub enum Action {
-    /// No action, continue running
-    None,
-    /// Quit the application
-    Quit,
-    /// Request redraw
-    Redraw,
-    /// Iris query request
-    IrisQuery(IrisQueryRequest),
-    /// Perform a commit
-    Commit(String),
-    /// Switch mode (triggers mode-specific data loading)
-    SwitchMode(Mode),
-    /// Reload PR data (after ref selection changes)
-    ReloadPrData,
-    /// Reload Review data (after ref selection changes)
-    ReloadReviewData,
-    /// Reload Changelog data (after ref selection changes)
-    ReloadChangelogData,
-    /// Reload Release Notes data (after ref selection changes)
-    ReloadReleaseNotesData,
-    /// Stage a file
-    StageFile(String),
-    /// Unstage a file
-    UnstageFile(String),
-    /// Stage all files
-    StageAll,
-    /// Unstage all files
-    UnstageAll,
-    /// Save settings from the settings modal
-    SaveSettings,
-}
-
-/// Request to query Iris agent
-#[derive(Debug, Clone)]
-pub enum IrisQueryRequest {
-    /// Semantic blame for a code location
-    SemanticBlame {
-        file: std::path::PathBuf,
-        start_line: usize,
-        end_line: usize,
-    },
-    /// Generate commit message
-    GenerateCommit {
-        instructions: Option<String>,
-        preset: String,
-        use_gitmoji: bool,
-    },
-    /// Generate code review
-    GenerateReview,
-    /// Generate PR description
-    GeneratePR,
-    /// Generate changelog between refs
-    GenerateChangelog { from_ref: String, to_ref: String },
-    /// Generate release notes between refs
-    GenerateReleaseNotes { from_ref: String, to_ref: String },
-    /// Chat with Iris
-    Chat { message: String },
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
 // Main Event Handler
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/// Process a key event and return the resulting action
-pub fn handle_key_event(state: &mut StudioState, key: KeyEvent) -> Action {
+/// Process a key event and return any side effects needed
+pub fn handle_key_event(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffect> {
     // Handle modals first
     if state.modal.is_some() {
         return handle_modal_key(state, key);
     }
 
     // Global keybindings (work in all modes)
-    if let Some(action) = handle_global_key(state, key) {
-        return action;
+    if let Some(effects) = handle_global_key(state, key) {
+        return effects;
     }
 
     // Mode-specific keybindings
@@ -120,48 +56,50 @@ pub fn handle_key_event(state: &mut StudioState, key: KeyEvent) -> Action {
 // Global Key Handling
 // ═══════════════════════════════════════════════════════════════════════════════
 
-fn handle_global_key(state: &mut StudioState, key: KeyEvent) -> Option<Action> {
+fn handle_global_key(state: &mut StudioState, key: KeyEvent) -> Option<Vec<SideEffect>> {
     match key.code {
         // Quit
-        KeyCode::Char('q') if !is_editing(state) => Some(Action::Quit),
-        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Some(Action::Quit),
+        KeyCode::Char('q') if !is_editing(state) => Some(vec![SideEffect::Quit]),
+        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            Some(vec![SideEffect::Quit])
+        }
 
         // Help
         KeyCode::Char('?') if !is_editing(state) => {
             state.show_help();
-            Some(Action::Redraw)
+            Some(vec![])
         }
 
         // Chat with Iris
         KeyCode::Char('/') if !is_editing(state) => {
             state.show_chat();
-            Some(Action::Redraw)
+            Some(vec![])
         }
 
         // Mode switching (Shift+letter)
         KeyCode::Char('E') if key.modifiers.contains(KeyModifiers::SHIFT) => {
-            Some(Action::SwitchMode(Mode::Explore))
+            Some(switch_mode(state, Mode::Explore))
         }
         KeyCode::Char('C') if key.modifiers.contains(KeyModifiers::SHIFT) => {
-            Some(Action::SwitchMode(Mode::Commit))
+            Some(switch_mode(state, Mode::Commit))
         }
         KeyCode::Char('R') if key.modifiers.contains(KeyModifiers::SHIFT) => {
-            Some(Action::SwitchMode(Mode::Review))
+            Some(switch_mode(state, Mode::Review))
         }
         KeyCode::Char('P') if key.modifiers.contains(KeyModifiers::SHIFT) => {
-            Some(Action::SwitchMode(Mode::PR))
+            Some(switch_mode(state, Mode::PR))
         }
         KeyCode::Char('L') if key.modifiers.contains(KeyModifiers::SHIFT) => {
-            Some(Action::SwitchMode(Mode::Changelog))
+            Some(switch_mode(state, Mode::Changelog))
         }
         KeyCode::Char('N') if key.modifiers.contains(KeyModifiers::SHIFT) => {
-            Some(Action::SwitchMode(Mode::ReleaseNotes))
+            Some(switch_mode(state, Mode::ReleaseNotes))
         }
 
         // Settings
         KeyCode::Char('S') if key.modifiers.contains(KeyModifiers::SHIFT) => {
             state.modal = Some(Modal::Settings(SettingsState::from_config(&state.config)));
-            Some(Action::Redraw)
+            Some(vec![])
         }
 
         // Panel navigation
@@ -171,26 +109,14 @@ fn handle_global_key(state: &mut StudioState, key: KeyEvent) -> Option<Action> {
             } else {
                 state.focus_next_panel();
             }
-            Some(Action::Redraw)
-        }
-
-        // Search (global)
-        KeyCode::Char('/') if !is_editing(state) => {
-            // Populate results with current mode's files
-            let results = get_searchable_files(state);
-            state.modal = Some(Modal::Search {
-                query: String::new(),
-                results,
-                selected: 0,
-            });
-            Some(Action::Redraw)
+            Some(vec![])
         }
 
         // Escape closes modals or cancels current operation
         KeyCode::Esc => {
             if state.modal.is_some() {
                 state.close_modal();
-                Some(Action::Redraw)
+                Some(vec![])
             } else {
                 // Mode-specific escape handling
                 None
@@ -201,58 +127,49 @@ fn handle_global_key(state: &mut StudioState, key: KeyEvent) -> Option<Action> {
     }
 }
 
+/// Switch mode and return appropriate data loading effect
+fn switch_mode(state: &mut StudioState, mode: Mode) -> Vec<SideEffect> {
+    if state.active_mode == mode {
+        return vec![];
+    }
+
+    state.switch_mode(mode);
+
+    match mode {
+        Mode::Commit => vec![SideEffect::LoadData {
+            data_type: DataType::CommitDiff,
+            from_ref: None,
+            to_ref: None,
+        }],
+        Mode::Review => vec![SideEffect::LoadData {
+            data_type: DataType::ReviewDiff,
+            from_ref: Some(state.modes.review.from_ref.clone()),
+            to_ref: Some(state.modes.review.to_ref.clone()),
+        }],
+        Mode::PR => vec![SideEffect::LoadData {
+            data_type: DataType::PRDiff,
+            from_ref: Some(state.modes.pr.base_branch.clone()),
+            to_ref: Some(state.modes.pr.to_ref.clone()),
+        }],
+        Mode::Changelog => vec![SideEffect::LoadData {
+            data_type: DataType::ChangelogCommits,
+            from_ref: Some(state.modes.changelog.from_ref.clone()),
+            to_ref: Some(state.modes.changelog.to_ref.clone()),
+        }],
+        Mode::ReleaseNotes => vec![SideEffect::LoadData {
+            data_type: DataType::ReleaseNotesCommits,
+            from_ref: Some(state.modes.release_notes.from_ref.clone()),
+            to_ref: Some(state.modes.release_notes.to_ref.clone()),
+        }],
+        Mode::Explore => vec![],
+    }
+}
+
 /// Check if we're in an editing state (text input mode)
 pub fn is_editing(state: &StudioState) -> bool {
     match state.active_mode {
         Mode::Commit => state.modes.commit.editing_message,
         _ => false,
-    }
-}
-
-/// Get searchable files for the current mode
-fn get_searchable_files(state: &StudioState) -> Vec<String> {
-    match state.active_mode {
-        Mode::Commit => {
-            // Get staged files
-            state
-                .git_status
-                .staged_files
-                .iter()
-                .map(|p| p.to_string_lossy().to_string())
-                .collect()
-        }
-        Mode::Review => {
-            // Get files from review diff view
-            state
-                .modes
-                .review
-                .diff_view
-                .file_paths()
-                .into_iter()
-                .map(|p| p.to_string_lossy().to_string())
-                .collect()
-        }
-        Mode::PR => {
-            // Get files from PR diff view
-            state
-                .modes
-                .pr
-                .diff_view
-                .file_paths()
-                .into_iter()
-                .map(|p| p.to_string_lossy().to_string())
-                .collect()
-        }
-        _ => {
-            // For other modes, show all tracked files
-            state
-                .git_status
-                .staged_files
-                .iter()
-                .chain(state.git_status.modified_files.iter())
-                .map(|p| p.to_string_lossy().to_string())
-                .collect()
-        }
     }
 }
 
@@ -313,7 +230,7 @@ pub fn get_keybindings(mode: Mode) -> Vec<(&'static str, &'static str)> {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /// Copy text to the system clipboard and notify the user
-pub fn copy_to_clipboard(state: &mut StudioState, content: &str, description: &str) -> Action {
+pub fn copy_to_clipboard(state: &mut StudioState, content: &str, description: &str) {
     match Clipboard::new() {
         Ok(mut clipboard) => match clipboard.set_text(content) {
             Ok(()) => {
@@ -330,5 +247,118 @@ pub fn copy_to_clipboard(state: &mut StudioState, content: &str, description: &s
         }
     }
     state.mark_dirty();
-    Action::Redraw
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Helper: Create Agent Tasks
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Create a commit generation agent task
+pub fn spawn_commit_task(state: &StudioState) -> SideEffect {
+    use crate::studio::state::EmojiMode;
+
+    SideEffect::SpawnAgent {
+        task: AgentTask::Commit {
+            instructions: if state.modes.commit.custom_instructions.is_empty() {
+                None
+            } else {
+                Some(state.modes.commit.custom_instructions.clone())
+            },
+            preset: state.modes.commit.preset.clone(),
+            use_gitmoji: state.modes.commit.emoji_mode != EmojiMode::None,
+        },
+    }
+}
+
+/// Create a review generation agent task
+pub fn spawn_review_task(state: &StudioState) -> SideEffect {
+    SideEffect::SpawnAgent {
+        task: AgentTask::Review {
+            from_ref: state.modes.review.from_ref.clone(),
+            to_ref: state.modes.review.to_ref.clone(),
+        },
+    }
+}
+
+/// Create a PR generation agent task
+pub fn spawn_pr_task(state: &StudioState) -> SideEffect {
+    SideEffect::SpawnAgent {
+        task: AgentTask::PR {
+            base_branch: state.modes.pr.base_branch.clone(),
+            to_ref: state.modes.pr.to_ref.clone(),
+        },
+    }
+}
+
+/// Create a changelog generation agent task
+pub fn spawn_changelog_task(state: &StudioState) -> SideEffect {
+    SideEffect::SpawnAgent {
+        task: AgentTask::Changelog {
+            from_ref: state.modes.changelog.from_ref.clone(),
+            to_ref: state.modes.changelog.to_ref.clone(),
+        },
+    }
+}
+
+/// Create a release notes generation agent task
+pub fn spawn_release_notes_task(state: &StudioState) -> SideEffect {
+    SideEffect::SpawnAgent {
+        task: AgentTask::ReleaseNotes {
+            from_ref: state.modes.release_notes.from_ref.clone(),
+            to_ref: state.modes.release_notes.to_ref.clone(),
+        },
+    }
+}
+
+/// Create a chat agent task
+pub fn spawn_chat_task(message: String, mode: Mode) -> SideEffect {
+    SideEffect::SpawnAgent {
+        task: AgentTask::Chat {
+            message,
+            context: ChatContext {
+                mode,
+                ..Default::default()
+            },
+        },
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Helper: Data Reload Effects
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Get reload effect for PR data
+pub fn reload_pr_data(state: &StudioState) -> SideEffect {
+    SideEffect::LoadData {
+        data_type: DataType::PRDiff,
+        from_ref: Some(state.modes.pr.base_branch.clone()),
+        to_ref: Some(state.modes.pr.to_ref.clone()),
+    }
+}
+
+/// Get reload effect for Review data
+pub fn reload_review_data(state: &StudioState) -> SideEffect {
+    SideEffect::LoadData {
+        data_type: DataType::ReviewDiff,
+        from_ref: Some(state.modes.review.from_ref.clone()),
+        to_ref: Some(state.modes.review.to_ref.clone()),
+    }
+}
+
+/// Get reload effect for Changelog data
+pub fn reload_changelog_data(state: &StudioState) -> SideEffect {
+    SideEffect::LoadData {
+        data_type: DataType::ChangelogCommits,
+        from_ref: Some(state.modes.changelog.from_ref.clone()),
+        to_ref: Some(state.modes.changelog.to_ref.clone()),
+    }
+}
+
+/// Get reload effect for Release Notes data
+pub fn reload_release_notes_data(state: &StudioState) -> SideEffect {
+    SideEffect::LoadData {
+        data_type: DataType::ReleaseNotesCommits,
+        from_ref: Some(state.modes.release_notes.from_ref.clone()),
+        to_ref: Some(state.modes.release_notes.to_ref.clone()),
+    }
 }

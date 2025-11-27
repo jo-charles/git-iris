@@ -4,7 +4,7 @@
 
 use crate::config::Config;
 use crate::git::GitRepo;
-use crate::types::{format_commit_message, GeneratedMessage};
+use crate::types::{GeneratedMessage, format_commit_message};
 use lru::LruCache;
 use std::collections::{HashMap, VecDeque};
 use std::num::NonZeroUsize;
@@ -18,7 +18,7 @@ use super::components::{CodeViewState, DiffViewState, FileTreeState, MessageEdit
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /// Available modes in Iris Studio
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Mode {
     /// Explore mode - semantic code understanding
     #[default]
@@ -1263,7 +1263,12 @@ impl StudioState {
         let mut sections = Vec::new();
 
         // Commit message
-        if let Some(msg) = self.modes.commit.messages.get(self.modes.commit.current_index) {
+        if let Some(msg) = self
+            .modes
+            .commit
+            .messages
+            .get(self.modes.commit.current_index)
+        {
             let formatted = format_commit_message(msg);
             if !formatted.trim().is_empty() {
                 sections.push(format!("Commit Message:\n{}", formatted));
@@ -1303,7 +1308,10 @@ impl StudioState {
         // Release notes
         if !self.modes.release_notes.release_notes_content.is_empty() {
             let preview = if self.modes.release_notes.release_notes_content.len() > 300 {
-                format!("{}...", &self.modes.release_notes.release_notes_content[..300])
+                format!(
+                    "{}...",
+                    &self.modes.release_notes.release_notes_content[..300]
+                )
             } else {
                 self.modes.release_notes.release_notes_content.clone()
             };

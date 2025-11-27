@@ -2,12 +2,13 @@
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
+use crate::studio::events::SideEffect;
 use crate::studio::state::{Modal, PanelId, RefSelectorTarget, StudioState};
 
-use super::{Action, IrisQueryRequest, copy_to_clipboard};
+use super::{copy_to_clipboard, spawn_pr_task};
 
 /// Handle key events in PR mode
-pub fn handle_pr_key(state: &mut StudioState, key: KeyEvent) -> Action {
+pub fn handle_pr_key(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffect> {
     match state.focused_panel {
         PanelId::Left => handle_commits_key(state, key),
         PanelId::Center => handle_output_key(state, key),
@@ -15,7 +16,7 @@ pub fn handle_pr_key(state: &mut StudioState, key: KeyEvent) -> Action {
     }
 }
 
-fn handle_commits_key(state: &mut StudioState, key: KeyEvent) -> Action {
+fn handle_commits_key(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffect> {
     match key.code {
         // Navigation
         KeyCode::Up | KeyCode::Char('k') => {
@@ -27,27 +28,27 @@ fn handle_commits_key(state: &mut StudioState, key: KeyEvent) -> Action {
                 }
                 state.mark_dirty();
             }
-            Action::Redraw
+            vec![]
         }
         KeyCode::Down | KeyCode::Char('j') => {
             if state.modes.pr.selected_commit + 1 < state.modes.pr.commits.len() {
                 state.modes.pr.selected_commit += 1;
                 state.mark_dirty();
             }
-            Action::Redraw
+            vec![]
         }
         KeyCode::Home | KeyCode::Char('g') => {
             state.modes.pr.selected_commit = 0;
             state.modes.pr.commit_scroll = 0;
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         KeyCode::End | KeyCode::Char('G') => {
             if !state.modes.pr.commits.is_empty() {
                 state.modes.pr.selected_commit = state.modes.pr.commits.len() - 1;
                 state.mark_dirty();
             }
-            Action::Redraw
+            vec![]
         }
         // Select from ref (base branch)
         KeyCode::Char('f') => {
@@ -58,7 +59,7 @@ fn handle_commits_key(state: &mut StudioState, key: KeyEvent) -> Action {
                 target: RefSelectorTarget::PrFrom,
             });
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         // Select to ref
         KeyCode::Char('t') => {
@@ -69,62 +70,62 @@ fn handle_commits_key(state: &mut StudioState, key: KeyEvent) -> Action {
                 target: RefSelectorTarget::PrTo,
             });
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         // Generate PR
         KeyCode::Char('r') => {
             state.set_iris_thinking("Generating PR description...");
             state.modes.pr.generating = true;
-            Action::IrisQuery(IrisQueryRequest::GeneratePR)
+            vec![spawn_pr_task(state)]
         }
-        _ => Action::None,
+        _ => vec![],
     }
 }
 
-fn handle_diff_key(state: &mut StudioState, key: KeyEvent) -> Action {
+fn handle_diff_key(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffect> {
     match key.code {
         // Scroll diff
         KeyCode::Up | KeyCode::Char('k') => {
             state.modes.pr.diff_view.scroll_up(1);
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         KeyCode::Down | KeyCode::Char('j') => {
             state.modes.pr.diff_view.scroll_down(1);
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         KeyCode::PageUp => {
             state.modes.pr.diff_view.scroll_up(20);
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         KeyCode::PageDown => {
             state.modes.pr.diff_view.scroll_down(20);
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         KeyCode::Home | KeyCode::Char('g') => {
             state.modes.pr.diff_view.scroll_to_top();
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         KeyCode::End | KeyCode::Char('G') => {
             state.modes.pr.diff_view.scroll_to_bottom();
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         // Generate PR
         KeyCode::Char('r') => {
             state.set_iris_thinking("Generating PR description...");
             state.modes.pr.generating = true;
-            Action::IrisQuery(IrisQueryRequest::GeneratePR)
+            vec![spawn_pr_task(state)]
         }
-        _ => Action::None,
+        _ => vec![],
     }
 }
 
-fn handle_output_key(state: &mut StudioState, key: KeyEvent) -> Action {
+fn handle_output_key(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffect> {
     let content_lines = state.modes.pr.pr_content.lines().count();
 
     match key.code {
@@ -132,58 +133,57 @@ fn handle_output_key(state: &mut StudioState, key: KeyEvent) -> Action {
         KeyCode::Up | KeyCode::Char('k') => {
             state.modes.pr.pr_scroll = state.modes.pr.pr_scroll.saturating_sub(1);
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         KeyCode::Down | KeyCode::Char('j') => {
             if state.modes.pr.pr_scroll + 1 < content_lines {
                 state.modes.pr.pr_scroll += 1;
                 state.mark_dirty();
             }
-            Action::Redraw
+            vec![]
         }
         KeyCode::PageUp | KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             state.modes.pr.pr_scroll = state.modes.pr.pr_scroll.saturating_sub(20);
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         KeyCode::PageDown | KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             state.modes.pr.pr_scroll =
                 (state.modes.pr.pr_scroll + 20).min(content_lines.saturating_sub(1));
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         KeyCode::Home | KeyCode::Char('g') => {
             state.modes.pr.pr_scroll = 0;
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         KeyCode::End | KeyCode::Char('G') => {
             state.modes.pr.pr_scroll = content_lines.saturating_sub(1);
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         // Generate PR
         KeyCode::Char('r') => {
             state.set_iris_thinking("Generating PR description...");
             state.modes.pr.generating = true;
-            Action::IrisQuery(IrisQueryRequest::GeneratePR)
+            vec![spawn_pr_task(state)]
         }
         // Copy to clipboard
         KeyCode::Char('y') => {
-            if state.modes.pr.pr_content.is_empty() {
-                Action::None
-            } else {
+            if !state.modes.pr.pr_content.is_empty() {
                 let content = state.modes.pr.pr_content.clone();
-                copy_to_clipboard(state, &content, "PR description")
+                copy_to_clipboard(state, &content, "PR description");
             }
+            vec![]
         }
         // Reset
         KeyCode::Char('R') => {
             state.modes.pr.pr_content.clear();
             state.modes.pr.pr_scroll = 0;
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
-        _ => Action::None,
+        _ => vec![],
     }
 }

@@ -2,12 +2,13 @@
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
+use crate::studio::events::SideEffect;
 use crate::studio::state::{EmojiMode, Modal, PanelId, StudioState};
 
-use super::{Action, IrisQueryRequest, copy_to_clipboard};
+use super::{copy_to_clipboard, spawn_commit_task};
 
 /// Handle key events in Commit mode
-pub fn handle_commit_key(state: &mut StudioState, key: KeyEvent) -> Action {
+pub fn handle_commit_key(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffect> {
     // If editing message, handle text input
     if state.modes.commit.editing_message {
         return handle_editing_key(state, key);
@@ -20,16 +21,14 @@ pub fn handle_commit_key(state: &mut StudioState, key: KeyEvent) -> Action {
     }
 }
 
-fn handle_editing_key(state: &mut StudioState, key: KeyEvent) -> Action {
+fn handle_editing_key(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffect> {
     // Forward to message editor - it handles Esc internally
     if state.modes.commit.message_editor.handle_key(key) {
         // Sync editing state from component
         state.modes.commit.editing_message = state.modes.commit.message_editor.is_editing();
         state.mark_dirty();
-        Action::Redraw
-    } else {
-        Action::None
     }
+    vec![]
 }
 
 /// Sync file tree selection with diff view
@@ -39,54 +38,54 @@ fn sync_file_selection(state: &mut StudioState) {
     }
 }
 
-fn handle_files_key(state: &mut StudioState, key: KeyEvent) -> Action {
+fn handle_files_key(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffect> {
     match key.code {
         // Navigation
         KeyCode::Char('j') | KeyCode::Down => {
             state.modes.commit.file_tree.select_next();
             sync_file_selection(state);
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         KeyCode::Char('k') | KeyCode::Up => {
             state.modes.commit.file_tree.select_prev();
             sync_file_selection(state);
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         KeyCode::Char('h') | KeyCode::Left => {
             state.modes.commit.file_tree.collapse();
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         KeyCode::Char('l') | KeyCode::Right => {
             state.modes.commit.file_tree.expand();
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         KeyCode::Char('g') => {
             state.modes.commit.file_tree.select_first();
             sync_file_selection(state);
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         KeyCode::Char('G') => {
             state.modes.commit.file_tree.select_last();
             sync_file_selection(state);
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         KeyCode::PageDown | KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             state.modes.commit.file_tree.page_down(10);
             sync_file_selection(state);
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         KeyCode::PageUp | KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             state.modes.commit.file_tree.page_up(10);
             sync_file_selection(state);
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
 
         KeyCode::Enter => {
@@ -101,96 +100,96 @@ fn handle_files_key(state: &mut StudioState, key: KeyEvent) -> Action {
                 }
             }
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
 
         // Stage selected file
         KeyCode::Char('s') => {
             if let Some(path) = state.modes.commit.file_tree.selected_path() {
-                Action::StageFile(path.to_string_lossy().to_string())
+                vec![SideEffect::GitStage(path)]
             } else {
-                Action::None
+                vec![]
             }
         }
 
         // Unstage selected file
         KeyCode::Char('u') => {
             if let Some(path) = state.modes.commit.file_tree.selected_path() {
-                Action::UnstageFile(path.to_string_lossy().to_string())
+                vec![SideEffect::GitUnstage(path)]
             } else {
-                Action::None
+                vec![]
             }
         }
 
         // Stage all files
-        KeyCode::Char('a') => Action::StageAll,
+        KeyCode::Char('a') => vec![SideEffect::GitStageAll],
 
         // Unstage all files
-        KeyCode::Char('U') => Action::UnstageAll,
+        KeyCode::Char('U') => vec![SideEffect::GitUnstageAll],
 
-        _ => Action::None,
+        _ => vec![],
     }
 }
 
-fn handle_diff_key(state: &mut StudioState, key: KeyEvent) -> Action {
+fn handle_diff_key(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffect> {
     match key.code {
         // Navigation - scroll by line
         KeyCode::Char('j') | KeyCode::Down => {
             state.modes.commit.diff_view.scroll_down(1);
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         KeyCode::Char('k') | KeyCode::Up => {
             state.modes.commit.diff_view.scroll_up(1);
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         // Page scrolling
         KeyCode::PageDown | KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             state.modes.commit.diff_view.scroll_down(20);
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         KeyCode::PageUp | KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             state.modes.commit.diff_view.scroll_up(20);
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         // Hunk navigation
         KeyCode::Char(']') => {
             state.modes.commit.diff_view.next_hunk();
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         KeyCode::Char('[') => {
             state.modes.commit.diff_view.prev_hunk();
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         // File navigation within diff
         KeyCode::Char('n') => {
             state.modes.commit.diff_view.next_file();
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         KeyCode::Char('p') => {
             state.modes.commit.diff_view.prev_file();
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
 
-        _ => Action::None,
+        _ => vec![],
     }
 }
 
-fn handle_message_key(state: &mut StudioState, key: KeyEvent) -> Action {
+fn handle_message_key(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffect> {
     match key.code {
         // Edit message
         KeyCode::Char('e') => {
             state.modes.commit.message_editor.enter_edit_mode();
             state.modes.commit.editing_message = true;
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
 
         // Open preset selector
@@ -203,29 +202,21 @@ fn handle_message_key(state: &mut StudioState, key: KeyEvent) -> Action {
                 scroll: 0,
             });
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
 
         // Regenerate message
         KeyCode::Char('r') => {
             state.set_iris_thinking("Generating commit message...");
             state.modes.commit.generating = true;
-            Action::IrisQuery(IrisQueryRequest::GenerateCommit {
-                instructions: if state.modes.commit.custom_instructions.is_empty() {
-                    None
-                } else {
-                    Some(state.modes.commit.custom_instructions.clone())
-                },
-                preset: state.modes.commit.preset.clone(),
-                use_gitmoji: state.modes.commit.emoji_mode != EmojiMode::None,
-            })
+            vec![spawn_commit_task(state)]
         }
 
         // Reset to original message
         KeyCode::Char('R') => {
             state.modes.commit.message_editor.reset();
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
 
         // Custom instructions - open input modal
@@ -234,7 +225,7 @@ fn handle_message_key(state: &mut StudioState, key: KeyEvent) -> Action {
                 input: state.modes.commit.custom_instructions.clone(),
             });
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
 
         // Open emoji selector
@@ -255,7 +246,7 @@ fn handle_message_key(state: &mut StudioState, key: KeyEvent) -> Action {
                 scroll: 0,
             });
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
 
         // Quick toggle emoji between None and Auto
@@ -276,16 +267,16 @@ fn handle_message_key(state: &mut StudioState, key: KeyEvent) -> Action {
                 status
             )));
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
 
         // Commit - use message from editor (may have been modified)
         KeyCode::Enter => {
             let message = state.modes.commit.message_editor.get_message();
             if message.is_empty() {
-                Action::None
+                vec![]
             } else {
-                Action::Commit(message)
+                vec![SideEffect::ExecuteCommit { message }]
             }
         }
 
@@ -295,25 +286,24 @@ fn handle_message_key(state: &mut StudioState, key: KeyEvent) -> Action {
             // Sync index for backward compat
             state.modes.commit.current_index = state.modes.commit.message_editor.selected_index();
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         KeyCode::Left => {
             state.modes.commit.message_editor.prev_message();
             state.modes.commit.current_index = state.modes.commit.message_editor.selected_index();
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
 
         // Copy to clipboard
         KeyCode::Char('y') => {
             let message = state.modes.commit.message_editor.get_message();
-            if message.is_empty() {
-                Action::None
-            } else {
-                copy_to_clipboard(state, &message, "Commit message")
+            if !message.is_empty() {
+                copy_to_clipboard(state, &message, "Commit message");
             }
+            vec![]
         }
 
-        _ => Action::None,
+        _ => vec![],
     }
 }

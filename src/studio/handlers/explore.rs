@@ -2,15 +2,14 @@
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
+use crate::studio::events::SideEffect;
 use crate::studio::state::{Notification, PanelId, StudioState};
-
-use super::{Action, IrisQueryRequest};
 
 /// Default visible height for code view navigation (will be adjusted by actual render)
 const DEFAULT_VISIBLE_HEIGHT: usize = 30;
 
 /// Handle key events in Explore mode
-pub fn handle_explore_key(state: &mut StudioState, key: KeyEvent) -> Action {
+pub fn handle_explore_key(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffect> {
     match state.focused_panel {
         PanelId::Left => handle_file_tree_key(state, key),
         PanelId::Center => handle_code_view_key(state, key),
@@ -30,30 +29,30 @@ fn load_selected_file(state: &mut StudioState) {
     }
 }
 
-fn handle_file_tree_key(state: &mut StudioState, key: KeyEvent) -> Action {
+fn handle_file_tree_key(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffect> {
     match key.code {
         // Navigation
         KeyCode::Char('j') | KeyCode::Down => {
             state.modes.explore.file_tree.select_next();
             load_selected_file(state);
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         KeyCode::Char('k') | KeyCode::Up => {
             state.modes.explore.file_tree.select_prev();
             load_selected_file(state);
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         KeyCode::Char('h') | KeyCode::Left => {
             state.modes.explore.file_tree.collapse();
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         KeyCode::Char('l') | KeyCode::Right => {
             state.modes.explore.file_tree.expand();
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         KeyCode::Enter => {
             // Toggle expand for directories, or select file and move to code view
@@ -66,40 +65,40 @@ fn handle_file_tree_key(state: &mut StudioState, key: KeyEvent) -> Action {
                 }
             }
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         KeyCode::Char('g') => {
             // Go to first
             state.modes.explore.file_tree.select_first();
             load_selected_file(state);
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         KeyCode::Char('G') => {
             // Go to last
             state.modes.explore.file_tree.select_last();
             load_selected_file(state);
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         KeyCode::PageDown | KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             state.modes.explore.file_tree.page_down(10);
             load_selected_file(state);
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         KeyCode::PageUp | KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             state.modes.explore.file_tree.page_up(10);
             load_selected_file(state);
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
 
-        _ => Action::None,
+        _ => vec![],
     }
 }
 
-fn handle_code_view_key(state: &mut StudioState, key: KeyEvent) -> Action {
+fn handle_code_view_key(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffect> {
     match key.code {
         // Navigation - single line
         KeyCode::Char('j') | KeyCode::Down => {
@@ -110,7 +109,7 @@ fn handle_code_view_key(state: &mut StudioState, key: KeyEvent) -> Action {
                 .move_down(1, DEFAULT_VISIBLE_HEIGHT);
             state.modes.explore.current_line = state.modes.explore.code_view.selected_line();
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         KeyCode::Char('k') | KeyCode::Up => {
             state
@@ -120,7 +119,7 @@ fn handle_code_view_key(state: &mut StudioState, key: KeyEvent) -> Action {
                 .move_up(1, DEFAULT_VISIBLE_HEIGHT);
             state.modes.explore.current_line = state.modes.explore.code_view.selected_line();
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         // Page navigation
         KeyCode::PageDown | KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -131,7 +130,7 @@ fn handle_code_view_key(state: &mut StudioState, key: KeyEvent) -> Action {
                 .move_down(20, DEFAULT_VISIBLE_HEIGHT);
             state.modes.explore.current_line = state.modes.explore.code_view.selected_line();
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         KeyCode::PageUp | KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             state
@@ -141,14 +140,14 @@ fn handle_code_view_key(state: &mut StudioState, key: KeyEvent) -> Action {
                 .move_up(20, DEFAULT_VISIBLE_HEIGHT);
             state.modes.explore.current_line = state.modes.explore.code_view.selected_line();
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         KeyCode::Char('g') => {
             // Go to first line
             state.modes.explore.code_view.goto_first();
             state.modes.explore.current_line = 1;
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         KeyCode::Char('G') => {
             // Go to last line
@@ -159,64 +158,63 @@ fn handle_code_view_key(state: &mut StudioState, key: KeyEvent) -> Action {
                 .goto_last(DEFAULT_VISIBLE_HEIGHT);
             state.modes.explore.current_line = state.modes.explore.code_view.selected_line();
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
 
         // Heat map toggle
         KeyCode::Char('H') => {
             state.modes.explore.show_heat_map = !state.modes.explore.show_heat_map;
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
 
-        // Ask "why" about current line
+        // Ask "why" about current line - semantic blame
         KeyCode::Char('w') => {
-            if let Some(file) = &state.modes.explore.current_file {
-                let line = state.modes.explore.code_view.selected_line();
-                let (start, end) = state
-                    .modes
-                    .explore
-                    .code_view
-                    .selection()
-                    .unwrap_or((line, line));
-
-                return Action::IrisQuery(IrisQueryRequest::SemanticBlame {
-                    file: file.clone(),
-                    start_line: start,
-                    end_line: end,
-                });
-            }
-            Action::None
+            // TODO: Semantic blame will use AI to explain why code exists
+            state.notify(Notification::info("Semantic blame coming soon"));
+            state.mark_dirty();
+            vec![]
         }
 
         // Open in $EDITOR
         KeyCode::Char('o') => {
-            // TODO: Open in external editor
-            Action::None
+            if state.modes.explore.current_file.is_some() {
+                // TODO: Full implementation needs terminal suspend/restore
+                // For now, show a message with the command that would be run
+                let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vim".to_string());
+                state.notify(Notification::info(format!(
+                    "Open in editor: use '{} +{} <file>' outside TUI",
+                    editor, state.modes.explore.current_line
+                )));
+            } else {
+                state.notify(Notification::warning("No file selected"));
+            }
+            state.mark_dirty();
+            vec![]
         }
 
-        _ => Action::None,
+        _ => vec![],
     }
 }
 
-fn handle_context_key(state: &mut StudioState, key: KeyEvent) -> Action {
+fn handle_context_key(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffect> {
     match key.code {
         // Navigation
         KeyCode::Char('j') | KeyCode::Down => {
             // Scroll context panel down
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         KeyCode::Char('k') | KeyCode::Up => {
             // Scroll context panel up
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         KeyCode::Enter => {
             // Drill into selected context item
-            Action::None
+            vec![]
         }
 
-        _ => Action::None,
+        _ => vec![],
     }
 }

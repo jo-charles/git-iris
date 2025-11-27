@@ -2,12 +2,13 @@
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
+use crate::studio::events::SideEffect;
 use crate::studio::state::{Modal, PanelId, RefSelectorTarget, StudioState};
 
-use super::{Action, IrisQueryRequest, copy_to_clipboard};
+use super::{copy_to_clipboard, spawn_review_task};
 
 /// Handle key events in Review mode
-pub fn handle_review_key(state: &mut StudioState, key: KeyEvent) -> Action {
+pub fn handle_review_key(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffect> {
     match state.focused_panel {
         PanelId::Left => handle_files_key(state, key),
         PanelId::Center => handle_output_key(state, key),
@@ -22,41 +23,41 @@ fn sync_file_selection(state: &mut StudioState) {
     }
 }
 
-fn handle_files_key(state: &mut StudioState, key: KeyEvent) -> Action {
+fn handle_files_key(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffect> {
     match key.code {
         KeyCode::Char('j') | KeyCode::Down => {
             state.modes.review.file_tree.select_next();
             sync_file_selection(state);
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         KeyCode::Char('k') | KeyCode::Up => {
             state.modes.review.file_tree.select_prev();
             sync_file_selection(state);
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         KeyCode::Char('h') | KeyCode::Left => {
             state.modes.review.file_tree.collapse();
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         KeyCode::Char('l') | KeyCode::Right => {
             state.modes.review.file_tree.expand();
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         KeyCode::Char('g') => {
             state.modes.review.file_tree.select_first();
             sync_file_selection(state);
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         KeyCode::Char('G') => {
             state.modes.review.file_tree.select_last();
             sync_file_selection(state);
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         KeyCode::Enter => {
             if let Some(entry) = state.modes.review.file_tree.selected_entry() {
@@ -68,7 +69,7 @@ fn handle_files_key(state: &mut StudioState, key: KeyEvent) -> Action {
                 }
             }
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         // Select from ref
         KeyCode::Char('f') => {
@@ -79,7 +80,7 @@ fn handle_files_key(state: &mut StudioState, key: KeyEvent) -> Action {
                 target: RefSelectorTarget::ReviewFrom,
             });
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         // Select to ref
         KeyCode::Char('t') => {
@@ -90,59 +91,59 @@ fn handle_files_key(state: &mut StudioState, key: KeyEvent) -> Action {
                 target: RefSelectorTarget::ReviewTo,
             });
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
-        _ => Action::None,
+        _ => vec![],
     }
 }
 
-fn handle_diff_key(state: &mut StudioState, key: KeyEvent) -> Action {
+fn handle_diff_key(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffect> {
     match key.code {
         KeyCode::Char('j') | KeyCode::Down => {
             state.modes.review.diff_view.scroll_down(1);
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         KeyCode::Char('k') | KeyCode::Up => {
             state.modes.review.diff_view.scroll_up(1);
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         KeyCode::PageDown | KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             state.modes.review.diff_view.scroll_down(20);
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         KeyCode::PageUp | KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             state.modes.review.diff_view.scroll_up(20);
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         KeyCode::Char(']') => {
             state.modes.review.diff_view.next_hunk();
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         KeyCode::Char('[') => {
             state.modes.review.diff_view.prev_hunk();
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         KeyCode::Char('n') => {
             state.modes.review.diff_view.next_file();
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         KeyCode::Char('p') => {
             state.modes.review.diff_view.prev_file();
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
-        _ => Action::None,
+        _ => vec![],
     }
 }
 
-fn handle_output_key(state: &mut StudioState, key: KeyEvent) -> Action {
+fn handle_output_key(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffect> {
     match key.code {
         // Scroll review output
         KeyCode::Char('j') | KeyCode::Down => {
@@ -156,12 +157,12 @@ fn handle_output_key(state: &mut StudioState, key: KeyEvent) -> Action {
             state.modes.review.review_scroll =
                 (state.modes.review.review_scroll + 1).min(max_scroll);
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         KeyCode::Char('k') | KeyCode::Up => {
             state.modes.review.review_scroll = state.modes.review.review_scroll.saturating_sub(1);
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         KeyCode::PageDown | KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             let max_scroll = state
@@ -174,35 +175,34 @@ fn handle_output_key(state: &mut StudioState, key: KeyEvent) -> Action {
             state.modes.review.review_scroll =
                 (state.modes.review.review_scroll + 20).min(max_scroll);
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         KeyCode::PageUp | KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             state.modes.review.review_scroll = state.modes.review.review_scroll.saturating_sub(20);
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         // Generate review
         KeyCode::Char('r') => {
             state.set_iris_thinking("Generating code review...");
             state.modes.review.generating = true;
-            Action::IrisQuery(IrisQueryRequest::GenerateReview)
+            vec![spawn_review_task(state)]
         }
         // Reset review
         KeyCode::Char('R') => {
             state.modes.review.review_content.clear();
             state.modes.review.review_scroll = 0;
             state.mark_dirty();
-            Action::Redraw
+            vec![]
         }
         // Copy to clipboard
         KeyCode::Char('y') => {
-            if state.modes.review.review_content.is_empty() {
-                Action::None
-            } else {
+            if !state.modes.review.review_content.is_empty() {
                 let content = state.modes.review.review_content.clone();
-                copy_to_clipboard(state, &content, "Review")
+                copy_to_clipboard(state, &content, "Review");
             }
+            vec![]
         }
-        _ => Action::None,
+        _ => vec![],
     }
 }

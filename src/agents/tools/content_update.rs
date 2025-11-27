@@ -98,12 +98,10 @@ impl Tool for UpdateCommitTool {
             message: args.message.clone().unwrap_or_default(),
         };
 
-        self.sender
-            .send(update)
-            .map_err(|e| {
-                tracing::error!("Failed to send content update: {}", e);
-                ContentUpdateError(format!("Failed to send update: {}", e))
-            })?;
+        self.sender.send(update).map_err(|e| {
+            tracing::error!("Failed to send content update: {}", e);
+            ContentUpdateError(format!("Failed to send update: {}", e))
+        })?;
 
         tracing::info!("Content update sent successfully via channel");
 

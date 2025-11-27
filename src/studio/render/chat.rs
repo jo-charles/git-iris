@@ -182,10 +182,7 @@ pub fn format_markdown(content: &str, max_width: usize, base_style: Style) -> Ve
                 }
                 Tag::BlockQuote(_) => {
                     flush_line(&mut lines, &mut current_spans, list_depth);
-                    current_spans.push(Span::styled(
-                        "  │ ",
-                        Style::default().fg(theme::TEXT_DIM),
-                    ));
+                    current_spans.push(Span::styled("  │ ", Style::default().fg(theme::TEXT_DIM)));
                 }
                 Tag::Link { .. } | Tag::Image { .. } => {
                     style_stack.push(Style::default().fg(theme::NEON_CYAN));
@@ -237,9 +234,7 @@ pub fn format_markdown(content: &str, max_width: usize, base_style: Style) -> Ve
                     for chunk in wrap_text(&text, effective_width) {
                         if !current_spans.is_empty() && !chunk.is_empty() {
                             current_spans.push(Span::styled(chunk, style));
-                        } else if chunk.is_empty() {
-                            continue;
-                        } else {
+                        } else if !chunk.is_empty() {
                             let indent = if list_depth > 0 { "" } else { "  " };
                             current_spans.push(Span::styled(format!("{}{}", indent, chunk), style));
                         }

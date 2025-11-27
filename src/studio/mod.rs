@@ -18,15 +18,15 @@
 mod app;
 mod events;
 mod handlers;
+mod history;
 mod layout;
+mod reducer;
 mod render;
 mod state;
 mod theme;
 
 // Submodules
 pub mod components;
-pub mod modals;
-pub mod modes;
 
 // Re-exports
 pub use app::{ExitResult, StudioApp, run_studio};
