@@ -1,16 +1,8 @@
 //! Debug observability module for Iris agent operations
 //!
-//! Provides beautiful, color-coded real-time visibility into agent execution including:
-//! - Tool calls and responses
-//! - LLM requests and streaming responses
-//! - Context management decisions
-//! - JSON parsing and validation
-//! - Error states and recovery
+//! All debug output goes through tracing. Use `-l <file>` to log to file,
+//! `--debug` to enable debug-level output.
 
-use crate::ui::rgb::{
-    CORAL, ELECTRIC_PURPLE, ELECTRIC_YELLOW, ERROR_RED, NEON_CYAN, SUCCESS_GREEN,
-};
-use colored::Colorize;
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::PathBuf;
@@ -38,21 +30,6 @@ pub fn disable_debug_mode() {
 /// Check if debug mode is enabled
 pub fn is_debug_enabled() -> bool {
     DEBUG_MODE.load(Ordering::SeqCst)
-}
-
-/// Create a section divider
-fn divider(symbol: &str, color: (u8, u8, u8)) -> String {
-    symbol
-        .repeat(80)
-        .truecolor(color.0, color.1, color.2)
-        .to_string()
-}
-
-/// Create a timestamp string
-fn timestamp() -> String {
-    format!("[{}]", chrono::Local::now().format("%H:%M:%S%.3f"))
-        .truecolor(ELECTRIC_YELLOW.0, ELECTRIC_YELLOW.1, ELECTRIC_YELLOW.2)
-        .to_string()
 }
 
 /// Resolve the directory used for storing debug artifacts (LLM dumps, extracted JSON)
@@ -125,24 +102,26 @@ fn format_duration(duration: Duration) -> String {
     }
 }
 
+/// Safely truncate a string at a character boundary
+fn truncate_at_char_boundary(s: &str, max_bytes: usize) -> &str {
+    if s.len() <= max_bytes {
+        return s;
+    }
+    let mut end = max_bytes;
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    &s[..end]
+}
+
 /// Print a debug header
 pub fn debug_header(title: &str) {
     if !is_debug_enabled() {
         return;
     }
-
-    println!();
-    println!("{}", divider("═", ELECTRIC_PURPLE));
-    println!(
-        "{} {} {}",
-        "◆".truecolor(ELECTRIC_PURPLE.0, ELECTRIC_PURPLE.1, ELECTRIC_PURPLE.2),
-        title
-            .truecolor(ELECTRIC_PURPLE.0, ELECTRIC_PURPLE.1, ELECTRIC_PURPLE.2)
-            .bold(),
-        "◆".truecolor(ELECTRIC_PURPLE.0, ELECTRIC_PURPLE.1, ELECTRIC_PURPLE.2)
-    );
-    println!("{}", divider("═", ELECTRIC_PURPLE));
-    println!();
+    tracing::debug!(target: "iris", "══════════════════════════════════════════════════════════════════════════════");
+    tracing::debug!(target: "iris", "◆ {} ◆", title);
+    tracing::debug!(target: "iris", "══════════════════════════════════════════════════════════════════════════════");
 }
 
 /// Print a debug section
@@ -150,17 +129,8 @@ pub fn debug_section(title: &str) {
     if !is_debug_enabled() {
         return;
     }
-
-    println!();
-    println!(
-        "{} {} {}",
-        "▸".truecolor(NEON_CYAN.0, NEON_CYAN.1, NEON_CYAN.2).bold(),
-        title
-            .truecolor(NEON_CYAN.0, NEON_CYAN.1, NEON_CYAN.2)
-            .bold(),
-        timestamp()
-    );
-    println!("{}", divider("─", NEON_CYAN));
+    tracing::debug!(target: "iris", "▸ {}", title);
+    tracing::debug!(target: "iris", "──────────────────────────────────────────────────────────────────────────────");
 }
 
 /// Print tool call information
@@ -169,15 +139,7 @@ pub fn debug_tool_call(tool_name: &str, args: &str) {
         return;
     }
 
-    println!(
-        "{} {} {} {}",
-        timestamp(),
-        "🔧".truecolor(NEON_CYAN.0, NEON_CYAN.1, NEON_CYAN.2),
-        "Tool Call:"
-            .truecolor(NEON_CYAN.0, NEON_CYAN.1, NEON_CYAN.2)
-            .bold(),
-        tool_name.truecolor(CORAL.0, CORAL.1, CORAL.2).bold()
-    );
+    tracing::debug!(target: "iris", "🔧 Tool Call: {}", tool_name);
 
     if !args.is_empty() {
         let truncated = if args.len() > 200 {
@@ -185,25 +147,8 @@ pub fn debug_tool_call(tool_name: &str, args: &str) {
         } else {
             args.to_string()
         };
-        println!(
-            "  {} {}",
-            "Args:".truecolor(ELECTRIC_YELLOW.0, ELECTRIC_YELLOW.1, ELECTRIC_YELLOW.2),
-            truncated.truecolor(255, 255, 255)
-        );
+        tracing::debug!(target: "iris", "   Args: {}", truncated);
     }
-}
-
-/// Safely truncate a string at a character boundary
-fn truncate_at_char_boundary(s: &str, max_bytes: usize) -> &str {
-    if s.len() <= max_bytes {
-        return s;
-    }
-    // Find the last valid char boundary at or before max_bytes
-    let mut end = max_bytes;
-    while end > 0 && !s.is_char_boundary(end) {
-        end -= 1;
-    }
-    &s[..end]
 }
 
 /// Print tool response information
@@ -218,23 +163,8 @@ pub fn debug_tool_response(tool_name: &str, response: &str, duration: Duration) 
         response.to_string()
     };
 
-    println!(
-        "{} {} {} {} {}",
-        timestamp(),
-        "✓"
-            .truecolor(SUCCESS_GREEN.0, SUCCESS_GREEN.1, SUCCESS_GREEN.2)
-            .bold(),
-        "Tool Response:"
-            .truecolor(SUCCESS_GREEN.0, SUCCESS_GREEN.1, SUCCESS_GREEN.2)
-            .bold(),
-        tool_name.truecolor(CORAL.0, CORAL.1, CORAL.2).bold(),
-        format!("({})", format_duration(duration)).truecolor(
-            ELECTRIC_YELLOW.0,
-            ELECTRIC_YELLOW.1,
-            ELECTRIC_YELLOW.2
-        )
-    );
-    println!("  {}", truncated.truecolor(255, 255, 255));
+    tracing::debug!(target: "iris", "✓ Tool Response: {} ({})", tool_name, format_duration(duration));
+    tracing::debug!(target: "iris", "   {}", truncated);
 }
 
 /// Print LLM request information
@@ -246,56 +176,28 @@ pub fn debug_llm_request(prompt: &str, max_tokens: Option<usize>) {
     let char_count = prompt.chars().count();
     let word_count = prompt.split_whitespace().count();
 
-    println!(
-        "{} {} {} {} {}",
-        timestamp(),
-        "🧠".truecolor(ELECTRIC_PURPLE.0, ELECTRIC_PURPLE.1, ELECTRIC_PURPLE.2),
-        "LLM Request:"
-            .truecolor(ELECTRIC_PURPLE.0, ELECTRIC_PURPLE.1, ELECTRIC_PURPLE.2)
-            .bold(),
-        format!("{} chars, {} words", char_count, word_count).truecolor(
-            ELECTRIC_YELLOW.0,
-            ELECTRIC_YELLOW.1,
-            ELECTRIC_YELLOW.2
-        ),
-        max_tokens
-            .map(|t| format!("(max {} tokens)", t))
-            .unwrap_or_default()
-            .truecolor(ELECTRIC_YELLOW.0, ELECTRIC_YELLOW.1, ELECTRIC_YELLOW.2)
+    tracing::debug!(target: "iris", "🧠 LLM Request: {} chars, {} words {}",
+        char_count,
+        word_count,
+        max_tokens.map(|t| format!("(max {} tokens)", t)).unwrap_or_default()
     );
 
     // Show first few lines of prompt
-    let lines: Vec<&str> = prompt.lines().take(5).collect();
-    for line in lines {
+    for line in prompt.lines().take(5) {
         let truncated = if line.len() > 120 {
             format!("{}...", truncate_at_char_boundary(line, 120))
         } else {
             line.to_string()
         };
-        println!("  {}", truncated.truecolor(200, 200, 200));
+        tracing::debug!(target: "iris", "   {}", truncated);
     }
     if prompt.lines().count() > 5 {
-        println!(
-            "  {}",
-            format!("... ({} more lines)", prompt.lines().count() - 5)
-                .truecolor(ELECTRIC_YELLOW.0, ELECTRIC_YELLOW.1, ELECTRIC_YELLOW.2)
-                .italic()
-        );
+        tracing::debug!(target: "iris", "   ... ({} more lines)", prompt.lines().count() - 5);
     }
 
     // Save full prompt to debug artifact
-    match write_debug_artifact("iris_last_prompt.txt", prompt) {
-        Ok(path) => {
-            println!(
-                "  {}",
-                format!("Full prompt saved to: {}", path.display())
-                    .truecolor(NEON_CYAN.0, NEON_CYAN.1, NEON_CYAN.2)
-                    .italic()
-            );
-        }
-        Err(e) => {
-            eprintln!("Failed to save prompt artifact: {}", e);
-        }
+    if let Ok(path) = write_debug_artifact("iris_last_prompt.txt", prompt) {
+        tracing::debug!(target: "iris", "   Full prompt saved to: {}", path.display());
     }
 }
 
@@ -307,14 +209,7 @@ pub fn debug_stream_chunk(_chunk: &str, chunk_number: usize) {
 
     // Only print every 10th chunk to avoid overwhelming output
     if chunk_number.is_multiple_of(10) {
-        println!(
-            "{} {} #{}",
-            timestamp(),
-            "▹".truecolor(NEON_CYAN.0, NEON_CYAN.1, NEON_CYAN.2),
-            chunk_number
-                .to_string()
-                .truecolor(CORAL.0, CORAL.1, CORAL.2)
-        );
+        tracing::debug!(target: "iris", "▹ chunk #{}", chunk_number);
     }
 }
 
@@ -327,50 +222,19 @@ pub fn debug_llm_response(response: &str, duration: Duration, tokens_used: Optio
     let char_count = response.chars().count();
     let word_count = response.split_whitespace().count();
 
-    println!();
-    println!(
-        "{} {} {} {} {}",
-        timestamp(),
-        "✨".truecolor(SUCCESS_GREEN.0, SUCCESS_GREEN.1, SUCCESS_GREEN.2),
-        "LLM Response:"
-            .truecolor(SUCCESS_GREEN.0, SUCCESS_GREEN.1, SUCCESS_GREEN.2)
-            .bold(),
-        format!("{} chars, {} words", char_count, word_count).truecolor(
-            ELECTRIC_YELLOW.0,
-            ELECTRIC_YELLOW.1,
-            ELECTRIC_YELLOW.2
-        ),
-        format!("({})", format_duration(duration)).truecolor(
-            ELECTRIC_YELLOW.0,
-            ELECTRIC_YELLOW.1,
-            ELECTRIC_YELLOW.2
-        )
+    tracing::debug!(target: "iris", "✨ LLM Response: {} chars, {} words ({})",
+        char_count,
+        word_count,
+        format_duration(duration)
     );
 
     if let Some(tokens) = tokens_used {
-        println!(
-            "  {} {}",
-            "Tokens:".truecolor(ELECTRIC_YELLOW.0, ELECTRIC_YELLOW.1, ELECTRIC_YELLOW.2),
-            tokens
-                .to_string()
-                .truecolor(CORAL.0, CORAL.1, CORAL.2)
-                .bold()
-        );
+        tracing::debug!(target: "iris", "   Tokens: {}", tokens);
     }
 
     // Save full response to file for deep debugging
-    match write_debug_artifact("iris_last_response.txt", response) {
-        Ok(path) => {
-            let display_path = format!("{}", path.display());
-            println!(
-                "  {} {}",
-                "Full response saved to:".truecolor(NEON_CYAN.0, NEON_CYAN.1, NEON_CYAN.2),
-                display_path.truecolor(CORAL.0, CORAL.1, CORAL.2)
-            );
-        }
-        Err(e) => {
-            eprintln!("Failed to write debug response: {}", e);
-        }
+    if let Ok(path) = write_debug_artifact("iris_last_response.txt", response) {
+        tracing::debug!(target: "iris", "   Full response saved to: {}", path.display());
     }
 
     // Show response (truncated if too long)
@@ -383,7 +247,9 @@ pub fn debug_llm_response(response: &str, duration: Duration, tokens_used: Optio
     } else {
         response.to_string()
     };
-    println!("{}", truncated.truecolor(255, 255, 255));
+    for line in truncated.lines() {
+        tracing::debug!(target: "iris", "{}", line);
+    }
 }
 
 /// Print JSON parsing attempt
@@ -392,19 +258,7 @@ pub fn debug_json_parse_attempt(json_str: &str) {
         return;
     }
 
-    println!(
-        "{} {} {} {} chars",
-        timestamp(),
-        "📝".truecolor(ELECTRIC_YELLOW.0, ELECTRIC_YELLOW.1, ELECTRIC_YELLOW.2),
-        "JSON Parse Attempt:"
-            .truecolor(ELECTRIC_YELLOW.0, ELECTRIC_YELLOW.1, ELECTRIC_YELLOW.2)
-            .bold(),
-        json_str
-            .len()
-            .to_string()
-            .truecolor(CORAL.0, CORAL.1, CORAL.2)
-            .bold()
-    );
+    tracing::debug!(target: "iris", "📝 JSON Parse Attempt: {} chars", json_str.len());
 
     // Show first 500 chars
     let head = if json_str.len() > 500 {
@@ -412,17 +266,16 @@ pub fn debug_json_parse_attempt(json_str: &str) {
     } else {
         json_str.to_string()
     };
-    println!("{}", head.truecolor(200, 200, 200));
+    tracing::debug!(target: "iris", "{}", head);
 
     // Show last 200 chars to see where it got cut off
     if json_str.len() > 700 {
-        println!("\n... truncated ...\n");
-        // Find a valid char boundary for the tail
+        tracing::debug!(target: "iris", "... truncated ...");
         let mut tail_start = json_str.len().saturating_sub(200);
         while tail_start < json_str.len() && !json_str.is_char_boundary(tail_start) {
             tail_start += 1;
         }
-        println!("{}", &json_str[tail_start..].truecolor(200, 200, 200));
+        tracing::debug!(target: "iris", "{}", &json_str[tail_start..]);
     }
 }
 
@@ -431,18 +284,7 @@ pub fn debug_json_parse_success(type_name: &str) {
     if !is_debug_enabled() {
         return;
     }
-
-    println!(
-        "{} {} {} {}",
-        timestamp(),
-        "✓"
-            .truecolor(SUCCESS_GREEN.0, SUCCESS_GREEN.1, SUCCESS_GREEN.2)
-            .bold(),
-        "JSON Parsed:"
-            .truecolor(SUCCESS_GREEN.0, SUCCESS_GREEN.1, SUCCESS_GREEN.2)
-            .bold(),
-        type_name.truecolor(CORAL.0, CORAL.1, CORAL.2).bold()
-    );
+    tracing::debug!(target: "iris", "✓ JSON Parsed: {}", type_name);
 }
 
 /// Print JSON parse error
@@ -450,19 +292,7 @@ pub fn debug_json_parse_error(error: &str) {
     if !is_debug_enabled() {
         return;
     }
-
-    println!(
-        "{} {} {}",
-        timestamp(),
-        "✗".truecolor(ERROR_RED.0, ERROR_RED.1, ERROR_RED.2).bold(),
-        "JSON Parse Error:"
-            .truecolor(ERROR_RED.0, ERROR_RED.1, ERROR_RED.2)
-            .bold()
-    );
-    println!(
-        "  {}",
-        error.truecolor(ERROR_RED.0, ERROR_RED.1, ERROR_RED.2)
-    );
+    tracing::warn!(target: "iris", "✗ JSON Parse Error: {}", error);
 }
 
 /// Print context management decision
@@ -470,16 +300,7 @@ pub fn debug_context_management(action: &str, details: &str) {
     if !is_debug_enabled() {
         return;
     }
-
-    println!(
-        "{} {} {} {}",
-        timestamp(),
-        "🔍".truecolor(ELECTRIC_PURPLE.0, ELECTRIC_PURPLE.1, ELECTRIC_PURPLE.2),
-        action
-            .truecolor(ELECTRIC_PURPLE.0, ELECTRIC_PURPLE.1, ELECTRIC_PURPLE.2)
-            .bold(),
-        details.truecolor(ELECTRIC_YELLOW.0, ELECTRIC_YELLOW.1, ELECTRIC_YELLOW.2)
-    );
+    tracing::debug!(target: "iris", "🔍 {} {}", action, details);
 }
 
 /// Print an error
@@ -487,22 +308,7 @@ pub fn debug_error(error: &str) {
     if !is_debug_enabled() {
         return;
     }
-
-    println!();
-    println!("{}", divider("─", ERROR_RED));
-    println!(
-        "{} {} {}",
-        timestamp(),
-        "✗".truecolor(ERROR_RED.0, ERROR_RED.1, ERROR_RED.2).bold(),
-        "Error:"
-            .truecolor(ERROR_RED.0, ERROR_RED.1, ERROR_RED.2)
-            .bold()
-    );
-    println!(
-        "  {}",
-        error.truecolor(ERROR_RED.0, ERROR_RED.1, ERROR_RED.2)
-    );
-    println!("{}", divider("─", ERROR_RED));
+    tracing::error!(target: "iris", "✗ Error: {}", error);
 }
 
 /// Print a warning
@@ -510,15 +316,7 @@ pub fn debug_warning(warning: &str) {
     if !is_debug_enabled() {
         return;
     }
-
-    println!(
-        "{} {} {}",
-        timestamp(),
-        "⚠"
-            .truecolor(ELECTRIC_YELLOW.0, ELECTRIC_YELLOW.1, ELECTRIC_YELLOW.2)
-            .bold(),
-        warning.truecolor(ELECTRIC_YELLOW.0, ELECTRIC_YELLOW.1, ELECTRIC_YELLOW.2)
-    );
+    tracing::warn!(target: "iris", "⚠ {}", warning);
 }
 
 /// Print agent phase change
@@ -526,19 +324,8 @@ pub fn debug_phase_change(phase: &str) {
     if !is_debug_enabled() {
         return;
     }
-
-    println!();
-    println!(
-        "{} {} {}",
-        timestamp(),
-        "◆"
-            .truecolor(ELECTRIC_PURPLE.0, ELECTRIC_PURPLE.1, ELECTRIC_PURPLE.2)
-            .bold(),
-        phase
-            .truecolor(ELECTRIC_PURPLE.0, ELECTRIC_PURPLE.1, ELECTRIC_PURPLE.2)
-            .bold()
-    );
-    println!("{}", divider("─", ELECTRIC_PURPLE));
+    tracing::debug!(target: "iris", "◆ {}", phase);
+    tracing::debug!(target: "iris", "──────────────────────────────────────────────────────────────────────────────");
 }
 
 /// Timer for measuring operation duration
@@ -550,12 +337,7 @@ pub struct DebugTimer {
 impl DebugTimer {
     pub fn start(operation: &str) -> Self {
         if is_debug_enabled() {
-            println!(
-                "{} {} {}",
-                timestamp(),
-                "⏱".truecolor(NEON_CYAN.0, NEON_CYAN.1, NEON_CYAN.2),
-                format!("Started: {}", operation).truecolor(NEON_CYAN.0, NEON_CYAN.1, NEON_CYAN.2)
-            );
+            tracing::debug!(target: "iris", "⏱ Started: {}", operation);
         }
 
         Self {
@@ -567,23 +349,7 @@ impl DebugTimer {
     pub fn finish(self) {
         if is_debug_enabled() {
             let duration = self.start.elapsed();
-            println!(
-                "{} {} {} {}",
-                timestamp(),
-                "✓"
-                    .truecolor(SUCCESS_GREEN.0, SUCCESS_GREEN.1, SUCCESS_GREEN.2)
-                    .bold(),
-                format!("Completed: {}", self.operation).truecolor(
-                    SUCCESS_GREEN.0,
-                    SUCCESS_GREEN.1,
-                    SUCCESS_GREEN.2
-                ),
-                format!("({})", format_duration(duration)).truecolor(
-                    ELECTRIC_YELLOW.0,
-                    ELECTRIC_YELLOW.1,
-                    ELECTRIC_YELLOW.2
-                )
-            );
+            tracing::debug!(target: "iris", "✓ Completed: {} ({})", self.operation, format_duration(duration));
         }
     }
 }

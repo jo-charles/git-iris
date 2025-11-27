@@ -319,6 +319,8 @@ pub struct IrisAgent {
     preamble: Option<String>,
     /// Configuration for features like gitmoji, presets, etc.
     config: Option<crate::config::Config>,
+    /// Optional sender for content updates (used in Studio chat mode)
+    content_update_sender: Option<crate::agents::tools::ContentUpdateSender>,
 }
 
 impl IrisAgent {
@@ -332,7 +334,19 @@ impl IrisAgent {
             provider_config: HashMap::new(),
             preamble: None,
             config: None,
+            content_update_sender: None,
         })
+    }
+
+    /// Set the content update sender for Studio chat mode
+    ///
+    /// When set, the agent will have access to tools for updating
+    /// commit messages, PR descriptions, and reviews.
+    pub fn set_content_update_sender(
+        &mut self,
+        sender: crate::agents::tools::ContentUpdateSender,
+    ) {
+        self.content_update_sender = Some(sender);
     }
 
     /// Get the effective fast model (configured or same as main model)
@@ -426,7 +440,18 @@ Guidelines:
             // Sub-agent delegation (Rig's built-in agent-as-tool!)
             .tool(sub_agent);
 
-        Ok(agent_builder.build())
+        // Add content update tools if a sender is configured (Studio chat mode)
+        if let Some(sender) = &self.content_update_sender {
+            use crate::agents::tools::{UpdateCommitTool, UpdatePRTool, UpdateReviewTool};
+            let agent = agent_builder
+                .tool(DebugTool::new(UpdateCommitTool::new(sender.clone())))
+                .tool(DebugTool::new(UpdatePRTool::new(sender.clone())))
+                .tool(DebugTool::new(UpdateReviewTool::new(sender.clone())))
+                .build();
+            Ok(agent)
+        } else {
+            Ok(agent_builder.build())
+        }
     }
 
     fn apply_reasoning_defaults<M>(&self, builder: RigAgentBuilder<M>) -> RigAgentBuilder<M>

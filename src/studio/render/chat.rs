@@ -1,5 +1,6 @@
 //! Chat rendering and markdown formatting for Iris Studio
 
+use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
 use ratatui::prelude::Stylize;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -100,78 +101,196 @@ pub fn render_messages(
     lines
 }
 
-/// Format markdown content into styled lines
-pub fn format_markdown(content: &str, max_width: usize, base_style: Style) -> Vec<Line<'_>> {
-    let mut lines = Vec::new();
+/// Format markdown content into styled lines using pulldown-cmark
+pub fn format_markdown(content: &str, max_width: usize, base_style: Style) -> Vec<Line<'static>> {
+    let mut lines: Vec<Line<'static>> = Vec::new();
+    let mut current_spans: Vec<Span<'static>> = Vec::new();
+
+    // Parser state
+    let mut style_stack: Vec<Style> = vec![base_style];
     let mut in_code_block = false;
     let mut code_block_lines: Vec<String> = Vec::new();
     let mut code_lang = String::new();
+    let mut list_depth: usize = 0;
+    let mut ordered_list_num: Option<u64> = None;
 
-    for line in content.lines() {
-        // Check for code block start/end
-        if line.starts_with("```") {
-            if in_code_block {
-                // End of code block - render accumulated code
-                render_code_block(&mut lines, &code_block_lines, &code_lang, max_width);
-                code_block_lines.clear();
-                code_lang.clear();
-                in_code_block = false;
-            } else {
-                // Start of code block
-                in_code_block = true;
-                code_lang = line.trim_start_matches('`').to_string();
+    // Enable all markdown options
+    let options = Options::ENABLE_STRIKETHROUGH
+        | Options::ENABLE_TABLES
+        | Options::ENABLE_FOOTNOTES
+        | Options::ENABLE_TASKLISTS;
+
+    let parser = Parser::new_ext(content, options);
+
+    for event in parser {
+        match event {
+            Event::Start(tag) => match tag {
+                Tag::Heading { level, .. } => {
+                    flush_line(&mut lines, &mut current_spans, list_depth);
+                    let color = match level {
+                        pulldown_cmark::HeadingLevel::H1 => theme::ELECTRIC_PURPLE,
+                        pulldown_cmark::HeadingLevel::H2 => theme::NEON_CYAN,
+                        pulldown_cmark::HeadingLevel::H3 => theme::CORAL,
+                        _ => theme::TEXT_SECONDARY,
+                    };
+                    style_stack.push(Style::default().fg(color).add_modifier(Modifier::BOLD));
+                    current_spans.push(Span::styled("  ", base_style));
+                }
+                Tag::Paragraph => {
+                    flush_line(&mut lines, &mut current_spans, list_depth);
+                }
+                Tag::CodeBlock(kind) => {
+                    flush_line(&mut lines, &mut current_spans, list_depth);
+                    in_code_block = true;
+                    code_lang = match kind {
+                        pulldown_cmark::CodeBlockKind::Fenced(lang) => lang.to_string(),
+                        pulldown_cmark::CodeBlockKind::Indented => String::new(),
+                    };
+                }
+                Tag::List(first_num) => {
+                    flush_line(&mut lines, &mut current_spans, list_depth);
+                    list_depth += 1;
+                    ordered_list_num = first_num;
+                }
+                Tag::Item => {
+                    flush_line(&mut lines, &mut current_spans, list_depth);
+                    let indent = "  ".repeat(list_depth);
+                    if let Some(num) = ordered_list_num.as_mut() {
+                        current_spans.push(Span::styled(
+                            format!("{}{}. ", indent, num),
+                            Style::default().fg(theme::ELECTRIC_PURPLE),
+                        ));
+                        *num += 1;
+                    } else {
+                        current_spans.push(Span::styled(
+                            format!("{}• ", indent),
+                            Style::default().fg(theme::ELECTRIC_PURPLE),
+                        ));
+                    }
+                }
+                Tag::Emphasis => {
+                    let current = style_stack.last().copied().unwrap_or(base_style);
+                    style_stack.push(current.add_modifier(Modifier::ITALIC));
+                }
+                Tag::Strong => {
+                    let current = style_stack.last().copied().unwrap_or(base_style);
+                    style_stack.push(current.add_modifier(Modifier::BOLD));
+                }
+                Tag::Strikethrough => {
+                    let current = style_stack.last().copied().unwrap_or(base_style);
+                    style_stack.push(current.add_modifier(Modifier::CROSSED_OUT));
+                }
+                Tag::BlockQuote(_) => {
+                    flush_line(&mut lines, &mut current_spans, list_depth);
+                    current_spans.push(Span::styled(
+                        "  │ ",
+                        Style::default().fg(theme::TEXT_DIM),
+                    ));
+                }
+                Tag::Link { .. } | Tag::Image { .. } => {
+                    style_stack.push(Style::default().fg(theme::NEON_CYAN));
+                }
+                _ => {}
+            },
+            Event::End(tag) => match tag {
+                TagEnd::Heading(_) => {
+                    style_stack.pop();
+                    flush_line(&mut lines, &mut current_spans, list_depth);
+                }
+                TagEnd::Paragraph => {
+                    flush_line(&mut lines, &mut current_spans, list_depth);
+                    lines.push(Line::from("")); // Add spacing after paragraphs
+                }
+                TagEnd::CodeBlock => {
+                    render_code_block(&mut lines, &code_block_lines, &code_lang, max_width);
+                    code_block_lines.clear();
+                    code_lang.clear();
+                    in_code_block = false;
+                }
+                TagEnd::List(_) => {
+                    list_depth = list_depth.saturating_sub(1);
+                    if list_depth == 0 {
+                        ordered_list_num = None;
+                    }
+                }
+                TagEnd::Item => {
+                    flush_line(&mut lines, &mut current_spans, list_depth);
+                }
+                TagEnd::Emphasis | TagEnd::Strong | TagEnd::Strikethrough => {
+                    style_stack.pop();
+                }
+                TagEnd::BlockQuote(_) => {
+                    flush_line(&mut lines, &mut current_spans, list_depth);
+                }
+                TagEnd::Link | TagEnd::Image => {
+                    style_stack.pop();
+                }
+                _ => {}
+            },
+            Event::Text(text) => {
+                if in_code_block {
+                    code_block_lines.extend(text.lines().map(String::from));
+                } else {
+                    let style = style_stack.last().copied().unwrap_or(base_style);
+                    // Word wrap the text
+                    let effective_width = max_width.saturating_sub(4 + list_depth * 2);
+                    for chunk in wrap_text(&text, effective_width) {
+                        if !current_spans.is_empty() && !chunk.is_empty() {
+                            current_spans.push(Span::styled(chunk, style));
+                        } else if chunk.is_empty() {
+                            continue;
+                        } else {
+                            let indent = if list_depth > 0 { "" } else { "  " };
+                            current_spans.push(Span::styled(format!("{}{}", indent, chunk), style));
+                        }
+                    }
+                }
             }
-            continue;
-        }
-
-        if in_code_block {
-            code_block_lines.push(line.to_string());
-            continue;
-        }
-
-        // Check for tool call patterns
-        if line.contains("tool:") || line.starts_with("🔧") || line.starts_with("[Tool") {
-            lines.push(render_tool_call(line));
-            continue;
-        }
-
-        // Check for headers
-        if let Some(header_line) = render_header(line) {
-            lines.push(header_line);
-            continue;
-        }
-
-        // Check for bullet points
-        if let Some(bullet_line) = render_bullet(line, base_style) {
-            lines.push(bullet_line);
-            continue;
-        }
-
-        // Check for numbered lists
-        if let Some(numbered_line) = render_numbered_list(line, base_style) {
-            lines.push(numbered_line);
-            continue;
-        }
-
-        // Regular line with inline formatting and word wrapping
-        if line.is_empty() {
-            lines.push(Line::from(""));
-        } else {
-            // Always wrap to ensure proper display
-            let effective_width = max_width.saturating_sub(4); // Account for indent
-            for chunk in wrap_text(line, effective_width) {
-                let formatted = format_inline(&chunk, base_style);
-                lines.push(Line::from(formatted));
+            Event::Code(code) => {
+                current_spans.push(Span::styled(code.to_string(), theme::inline_code()));
             }
+            Event::SoftBreak => {
+                // Treat as space
+                let style = style_stack.last().copied().unwrap_or(base_style);
+                current_spans.push(Span::styled(" ", style));
+            }
+            Event::HardBreak => {
+                flush_line(&mut lines, &mut current_spans, list_depth);
+            }
+            Event::Rule => {
+                flush_line(&mut lines, &mut current_spans, list_depth);
+                lines.push(Line::from(Span::styled(
+                    "─".repeat(max_width.min(60)),
+                    Style::default().fg(theme::TEXT_DIM),
+                )));
+            }
+            Event::TaskListMarker(checked) => {
+                let marker = if checked { "☑ " } else { "☐ " };
+                current_spans.push(Span::styled(
+                    marker.to_string(),
+                    Style::default().fg(theme::ELECTRIC_PURPLE),
+                ));
+            }
+            _ => {}
         }
     }
 
-    // Handle unclosed code block
-    if in_code_block && !code_block_lines.is_empty() {
-        render_code_block(&mut lines, &code_block_lines, &code_lang, max_width);
+    // Flush any remaining content
+    flush_line(&mut lines, &mut current_spans, list_depth);
+
+    // Remove trailing empty lines
+    while lines.last().is_some_and(|l| l.spans.is_empty()) {
+        lines.pop();
     }
 
     lines
+}
+
+/// Flush current spans into a line
+fn flush_line(lines: &mut Vec<Line<'static>>, spans: &mut Vec<Span<'static>>, _list_depth: usize) {
+    if !spans.is_empty() {
+        lines.push(Line::from(std::mem::take(spans)));
+    }
 }
 
 fn render_code_block(
@@ -202,173 +321,6 @@ fn render_code_block(
         "  └─",
         Style::default().fg(theme::TEXT_DIM),
     )));
-}
-
-fn render_tool_call(line: &str) -> Line<'static> {
-    Line::from(vec![
-        Span::styled("  ⚙ ", Style::default().fg(theme::CORAL)),
-        Span::styled(
-            line.trim_start_matches("🔧").trim().to_string(),
-            Style::default()
-                .fg(theme::CORAL)
-                .add_modifier(Modifier::ITALIC),
-        ),
-    ])
-}
-
-fn render_header(line: &str) -> Option<Line<'static>> {
-    // Count the number of # characters
-    let hash_count = line.chars().take_while(|c| *c == '#').count();
-    if hash_count > 0 && line.chars().nth(hash_count) == Some(' ') {
-        let header_text = line[hash_count..].trim();
-        let (color, prefix) = match hash_count {
-            1 => (theme::ELECTRIC_PURPLE, "# "),
-            2 => (theme::NEON_CYAN, "## "),
-            3 => (theme::CORAL, "### "),
-            _ => (theme::TEXT_SECONDARY, ""),
-        };
-        Some(Line::from(vec![
-            Span::styled(
-                format!("  {}", prefix),
-                Style::default().fg(color).add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(
-                header_text.to_string(),
-                Style::default().fg(color).add_modifier(Modifier::BOLD),
-            ),
-        ]))
-    } else {
-        None
-    }
-}
-
-fn render_bullet(line: &str, base_style: Style) -> Option<Line<'static>> {
-    let trimmed = line.trim_start();
-    if trimmed.starts_with("- ") || trimmed.starts_with("* ") {
-        let indent = line.len() - trimmed.len();
-        let bullet_content = trimmed.trim_start_matches(['*', '-']).trim();
-        Some(Line::from(vec![
-            Span::styled(
-                format!("  {}• ", " ".repeat(indent)),
-                Style::default().fg(theme::ELECTRIC_PURPLE),
-            ),
-            Span::styled(bullet_content.to_string(), base_style),
-        ]))
-    } else {
-        None
-    }
-}
-
-#[allow(clippy::unwrap_used)] // Safe: we verified char exists via strip_prefix
-fn render_numbered_list(line: &str, base_style: Style) -> Option<Line<'static>> {
-    let trimmed = line.trim_start();
-    if let Some(rest) = trimmed.strip_prefix(|c: char| c.is_ascii_digit())
-        && rest.starts_with(". ")
-    {
-        let indent = line.len() - trimmed.len();
-        let num = trimmed.chars().next().unwrap();
-        let list_content = rest.trim_start_matches(". ");
-        return Some(Line::from(vec![
-            Span::styled(
-                format!("  {}{}", " ".repeat(indent), num),
-                Style::default().fg(theme::ELECTRIC_PURPLE),
-            ),
-            Span::styled(". ", Style::default().fg(theme::TEXT_DIM)),
-            Span::styled(list_content.to_string(), base_style),
-        ]));
-    }
-    None
-}
-
-/// Format inline markdown (bold, italic, code)
-#[allow(clippy::unwrap_used)] // Safe: unwraps inside peek() guards
-fn format_inline(text: &str, base_style: Style) -> Vec<Span<'static>> {
-    let mut spans = Vec::new();
-    let mut current = String::new();
-    let mut chars = text.chars().peekable();
-
-    while let Some(c) = chars.next() {
-        match c {
-            '`' => {
-                // Inline code
-                if !current.is_empty() {
-                    spans.push(Span::styled(format!("  {}", current), base_style));
-                    current.clear();
-                }
-                let mut code = String::new();
-                while let Some(&next) = chars.peek() {
-                    if next == '`' {
-                        chars.next();
-                        break;
-                    }
-                    code.push(chars.next().unwrap());
-                }
-                spans.push(Span::styled(code, theme::inline_code()));
-            }
-            '*' if chars.peek() == Some(&'*') => {
-                // Bold
-                chars.next();
-                if !current.is_empty() {
-                    spans.push(Span::styled(current.clone(), base_style));
-                    current.clear();
-                }
-                let mut bold_text = String::new();
-                while let Some(&next) = chars.peek() {
-                    if next == '*' {
-                        chars.next();
-                        if chars.peek() == Some(&'*') {
-                            chars.next();
-                            break;
-                        }
-                        bold_text.push('*');
-                    } else {
-                        bold_text.push(chars.next().unwrap());
-                    }
-                }
-                spans.push(Span::styled(
-                    bold_text,
-                    base_style.add_modifier(Modifier::BOLD),
-                ));
-            }
-            '*' | '_' => {
-                // Italic
-                if !current.is_empty() {
-                    spans.push(Span::styled(current.clone(), base_style));
-                    current.clear();
-                }
-                let delimiter = c;
-                let mut italic_text = String::new();
-                while let Some(&next) = chars.peek() {
-                    if next == delimiter {
-                        chars.next();
-                        break;
-                    }
-                    italic_text.push(chars.next().unwrap());
-                }
-                spans.push(Span::styled(
-                    italic_text,
-                    base_style.add_modifier(Modifier::ITALIC),
-                ));
-            }
-            _ => {
-                current.push(c);
-            }
-        }
-    }
-
-    if !current.is_empty() {
-        if spans.is_empty() {
-            spans.push(Span::styled(format!("  {}", current), base_style));
-        } else {
-            spans.push(Span::styled(current, base_style));
-        }
-    }
-
-    if spans.is_empty() {
-        spans.push(Span::styled("  ".to_string(), base_style));
-    }
-
-    spans
 }
 
 /// Wrap text to fit within `max_width`

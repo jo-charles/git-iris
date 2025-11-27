@@ -350,6 +350,28 @@ impl IrisAgentService {
         Ok(agent)
     }
 
+    /// Create a configured Iris agent with content update tools (for Studio chat)
+    fn create_agent_with_content_updates(
+        &self,
+        sender: crate::agents::tools::ContentUpdateSender,
+    ) -> Result<IrisAgent> {
+        let mut agent = self.create_agent()?;
+        agent.set_content_update_sender(sender);
+        Ok(agent)
+    }
+
+    /// Execute a chat task with content update capabilities
+    ///
+    /// This is used by Studio to enable Iris to update content via tool calls.
+    pub async fn execute_chat_with_updates(
+        &self,
+        task_prompt: &str,
+        content_update_sender: crate::agents::tools::ContentUpdateSender,
+    ) -> Result<StructuredResponse> {
+        let mut agent = self.create_agent_with_content_updates(content_update_sender)?;
+        agent.execute_task("chat", task_prompt).await
+    }
+
     /// Get the configuration
     pub fn config(&self) -> &Config {
         &self.config

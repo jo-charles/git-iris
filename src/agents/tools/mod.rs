@@ -32,3 +32,9 @@ pub use workspace::Workspace;
 
 pub mod parallel_analyze;
 pub use parallel_analyze::{ParallelAnalyze, ParallelAnalyzeResult, SubagentResult};
+
+pub mod content_update;
+pub use content_update::{
+    ContentUpdate, ContentUpdateReceiver, ContentUpdateSender, UpdateCommitTool, UpdatePRTool,
+    UpdateReviewTool, create_content_update_channel,
+};

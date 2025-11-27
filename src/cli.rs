@@ -7,7 +7,8 @@ use clap::builder::{Styles, styling::AnsiColor};
 use clap::{Parser, Subcommand, crate_version};
 use colored::Colorize;
 
-const LOG_FILE: &str = "git-iris-debug.log";
+/// Default log file path for debug output
+pub const LOG_FILE: &str = "git-iris-debug.log";
 
 /// CLI structure defining the available commands and global arguments
 #[derive(Parser)]

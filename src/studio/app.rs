@@ -494,10 +494,11 @@ impl StudioApp {
                     self.state.mark_dirty();
                 }
                 IrisTaskResult::ChatUpdate(update) => {
+                    tracing::info!("Received ChatUpdate from tool!");
                     // Apply in-place update from chat
                     match update {
                         ChatUpdateType::CommitMessage(msg) => {
-                            tracing::debug!(
+                            tracing::info!(
                                 "ChatUpdate: Updating commit message. Title: {}, messages.len: {}, current_index: {}",
                                 msg.title,
                                 self.state.modes.commit.messages.len(),
@@ -505,10 +506,12 @@ impl StudioApp {
                             );
                             let commit = &mut self.state.modes.commit;
                             if commit.messages.is_empty() {
-                                commit.messages.push(msg);
+                                commit.messages.push(msg.clone());
                             } else {
-                                commit.messages[commit.current_index] = msg;
+                                commit.messages[commit.current_index] = msg.clone();
                             }
+                            // Also update the message editor so the UI reflects the change
+                            commit.message_editor.set_messages(commit.messages.clone());
                             self.state
                                 .notify(Notification::success("Commit message updated"));
                         }
@@ -599,6 +602,7 @@ impl StudioApp {
     /// Spawn a task for chat query - uses Iris agent with chat capability
     fn spawn_chat_query(&self, message: String) {
         use crate::agents::status::IRIS_STATUS;
+        use crate::agents::tools::{ContentUpdate, create_content_update_channel};
         use crate::agents::StructuredResponse;
         use crate::studio::state::{ChatMessage, ChatRole, Modal};
         use std::sync::atomic::{AtomicBool, Ordering};
@@ -612,9 +616,13 @@ impl StudioApp {
             return;
         };
 
+        // Create content update channel for tool-based updates
+        let (content_tx, mut content_rx) = create_content_update_channel();
+
         // Capture context before spawning async task
         let tx = self.iris_result_tx.clone();
         let tx_status = self.iris_result_tx.clone();
+        let tx_updates = self.iris_result_tx.clone();
         let mode = self.state.active_mode;
 
         // Extract conversation history from chat modal
@@ -630,6 +638,7 @@ impl StudioApp {
         // Flag to signal when the main task is done
         let is_done = Arc::new(AtomicBool::new(false));
         let is_done_clone = is_done.clone();
+        let is_done_updates = is_done.clone();
 
         // Spawn a status polling task
         tokio::spawn(async move {
@@ -652,6 +661,39 @@ impl StudioApp {
                 }
 
                 tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+            }
+        });
+
+        // Spawn a task to listen for content updates from tools
+        tokio::spawn(async move {
+            while !is_done_updates.load(Ordering::Relaxed) {
+                match content_rx.try_recv() {
+                    Ok(update) => {
+                        let chat_update = match update {
+                            ContentUpdate::Commit { emoji, title, message } => {
+                                tracing::info!("Content update tool: commit - {}", title);
+                                ChatUpdateType::CommitMessage(crate::types::GeneratedMessage {
+                                    emoji,
+                                    title,
+                                    message,
+                                })
+                            }
+                            ContentUpdate::PR { content } => {
+                                tracing::info!("Content update tool: PR");
+                                ChatUpdateType::PRDescription(content)
+                            }
+                            ContentUpdate::Review { content } => {
+                                tracing::info!("Content update tool: review");
+                                ChatUpdateType::Review(content)
+                            }
+                        };
+                        let _ = tx_updates.send(IrisTaskResult::ChatUpdate(chat_update));
+                    }
+                    Err(tokio::sync::mpsc::error::TryRecvError::Empty) => {
+                        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+                    }
+                    Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => break,
+                }
             }
         });
 
@@ -683,71 +725,36 @@ impl StudioApp {
                 String::new()
             };
 
-            // Update instructions (always available since chat is universal)
-            let update_instructions = r#"
+            // Tool-based update instructions
+            let update_instructions = r"
 ## Response Guidelines
-- Always explain what you're doing and why
-- When making updates, describe the changes you're making
-- Be conversational but concise
-- If you make an update, explain the reasoning behind your changes
+- Be concise - don't repeat content the user already sees
+- When updating content, briefly explain what you changed
 
-## Update Capabilities
-When the user asks you to change or update content, respond with:
-1. A brief explanation of what you're changing and why
-2. The JSON update command
+## Content Update Tools
+You have tools to update content. When the user asks you to modify, change, update, or rewrite content:
 
-To update the commit message:
-```json
-{"update_commit": {"emoji": "✨", "title": "New title", "message": "New body"}}
-```
+1. **update_commit** - Update the commit message (emoji, title, message)
+2. **update_pr** - Update the PR description (content)
+3. **update_review** - Update the code review (content)
 
-To update the PR description:
-```json
-{"update_pr": "New PR content here"}
-```
-
-To update the code review:
-```json
-{"update_review": "New review content here"}
-```
-
-Only include these JSON commands if the user explicitly asks you to change/update content."#;
+Simply call the appropriate tool with the new content. Do NOT echo back the full content in your response - the tool will update it directly.";
 
             let prompt = format!(
                 "{}{}{}{}\n\n## Current Request\nUser: {}",
                 mode_context, content_section, history_str, update_instructions, message
             );
 
-            // Execute with rich context
-            match agent.execute_task_with_prompt("chat", &prompt).await {
+            // Execute with content update tools enabled
+            match agent.execute_chat_with_updates(&prompt, content_tx).await {
                 Ok(response) => {
                     let text = match response {
                         StructuredResponse::PlainText(text) => text,
                         other => other.to_string(),
                     };
 
-                    // Check for update commands in the response
-                    if let Some(update) = parse_chat_update(&text) {
-                        // Format a nice response showing the update
-                        let update_summary = format_update_response(&update);
-                        tracing::debug!("parse_chat_update found update, sending ChatUpdate");
-                        if let Err(e) = tx.send(IrisTaskResult::ChatUpdate(update)) {
-                            tracing::error!("Failed to send ChatUpdate: {}", e);
-                        }
-
-                        // Also send the response text (without the JSON block)
-                        let clean_response = remove_update_json(&text);
-                        if clean_response.trim().is_empty() {
-                            let _ = tx.send(IrisTaskResult::ChatResponse(update_summary));
-                        } else {
-                            let _ = tx.send(IrisTaskResult::ChatResponse(format!(
-                                "{}\n\n{}",
-                                clean_response, update_summary
-                            )));
-                        }
-                    } else {
-                        let _ = tx.send(IrisTaskResult::ChatResponse(text));
-                    }
+                    tracing::debug!("Chat response received, length: {}", text.len());
+                    let _ = tx.send(IrisTaskResult::ChatResponse(text));
                 }
                 Err(e) => {
                     let _ = tx.send(IrisTaskResult::ChatResponse(format!(
@@ -1907,231 +1914,6 @@ pub enum ExitResult {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Chat Update Parsing
-// ═══════════════════════════════════════════════════════════════════════════════
-
-/// Parse chat response for update commands (works from any mode)
-fn parse_chat_update(response: &str) -> Option<ChatUpdateType> {
-    // Try multiple patterns to find JSON - handle various formatting
-    let json_sources = extract_json_from_response(response);
-
-    for json_str in json_sources {
-        if let Ok(value) = serde_json::from_str::<serde_json::Value>(&json_str) {
-            // Check for commit update
-            if let Some(commit_obj) = value.get("update_commit") {
-                let emoji = commit_obj
-                    .get("emoji")
-                    .and_then(|e| e.as_str())
-                    .map(String::from);
-                let title = commit_obj
-                    .get("title")
-                    .and_then(|t| t.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let message = commit_obj
-                    .get("message")
-                    .and_then(|m| m.as_str())
-                    .unwrap_or("")
-                    .to_string();
-
-                return Some(ChatUpdateType::CommitMessage(GeneratedMessage {
-                    emoji,
-                    title,
-                    message,
-                }));
-            }
-
-            // Check for PR update
-            if let Some(pr_content) = value.get("update_pr").and_then(|v| v.as_str()) {
-                return Some(ChatUpdateType::PRDescription(pr_content.to_string()));
-            }
-
-            // Check for review update
-            if let Some(review_content) = value.get("update_review").and_then(|v| v.as_str()) {
-                return Some(ChatUpdateType::Review(review_content.to_string()));
-            }
-        }
-    }
-
-    // Also try to find inline JSON (not in code blocks)
-    if let Ok(value) = serde_json::from_str::<serde_json::Value>(response.trim()) {
-        // Check for commit update
-        if let Some(commit_obj) = value.get("update_commit") {
-            let emoji = commit_obj
-                .get("emoji")
-                .and_then(|e| e.as_str())
-                .map(String::from);
-            let title = commit_obj
-                .get("title")
-                .and_then(|t| t.as_str())
-                .unwrap_or("")
-                .to_string();
-            let message = commit_obj
-                .get("message")
-                .and_then(|m| m.as_str())
-                .unwrap_or("")
-                .to_string();
-
-            return Some(ChatUpdateType::CommitMessage(GeneratedMessage {
-                emoji,
-                title,
-                message,
-            }));
-        }
-
-        // Check for PR update
-        if let Some(pr_content) = value.get("update_pr").and_then(|v| v.as_str()) {
-            return Some(ChatUpdateType::PRDescription(pr_content.to_string()));
-        }
-
-        // Check for review update
-        if let Some(review_content) = value.get("update_review").and_then(|v| v.as_str()) {
-            return Some(ChatUpdateType::Review(review_content.to_string()));
-        }
-    }
-
-    None
-}
-
-/// Format a nice response showing what was updated
-fn format_update_response(update: &ChatUpdateType) -> String {
-    match update {
-        ChatUpdateType::CommitMessage(msg) => {
-            let emoji_str = msg.emoji.as_deref().unwrap_or("");
-            let emoji_display = if emoji_str.is_empty() {
-                String::new()
-            } else {
-                format!("{} ", emoji_str)
-            };
-            format!(
-                "✓ Updated commit message:\n\n**{}{}**\n\n{}",
-                emoji_display, msg.title, msg.message
-            )
-        }
-        ChatUpdateType::PRDescription(content) => {
-            let preview = if content.len() > 200 {
-                format!("{}...", &content[..200])
-            } else {
-                content.clone()
-            };
-            format!("✓ Updated PR description:\n\n{}", preview)
-        }
-        ChatUpdateType::Review(content) => {
-            let preview = if content.len() > 200 {
-                format!("{}...", &content[..200])
-            } else {
-                content.clone()
-            };
-            format!("✓ Updated review:\n\n{}", preview)
-        }
-    }
-}
-
-/// Extract potential JSON strings from response using multiple strategies
-fn extract_json_from_response(response: &str) -> Vec<String> {
-    let mut results = Vec::new();
-
-    // Strategy 1: Standard ```json blocks
-    if let Ok(pattern) = regex::Regex::new(r"```json\s*([\s\S]*?)```") {
-        for cap in pattern.captures_iter(response) {
-            if let Some(m) = cap.get(1) {
-                results.push(m.as_str().trim().to_string());
-            }
-        }
-    }
-
-    // Strategy 2: Use brace-counting to extract balanced JSON objects with update_ keys
-    if let Some(start_idx) = response.find(r#""update_"#) {
-        // Walk back to find the opening brace
-        if let Some(open_brace) = response[..start_idx].rfind('{') {
-            if let Some(json_str) = extract_balanced_json(&response[open_brace..]) {
-                if !results.contains(&json_str) {
-                    results.push(json_str);
-                }
-            }
-        }
-    }
-
-    // Strategy 3: Look for simpler flat JSON with update_ keys
-    if let Ok(pattern) = regex::Regex::new(r#"\{[^{}]*"update_\w+"[^{}]*\}"#) {
-        for m in pattern.find_iter(response) {
-            let candidate = m.as_str().to_string();
-            if !results.contains(&candidate) {
-                results.push(candidate);
-            }
-        }
-    }
-
-    results
-}
-
-/// Extract a balanced JSON object from text (handles nested braces)
-fn extract_balanced_json(text: &str) -> Option<String> {
-    let mut chars = text.chars().peekable();
-    let mut result = String::new();
-    let mut brace_count = 0;
-    let mut in_string = false;
-    let mut escape_next = false;
-
-    while let Some(c) = chars.next() {
-        result.push(c);
-
-        if escape_next {
-            escape_next = false;
-            continue;
-        }
-
-        match c {
-            '\\' if in_string => {
-                escape_next = true;
-            }
-            '"' => {
-                in_string = !in_string;
-            }
-            '{' if !in_string => {
-                brace_count += 1;
-            }
-            '}' if !in_string => {
-                brace_count -= 1;
-                if brace_count == 0 {
-                    return Some(result);
-                }
-            }
-            _ => {}
-        }
-    }
-
-    None // Unbalanced braces
-}
-
-/// Remove JSON update blocks from response text
-fn remove_update_json(response: &str) -> String {
-    let mut result = response.to_string();
-
-    // Pattern 1: Complete ```json blocks with update commands
-    if let Ok(pattern) = regex::Regex::new(r"```json[\s\S]*?```") {
-        result = pattern.replace_all(&result, "").to_string();
-    }
-
-    // Pattern 2: Incomplete ```json blocks (no closing ```)
-    if let Ok(pattern) = regex::Regex::new(r"```json[\s\S]*$") {
-        result = pattern.replace_all(&result, "").to_string();
-    }
-
-    // Pattern 3: Raw JSON with update_ keys
-    if let Ok(pattern) = regex::Regex::new(r#"\{"update_\w+"[\s\S]*?\}"#) {
-        result = pattern.replace_all(&result, "").to_string();
-    }
-
-    // Clean up extra whitespace
-    result
-        .lines()
-        .filter(|line| !line.trim().is_empty())
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
 // Public Entry Point
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -2145,6 +1927,16 @@ pub fn run_studio(
     from_ref: Option<String>,
     to_ref: Option<String>,
 ) -> Result<()> {
+    // Enable file logging for debugging (TUI owns stdout, so logs go to file only)
+    // Only set up default log file if one wasn't specified via CLI (-l --log-file)
+    if !crate::logger::has_log_file()
+        && let Err(e) = crate::logger::set_log_file(crate::cli::LOG_FILE) {
+            eprintln!("Warning: Could not set up log file: {}", e);
+        }
+    // Disable stdout logging - TUI owns the terminal, but debug goes to file
+    crate::logger::set_log_to_stdout(false);
+    tracing::info!("Iris Studio starting");
+
     let mut app = StudioApp::new(config, repo, commit_service, agent_service);
 
     // Set initial mode if specified

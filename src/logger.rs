@@ -28,10 +28,15 @@ struct UnifiedWriter;
 
 impl Write for UnifiedWriter {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        // Write tracing logs only to file
+        // Write to file if configured
         if let Some(file) = LOG_FILE.lock().as_mut() {
             let _ = file.write_all(buf);
             let _ = file.flush();
+        }
+
+        // Also write to stdout if enabled (for CLI debug mode)
+        if *LOG_TO_STDOUT.lock() {
+            let _ = io::stdout().write_all(buf);
         }
 
         Ok(buf.len())
@@ -40,6 +45,9 @@ impl Write for UnifiedWriter {
     fn flush(&mut self) -> io::Result<()> {
         if let Some(file) = LOG_FILE.lock().as_mut() {
             let _ = file.flush();
+        }
+        if *LOG_TO_STDOUT.lock() {
+            let _ = io::stdout().flush();
         }
         Ok(())
     }
@@ -143,8 +151,8 @@ pub fn init() -> Result<(), Box<dyn std::error::Error>> {
 
         // Set up tracing subscriber with unified writer (for Rig logs)
         let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-            // Default filter: show git_iris debug, rig info, and warnings from others
-            "git_iris=debug,rig=info,warn".into()
+            // Default filter: show git_iris and iris debug, rig info, and warnings from others
+            "git_iris=debug,iris=debug,rig=info,warn".into()
         });
 
         let fmt_layer = fmt::Layer::new()
@@ -203,6 +211,11 @@ pub fn set_verbose_logging(enabled: bool) {
 
     // Note: Verbose logging changes will take effect on next application restart
     // or can be controlled via RUST_LOG environment variable before startup
+}
+
+/// Check if a log file is already configured
+pub fn has_log_file() -> bool {
+    LOG_FILE.lock().is_some()
 }
 
 pub fn set_log_file(file_path: &str) -> std::io::Result<()> {
