@@ -8,8 +8,7 @@ use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 use std::time::Instant;
 
 use crate::studio::state::{
-    ChatRole, EmojiInfo, Modal, PresetInfo, RefSelectorTarget, SettingsField, SettingsState,
-    StudioState,
+    EmojiInfo, Modal, PresetInfo, RefSelectorTarget, SettingsField, SettingsState, StudioState,
 };
 use crate::studio::theme;
 
@@ -266,8 +265,11 @@ fn render_chat(
     chat_state: &crate::studio::state::ChatState,
     last_render: Instant,
 ) {
+    use super::chat;
+
     let block = Block::default()
         .title(" ◈ Chat with Iris ")
+        .title_bottom(chat::help_footer())
         .borders(Borders::ALL)
         .border_style(Style::default().fg(theme::ELECTRIC_PURPLE));
     let inner = block.inner(area);
@@ -276,6 +278,7 @@ fn render_chat(
     // Split inner area: messages area and input area
     let input_height = 3u16;
     let messages_height = inner.height.saturating_sub(input_height);
+    let content_width = inner.width.saturating_sub(2) as usize;
 
     let messages_area = Rect::new(inner.x, inner.y, inner.width, messages_height);
     let input_area = Rect::new(
@@ -285,70 +288,23 @@ fn render_chat(
         input_height,
     );
 
-    // Render messages
-    let mut lines: Vec<Line> = Vec::new();
-    for msg in &chat_state.messages {
-        let (prefix, style) = match msg.role {
-            ChatRole::User => ("You: ", Style::default().fg(theme::NEON_CYAN)),
-            ChatRole::Iris => ("Iris: ", Style::default().fg(theme::ELECTRIC_PURPLE)),
-        };
-
-        // Add each line of the message with proper wrapping
-        for (i, content_line) in msg.content.lines().enumerate() {
-            if i == 0 {
-                lines.push(Line::from(vec![
-                    Span::styled(prefix, style.add_modifier(Modifier::BOLD)),
-                    Span::styled(content_line, Style::default().fg(theme::TEXT_PRIMARY)),
-                ]));
-            } else {
-                lines.push(Line::from(Span::styled(
-                    format!("      {}", content_line),
-                    Style::default().fg(theme::TEXT_PRIMARY),
-                )));
-            }
-        }
-        lines.push(Line::from("")); // Spacing between messages
-    }
-
-    // Show typing indicator if Iris is responding
-    if chat_state.is_responding {
-        let spinner = theme::SPINNER_BRAILLE
-            [last_render.elapsed().as_millis() as usize / 80 % theme::SPINNER_BRAILLE.len()];
-        lines.push(Line::from(vec![
-            Span::styled(
-                format!("{} ", spinner),
-                Style::default().fg(theme::ELECTRIC_PURPLE),
-            ),
-            Span::styled("Iris is thinking...", theme::dimmed()),
-        ]));
-    }
-
-    // Empty state
-    if chat_state.messages.is_empty() && !chat_state.is_responding {
-        lines.push(Line::from(Span::styled(
-            "Ask Iris anything about your code...",
-            theme::dimmed(),
-        )));
-    }
-
-    let messages_paragraph = Paragraph::new(lines).scroll((chat_state.scroll_offset as u16, 0));
+    // Render messages using chat module
+    let lines = chat::render_messages(chat_state, content_width, last_render.elapsed().as_millis());
+    let messages_paragraph = Paragraph::new(lines)
+        .scroll((chat_state.scroll_offset as u16, 0))
+        .wrap(ratatui::widgets::Wrap { trim: false });
     frame.render_widget(messages_paragraph, messages_area);
 
     // Render input box
     let input_block = Block::default()
         .borders(Borders::TOP)
         .border_style(Style::default().fg(theme::TEXT_DIM));
-
     let input_inner = input_block.inner(input_area);
     frame.render_widget(input_block, input_area);
 
-    let input_line = Line::from(vec![
-        Span::styled("> ", Style::default().fg(theme::ELECTRIC_PURPLE)),
-        Span::styled(&chat_state.input, Style::default().fg(theme::TEXT_PRIMARY)),
-        Span::styled("█", Style::default().fg(theme::NEON_CYAN)),
-    ]);
-    let input_paragraph = Paragraph::new(input_line);
-    frame.render_widget(input_paragraph, input_inner);
+    let cursor_visible = last_render.elapsed().as_millis() % 1000 < 500;
+    let input_line = chat::render_input_line(&chat_state.input, cursor_visible);
+    frame.render_widget(Paragraph::new(input_line), input_inner);
 }
 
 fn render_ref_selector(

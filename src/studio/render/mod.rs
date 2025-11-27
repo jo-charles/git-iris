@@ -3,6 +3,7 @@
 //! Splits rendering logic by mode for maintainability.
 
 mod changelog;
+mod chat;
 mod commit;
 mod explore;
 mod modals;

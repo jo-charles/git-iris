@@ -63,6 +63,9 @@ pub const BG_ELEVATED: Color = Color::Rgb(55, 50, 70);
 /// Active selection background - vibrant
 pub const BG_ACTIVE: Color = Color::Rgb(60, 45, 85);
 
+/// Inline code background - subtle dark
+pub const BG_CODE: Color = Color::Rgb(30, 30, 40);
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // Text Colors
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -167,6 +170,11 @@ pub fn author() -> Style {
 /// Style for dimmed/secondary text
 pub fn dimmed() -> Style {
     Style::default().fg(TEXT_DIM)
+}
+
+/// Style for inline code in chat/markdown
+pub fn inline_code() -> Style {
+    Style::default().fg(SUCCESS_GREEN).bg(BG_CODE)
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

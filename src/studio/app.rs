@@ -57,8 +57,21 @@ pub enum IrisTaskResult {
     ReleaseNotesContent(String),
     /// Chat response from Iris
     ChatResponse(String),
+    /// Chat-triggered update to current content
+    ChatUpdate(ChatUpdateType),
     /// Error from the task
     Error(String),
+}
+
+/// Type of content update triggered by chat
+#[derive(Debug, Clone)]
+pub enum ChatUpdateType {
+    /// Update commit message
+    CommitMessage(GeneratedMessage),
+    /// Update PR description
+    PRDescription(String),
+    /// Update review content
+    Review(String),
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -478,6 +491,33 @@ impl StudioApp {
                     }
                     self.state.mark_dirty();
                 }
+                IrisTaskResult::ChatUpdate(update) => {
+                    // Apply in-place update from chat
+                    match update {
+                        ChatUpdateType::CommitMessage(msg) => {
+                            let commit = &mut self.state.modes.commit;
+                            if commit.messages.is_empty() {
+                                commit.messages.push(msg);
+                            } else {
+                                commit.messages[commit.current_index] = msg;
+                            }
+                            self.state
+                                .notify(Notification::success("Commit message updated"));
+                        }
+                        ChatUpdateType::PRDescription(content) => {
+                            self.state.modes.pr.pr_content = content;
+                            self.state.modes.pr.pr_scroll = 0;
+                            self.state
+                                .notify(Notification::success("PR description updated"));
+                        }
+                        ChatUpdateType::Review(content) => {
+                            self.state.modes.review.review_content = content;
+                            self.state.modes.review.review_scroll = 0;
+                            self.state.notify(Notification::success("Review updated"));
+                        }
+                    }
+                    self.state.mark_dirty();
+                }
                 IrisTaskResult::Error(err) => {
                     self.state.set_iris_error(&err);
                     // Clear any generating states
@@ -538,6 +578,7 @@ impl StudioApp {
     /// Spawn a task for chat query - uses Iris agent with chat capability
     fn spawn_chat_query(&self, message: String) {
         use crate::agents::StructuredResponse;
+        use crate::studio::state::{ChatMessage, ChatRole, Modal};
 
         let Some(agent) = self.agent_service.clone() else {
             let tx = self.iris_result_tx.clone();
@@ -547,30 +588,118 @@ impl StudioApp {
             return;
         };
 
+        // Capture context before spawning async task
         let tx = self.iris_result_tx.clone();
         let mode = self.state.active_mode;
 
+        // Extract conversation history from chat modal
+        let chat_history: Vec<ChatMessage> = if let Some(Modal::Chat(chat)) = &self.state.modal {
+            chat.messages.clone()
+        } else {
+            Vec::new()
+        };
+
+        // Extract current content based on mode
+        let current_content = self.get_current_content_for_chat();
+
         tokio::spawn(async move {
-            // Build context-aware prompt with user's message
+            // Build comprehensive context
             let mode_context = match mode {
-                Mode::Commit => "Current mode: Commit - working with staged changes",
-                Mode::Review => "Current mode: Review - analyzing code changes",
-                Mode::PR => "Current mode: PR - preparing pull request",
-                Mode::Explore => "Current mode: Explore - navigating codebase",
-                Mode::Changelog => "Current mode: Changelog - generating changelogs",
-                Mode::ReleaseNotes => "Current mode: Release Notes - generating release notes",
+                Mode::Commit => {
+                    "Mode: Commit\nYou are helping refine a commit message for staged changes."
+                }
+                Mode::Review => {
+                    "Mode: Review\nYou are helping analyze and discuss code review findings."
+                }
+                Mode::PR => "Mode: PR\nYou are helping refine a pull request description.",
+                Mode::Explore => {
+                    "Mode: Explore\nYou are helping navigate and understand the codebase."
+                }
+                Mode::Changelog => "Mode: Changelog\nYou are helping refine a changelog.",
+                Mode::ReleaseNotes => "Mode: ReleaseNotes\nYou are helping refine release notes.",
             };
 
-            let prompt = format!("{}\n\nUser: {}", mode_context, message);
+            // Build conversation history string
+            let history_str = if chat_history.is_empty() {
+                String::new()
+            } else {
+                let mut hist = String::from("\n## Conversation History\n");
+                for msg in &chat_history {
+                    match msg.role {
+                        ChatRole::User => hist.push_str(&format!("User: {}\n", msg.content)),
+                        ChatRole::Iris => hist.push_str(&format!("Iris: {}\n", msg.content)),
+                    }
+                }
+                hist
+            };
 
-            // Execute with custom prompt to include user's message
+            // Build current content section
+            let content_section = if let Some(content) = &current_content {
+                format!("\n## Current Content\n```\n{}\n```\n", content)
+            } else {
+                String::new()
+            };
+
+            // Build update instructions based on mode
+            let update_instructions = match mode {
+                Mode::Commit => {
+                    r#"
+## Update Capability
+If the user asks you to modify the commit message, respond with:
+```json
+{"update_commit": {"emoji": "✨", "title": "New title", "message": "New body"}}
+```
+The emoji is optional. Only include this JSON if the user explicitly asks you to change/update the message."#
+                }
+                Mode::PR => {
+                    r#"
+## Update Capability
+If the user asks you to modify the PR description, respond with:
+```json
+{"update_pr": "New PR content here"}
+```
+Only include this JSON if the user explicitly asks you to change/update the description."#
+                }
+                Mode::Review => {
+                    r#"
+## Update Capability
+If the user asks you to modify the review, respond with:
+```json
+{"update_review": "New review content here"}
+```
+Only include this JSON if the user explicitly asks you to change/update the review."#
+                }
+                _ => "",
+            };
+
+            let prompt = format!(
+                "{}{}{}{}\n\n## Current Request\nUser: {}",
+                mode_context, content_section, history_str, update_instructions, message
+            );
+
+            // Execute with rich context
             match agent.execute_task_with_prompt("chat", &prompt).await {
                 Ok(response) => {
                     let text = match response {
                         StructuredResponse::PlainText(text) => text,
                         other => other.to_string(),
                     };
-                    let _ = tx.send(IrisTaskResult::ChatResponse(text));
+
+                    // Check for update commands in the response
+                    if let Some(update) = parse_chat_update(&text, mode) {
+                        let _ = tx.send(IrisTaskResult::ChatUpdate(update));
+                        // Also send the response text (without the JSON block)
+                        let clean_response = remove_update_json(&text);
+                        if clean_response.trim().is_empty() {
+                            let _ = tx.send(IrisTaskResult::ChatResponse(
+                                "Updated! The content has been modified.".to_string(),
+                            ));
+                        } else {
+                            let _ = tx.send(IrisTaskResult::ChatResponse(clean_response));
+                        }
+                    } else {
+                        let _ = tx.send(IrisTaskResult::ChatResponse(text));
+                    }
                 }
                 Err(e) => {
                     let _ = tx.send(IrisTaskResult::ChatResponse(format!(
@@ -580,6 +709,53 @@ impl StudioApp {
                 }
             }
         });
+    }
+
+    /// Get the current content for chat context based on active mode
+    fn get_current_content_for_chat(&self) -> Option<String> {
+        match self.state.active_mode {
+            Mode::Commit => {
+                // Get current commit message if any
+                let commit = &self.state.modes.commit;
+                commit
+                    .messages
+                    .get(commit.current_index)
+                    .map(crate::types::format_commit_message)
+            }
+            Mode::Review => {
+                let review = &self.state.modes.review.review_content;
+                if review.is_empty() {
+                    None
+                } else {
+                    Some(review.clone())
+                }
+            }
+            Mode::PR => {
+                let pr = &self.state.modes.pr.pr_content;
+                if pr.is_empty() {
+                    None
+                } else {
+                    Some(pr.clone())
+                }
+            }
+            Mode::Changelog => {
+                let cl = &self.state.modes.changelog.changelog_content;
+                if cl.is_empty() {
+                    None
+                } else {
+                    Some(cl.clone())
+                }
+            }
+            Mode::ReleaseNotes => {
+                let rn = &self.state.modes.release_notes.release_notes_content;
+                if rn.is_empty() {
+                    None
+                } else {
+                    Some(rn.clone())
+                }
+            }
+            Mode::Explore => None,
+        }
     }
 
     /// Spawn a task for code review generation
@@ -1660,6 +1836,94 @@ pub enum ExitResult {
     Committed(String),
     /// An error occurred
     Error(String),
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Chat Update Parsing
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Parse chat response for update commands
+fn parse_chat_update(response: &str, mode: Mode) -> Option<ChatUpdateType> {
+    // Look for JSON blocks in the response
+    let json_pattern = regex::Regex::new(r"```json\s*([\s\S]*?)```").ok()?;
+
+    for cap in json_pattern.captures_iter(response) {
+        let json_str = cap.get(1)?.as_str().trim();
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(json_str) {
+            // Check for commit update
+            if let Some(commit_obj) = value.get("update_commit") {
+                let emoji = commit_obj
+                    .get("emoji")
+                    .and_then(|e| e.as_str())
+                    .map(String::from);
+                let title = commit_obj
+                    .get("title")
+                    .and_then(|t| t.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let message = commit_obj
+                    .get("message")
+                    .and_then(|m| m.as_str())
+                    .unwrap_or("")
+                    .to_string();
+
+                return Some(ChatUpdateType::CommitMessage(GeneratedMessage {
+                    emoji,
+                    title,
+                    message,
+                }));
+            }
+
+            // Check for PR update
+            if let Some(pr_content) = value.get("update_pr").and_then(|v| v.as_str()) {
+                return Some(ChatUpdateType::PRDescription(pr_content.to_string()));
+            }
+
+            // Check for review update
+            if let Some(review_content) = value.get("update_review").and_then(|v| v.as_str()) {
+                return Some(ChatUpdateType::Review(review_content.to_string()));
+            }
+        }
+    }
+
+    // Also try to find inline JSON (not in code blocks)
+    if let Ok(value) = serde_json::from_str::<serde_json::Value>(response.trim())
+        && mode == Mode::Commit
+        && let Some(commit_obj) = value.get("update_commit")
+    {
+        let emoji = commit_obj
+            .get("emoji")
+            .and_then(|e| e.as_str())
+            .map(String::from);
+        let title = commit_obj
+            .get("title")
+            .and_then(|t| t.as_str())
+            .unwrap_or("")
+            .to_string();
+        let message = commit_obj
+            .get("message")
+            .and_then(|m| m.as_str())
+            .unwrap_or("")
+            .to_string();
+
+        return Some(ChatUpdateType::CommitMessage(GeneratedMessage {
+            emoji,
+            title,
+            message,
+        }));
+    }
+
+    None
+}
+
+/// Remove JSON update blocks from response text
+#[allow(clippy::unwrap_used)] // Fallback regex is valid
+fn remove_update_json(response: &str) -> String {
+    // Match ```json blocks containing update commands
+    let json_pattern = regex::Regex::new(r#"```json\s*\{[^}]*"update_\w+"[^}]*\}[\s\S]*?```"#)
+        .unwrap_or_else(|_| regex::Regex::new(r"$^").unwrap());
+
+    json_pattern.replace_all(response, "").trim().to_string()
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
