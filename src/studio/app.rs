@@ -852,9 +852,26 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
                 mode_context, content_section, history_str, update_instructions, message
             );
 
-            // Execute with content update tools enabled
-            match agent.execute_chat_with_updates(&prompt, content_tx).await {
+            // Execute with streaming and content update tools
+            let streaming_tx = tx.clone();
+            let on_chunk = move |chunk: &str, aggregated: &str| {
+                let _ = streaming_tx.send(IrisTaskResult::StreamingChunk {
+                    task_type: TaskType::Chat,
+                    chunk: chunk.to_string(),
+                    aggregated: aggregated.to_string(),
+                });
+            };
+
+            match agent
+                .execute_chat_streaming(&prompt, content_tx, on_chunk)
+                .await
+            {
                 Ok(response) => {
+                    // Signal streaming complete
+                    let _ = tx.send(IrisTaskResult::StreamingComplete {
+                        task_type: TaskType::Chat,
+                    });
+
                     let text = match response {
                         StructuredResponse::PlainText(text) => text,
                         other => other.to_string(),

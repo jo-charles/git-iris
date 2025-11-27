@@ -52,26 +52,57 @@ pub fn render_messages(
         }
     }
 
-    // Show typing indicator if Iris is responding
+    // Show streaming response or typing indicator if Iris is responding
     if chat_state.is_responding {
         if !chat_state.messages.is_empty() {
             lines.push(Line::from(""));
+            lines.push(Line::from(Span::styled(
+                "─".repeat(content_width.min(40)),
+                Style::default().fg(theme::TEXT_DIM),
+            )));
+            lines.push(Line::from(""));
         }
-        let spinner =
-            theme::SPINNER_BRAILLE[last_render_ms as usize / 80 % theme::SPINNER_BRAILLE.len()];
-        lines.push(Line::from(vec![
-            Span::styled(
-                format!("{} ", spinner),
-                Style::default().fg(theme::ELECTRIC_PURPLE),
-            ),
-            Span::styled(
-                "Iris is thinking",
+
+        // Show streaming content if available
+        if let Some(ref streaming) = chat_state.streaming_response {
+            // Iris header for streaming response
+            lines.push(Line::from(Span::styled(
+                "◇ Iris",
                 Style::default()
                     .fg(theme::ELECTRIC_PURPLE)
-                    .add_modifier(Modifier::ITALIC),
-            ),
-            Span::styled("...", Style::default().fg(theme::TEXT_DIM)),
-        ]));
+                    .add_modifier(Modifier::BOLD),
+            )));
+
+            // Render the streaming content with markdown formatting
+            let content_style = Style::default().fg(theme::TEXT_SECONDARY);
+            let formatted_lines = format_markdown(streaming, content_width, content_style);
+            lines.extend(formatted_lines);
+
+            // Add streaming cursor
+            let spinner =
+                theme::SPINNER_BRAILLE[last_render_ms as usize / 80 % theme::SPINNER_BRAILLE.len()];
+            lines.push(Line::from(Span::styled(
+                format!(" {}", spinner),
+                Style::default().fg(theme::ELECTRIC_PURPLE),
+            )));
+        } else {
+            // Just show thinking indicator when no streaming content yet
+            let spinner =
+                theme::SPINNER_BRAILLE[last_render_ms as usize / 80 % theme::SPINNER_BRAILLE.len()];
+            lines.push(Line::from(vec![
+                Span::styled(
+                    format!("{} ", spinner),
+                    Style::default().fg(theme::ELECTRIC_PURPLE),
+                ),
+                Span::styled(
+                    "Iris is thinking",
+                    Style::default()
+                        .fg(theme::ELECTRIC_PURPLE)
+                        .add_modifier(Modifier::ITALIC),
+                ),
+                Span::styled("...", Style::default().fg(theme::TEXT_DIM)),
+            ]));
+        }
     }
 
     // Empty state with helpful message

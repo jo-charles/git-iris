@@ -372,6 +372,24 @@ impl IrisAgentService {
         agent.execute_task("chat", task_prompt).await
     }
 
+    /// Execute a chat task with streaming and content update capabilities
+    ///
+    /// Combines streaming output with tool-based content updates for the TUI chat.
+    pub async fn execute_chat_streaming<F>(
+        &self,
+        task_prompt: &str,
+        content_update_sender: crate::agents::tools::ContentUpdateSender,
+        on_chunk: F,
+    ) -> Result<StructuredResponse>
+    where
+        F: FnMut(&str, &str) + Send,
+    {
+        let mut agent = self.create_agent_with_content_updates(content_update_sender)?;
+        agent
+            .execute_task_streaming("chat", task_prompt, on_chunk)
+            .await
+    }
+
     /// Execute an agent task with streaming
     ///
     /// This method streams LLM output in real-time, calling the callback with each

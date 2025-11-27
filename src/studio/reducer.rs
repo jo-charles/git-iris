@@ -1063,6 +1063,30 @@ fn reduce_mouse_event(
 ) -> Vec<SideEffect> {
     let effects = Vec::new();
 
+    // Check if chat modal is open - scroll it instead of the main view
+    if let Some(Modal::Chat(ref mut chat)) = state.modal {
+        match mouse.kind {
+            MouseEventKind::ScrollUp => {
+                chat.scroll_up(3);
+                state.mark_dirty();
+            }
+            MouseEventKind::ScrollDown => {
+                // For scroll_down we need max_scroll, but we don't have render info here.
+                // Just increment and let render clamp it.
+                chat.scroll_offset = chat.scroll_offset.saturating_add(3);
+                // Don't auto-scroll since user is manually scrolling
+                chat.auto_scroll = false;
+                state.mark_dirty();
+            }
+            MouseEventKind::Down(_) => {
+                state.mark_dirty();
+            }
+            _ => {}
+        }
+        return effects;
+    }
+
+    // Normal scroll handling for main views
     match mouse.kind {
         MouseEventKind::ScrollUp => {
             apply_scroll(state, ScrollDirection::Up, 3);
