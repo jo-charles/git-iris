@@ -35,17 +35,23 @@ fn handle_search_modal(state: &mut StudioState, key: KeyEvent) -> Action {
             Action::Redraw
         }
         KeyCode::Enter => {
-            // TODO: Handle search selection
+            // TODO: Execute search with current query
+            state.notify(Notification::info("Search not yet implemented"));
             state.close_modal();
             Action::Redraw
         }
         KeyCode::Char(c) => {
-            // TODO: Update search query
-            let _ = c;
+            if let Some(Modal::Search { query, .. }) = &mut state.modal {
+                query.push(c);
+            }
+            state.mark_dirty();
             Action::Redraw
         }
         KeyCode::Backspace => {
-            // TODO: Update search query
+            if let Some(Modal::Search { query, .. }) = &mut state.modal {
+                query.pop();
+            }
+            state.mark_dirty();
             Action::Redraw
         }
         _ => Action::None,
@@ -158,17 +164,17 @@ fn handle_chat_modal(state: &mut StudioState, key: KeyEvent) -> Action {
             Action::Redraw
         }
         KeyCode::Up => {
-            // Scroll up in chat history
+            // Scroll up in chat history (decrease offset = show earlier content)
             if let Some(Modal::Chat(chat)) = &mut state.modal {
-                chat.scroll_offset = chat.scroll_offset.saturating_add(1);
+                chat.scroll_offset = chat.scroll_offset.saturating_sub(1);
             }
             state.mark_dirty();
             Action::Redraw
         }
         KeyCode::Down => {
-            // Scroll down in chat history
+            // Scroll down in chat history (increase offset = show later content)
             if let Some(Modal::Chat(chat)) = &mut state.modal {
-                chat.scroll_offset = chat.scroll_offset.saturating_sub(1);
+                chat.scroll_offset = chat.scroll_offset.saturating_add(1);
             }
             state.mark_dirty();
             Action::Redraw
