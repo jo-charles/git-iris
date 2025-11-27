@@ -5,17 +5,24 @@ output_type = "GeneratedMessage"
 task_prompt = """
 Generate a commit message for the staged changes.
 
+## MANDATORY FIRST STEP
+**ALWAYS call `project_docs(doc_type="context")` FIRST** before any other tool.
+This fetches README + AGENTS.md/CLAUDE.md containing project conventions you MUST follow.
+Do not skip this step.
+
 ## Tools Available
+- `project_docs(doc_type="context")` - **CALL FIRST** - Get README + AGENTS.md/CLAUDE.md for project context
 - `git_diff()` - Get staged changes with relevance scores and size guidance
 - `git_log(count=5)` - Recent commits for style reference
 - `project_metadata()` - Get project language, framework, and dependencies (optional)
 - `parallel_analyze(tasks=[...])` - Spawn subagents for very large changesets (optional)
 
 ## Workflow
-1. Call `git_diff()` to see what changed
-2. Read the **Size** and **Guidance** in the summary header
-3. Follow the guidance for focusing on relevant files
-4. Generate the commit message
+1. **FIRST**: Call `project_docs(doc_type="context")` — understand the project's conventions
+2. Call `git_diff()` to see what changed
+3. Read the **Size** and **Guidance** in the summary header
+4. Follow the guidance for focusing on relevant files
+5. Generate the commit message following any project-specific conventions from step 1
 
 ## Context Strategy by Size
 - **Small** (≤3 files, <100 lines): Consider all changes equally

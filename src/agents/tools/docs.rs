@@ -33,6 +33,10 @@ pub enum DocType {
     License,
     /// Code of conduct (`CODE_OF_CONDUCT.md`)
     CodeOfConduct,
+    /// Agent/AI instructions (AGENTS.md, CLAUDE.md, .github/copilot-instructions.md)
+    Agents,
+    /// Project context: README + agent instructions (recommended for all operations)
+    Context,
     /// All documentation files
     All,
 }
@@ -61,7 +65,7 @@ impl Tool for ProjectDocs {
         ToolDefinition {
             name: "project_docs".to_string(),
             description:
-                "Fetch project documentation (README, CONTRIBUTING, CHANGELOG, etc.) for context"
+                "Fetch project documentation for context. Types: readme, contributing, changelog, license, codeofconduct, agents (AGENTS.md/CLAUDE.md), context (readme + agent instructions - RECOMMENDED), all"
                     .to_string(),
             parameters: parameters_schema::<ProjectDocsArgs>(),
         }
@@ -89,8 +93,23 @@ impl Tool for ProjectDocs {
             ],
             DocType::License => vec!["LICENSE", "LICENSE.md", "LICENSE.txt", "license"],
             DocType::CodeOfConduct => vec!["CODE_OF_CONDUCT.md", "code_of_conduct.md"],
+            DocType::Agents => vec![
+                "AGENTS.md",
+                "CLAUDE.md",
+                ".github/copilot-instructions.md",
+                ".cursor/rules",
+                "CODING_GUIDELINES.md",
+            ],
+            DocType::Context => vec![
+                "README.md",
+                "AGENTS.md",
+                "CLAUDE.md",
+                ".github/copilot-instructions.md",
+            ],
             DocType::All => vec![
                 "README.md",
+                "AGENTS.md",
+                "CLAUDE.md",
                 "CONTRIBUTING.md",
                 "CHANGELOG.md",
                 "CODE_OF_CONDUCT.md",
@@ -99,13 +118,26 @@ impl Tool for ProjectDocs {
 
         let mut output = String::new();
         let mut found_any = false;
+        // Track if we found an agent instructions file (AGENTS.md often symlinks to CLAUDE.md)
+        let mut found_agent_doc = false;
 
         for filename in files_to_check {
+            // Skip CLAUDE.md if we already found AGENTS.md (avoid duplicate from symlink)
+            if filename == "CLAUDE.md" && found_agent_doc {
+                continue;
+            }
+
             let path: PathBuf = current_dir.join(filename);
             if path.exists() {
                 match tokio::fs::read_to_string(&path).await {
                     Ok(content) => {
                         found_any = true;
+
+                        // Mark that we found an agent doc file
+                        if filename == "AGENTS.md" {
+                            found_agent_doc = true;
+                        }
+
                         output.push_str(&format!("=== {} ===\n", filename));
 
                         // Truncate if too long
@@ -121,7 +153,8 @@ impl Tool for ProjectDocs {
                         output.push_str("\n\n");
 
                         // For single doc types, return after finding first match
-                        if !matches!(args.doc_type, DocType::All) {
+                        // Context and All gather multiple files
+                        if !matches!(args.doc_type, DocType::All | DocType::Context) {
                             break;
                         }
                     }
