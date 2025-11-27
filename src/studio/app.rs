@@ -30,7 +30,10 @@ use crate::services::GitCommitService;
 use crate::types::GeneratedMessage;
 
 use super::components::{DiffHunk, DiffLine, FileDiff, FileGitStatus, parse_diff};
-use super::events::{AgentResult, ContentPayload, ContentType, SideEffect, StudioEvent, TaskType};
+use super::events::{
+    AgentResult, BlameInfo, ContentPayload, ContentType, SemanticBlameResult, SideEffect,
+    StudioEvent, TaskType,
+};
 use super::history::History;
 use super::layout::{LayoutAreas, calculate_layout, get_mode_layout};
 use super::reducer::reduce;
@@ -63,6 +66,8 @@ pub enum IrisTaskResult {
     ChatUpdate(ChatUpdateType),
     /// Tool call status update (for streaming tool calls to chat)
     ToolStatus { tool_name: String, message: String },
+    /// Semantic blame result
+    SemanticBlame(SemanticBlameResult),
     /// Error from the task
     Error(String),
 }
@@ -262,7 +267,18 @@ impl StudioApp {
                     AgentTask::Chat { message, context } => {
                         self.spawn_chat_query(message, context);
                     }
+                    AgentTask::SemanticBlame { blame_info } => {
+                        self.spawn_semantic_blame(blame_info);
+                    }
                 },
+
+                SideEffect::GatherBlameAndSpawnAgent {
+                    file,
+                    start_line,
+                    end_line,
+                } => {
+                    self.gather_blame_and_spawn(file, start_line, end_line);
+                }
 
                 SideEffect::LoadData {
                     data_type,
@@ -430,6 +446,17 @@ impl StudioApp {
 
     /// Run the TUI application
     pub fn run(&mut self) -> Result<ExitResult> {
+        // Install panic hook to ensure terminal is restored on panic
+        let original_hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |panic_info| {
+            // Try to restore terminal
+            let _ = disable_raw_mode();
+            let _ = execute!(io::stdout(), LeaveAlternateScreen, DisableMouseCapture);
+            // Print panic info to stderr
+            eprintln!("\n\n=== PANIC ===\n{}\n", panic_info);
+            original_hook(panic_info);
+        }));
+
         // Setup terminal
         enable_raw_mode()?;
         let mut stdout = io::stdout();
@@ -599,6 +626,11 @@ impl StudioApp {
                     }
                 }
 
+                IrisTaskResult::SemanticBlame(result) => StudioEvent::AgentComplete {
+                    task_type: TaskType::SemanticBlame,
+                    result: AgentResult::SemanticBlame(result),
+                },
+
                 IrisTaskResult::ToolStatus { tool_name, message } => {
                     // Tool status updates go to chat progress
                     // For now, handle directly since it's UI-only (chat bubble updates)
@@ -625,6 +657,8 @@ impl StudioApp {
                         TaskType::ReleaseNotes
                     } else if matches!(&self.state.modal, Some(Modal::Chat(c)) if c.is_responding) {
                         TaskType::Chat
+                    } else if self.state.modes.explore.blame_loading {
+                        TaskType::SemanticBlame
                     } else {
                         // Default to commit if we can't determine
                         TaskType::Commit
@@ -1200,6 +1234,150 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
                 }
                 Err(e) => {
                     let _ = tx.send(IrisTaskResult::Error(format!("Agent error: {}", e)));
+                }
+            }
+        });
+    }
+
+    /// Gather blame information from git and spawn the semantic blame agent
+    fn gather_blame_and_spawn(&self, file: std::path::PathBuf, start_line: usize, end_line: usize) {
+        use std::fs;
+        use std::process::Command;
+
+        let Some(repo) = &self.state.repo else {
+            let tx = self.iris_result_tx.clone();
+            let _ = tx.send(IrisTaskResult::Error(
+                "Repository not available".to_string(),
+            ));
+            return;
+        };
+
+        // Read the file content for the specified range
+        let code_content = match fs::read_to_string(&file) {
+            Ok(content) => {
+                let lines: Vec<&str> = content.lines().collect();
+                if start_line == 0 || start_line > lines.len() {
+                    let tx = self.iris_result_tx.clone();
+                    let _ = tx.send(IrisTaskResult::Error("Invalid line range".to_string()));
+                    return;
+                }
+                let end = end_line.min(lines.len());
+                lines[(start_line - 1)..end].join("\n")
+            }
+            Err(e) => {
+                let tx = self.iris_result_tx.clone();
+                let _ = tx.send(IrisTaskResult::Error(format!("Could not read file: {}", e)));
+                return;
+            }
+        };
+
+        // Get repo path
+        let repo_path = repo.repo_path();
+
+        // Run git blame with porcelain format to get commit info
+        let output = Command::new("git")
+            .args([
+                "-C",
+                &repo_path.to_string_lossy(),
+                "blame",
+                "-L",
+                &format!("{},{}", start_line, end_line),
+                "--porcelain",
+                &file.to_string_lossy(),
+            ])
+            .output();
+
+        let (commit_hash, author, commit_date, commit_message) = match output {
+            Ok(output) if output.status.success() => {
+                let blame_output = String::from_utf8_lossy(&output.stdout);
+                parse_blame_porcelain(&blame_output)
+            }
+            Ok(output) => {
+                let err = String::from_utf8_lossy(&output.stderr);
+                let tx = self.iris_result_tx.clone();
+                let _ = tx.send(IrisTaskResult::Error(format!("Git blame failed: {}", err)));
+                return;
+            }
+            Err(e) => {
+                let tx = self.iris_result_tx.clone();
+                let _ = tx.send(IrisTaskResult::Error(format!("Could not run git: {}", e)));
+                return;
+            }
+        };
+
+        let blame_info = BlameInfo {
+            file: file.clone(),
+            start_line,
+            end_line,
+            commit_hash,
+            author,
+            commit_date,
+            commit_message,
+            code_content,
+        };
+
+        // Now spawn the semantic blame agent
+        self.spawn_semantic_blame(blame_info);
+    }
+
+    /// Spawn the semantic blame agent to explain why the code exists
+    fn spawn_semantic_blame(&self, blame_info: BlameInfo) {
+        use crate::agents::StructuredResponse;
+
+        let Some(agent) = self.agent_service.clone() else {
+            let tx = self.iris_result_tx.clone();
+            let _ = tx.send(IrisTaskResult::Error(
+                "Agent service not available".to_string(),
+            ));
+            return;
+        };
+
+        let tx = self.iris_result_tx.clone();
+
+        tokio::spawn(async move {
+            // Build context with blame info
+            let context_text = format!(
+                "File: {}\nLines: {}-{}\nCommit: {} by {} on {}\nMessage: {}\n\nCode:\n{}",
+                blame_info.file.display(),
+                blame_info.start_line,
+                blame_info.end_line,
+                blame_info.commit_hash,
+                blame_info.author,
+                blame_info.commit_date,
+                blame_info.commit_message,
+                blame_info.code_content
+            );
+
+            // Execute semantic_blame capability
+            match agent
+                .execute_task_with_prompt("semantic_blame", &context_text)
+                .await
+            {
+                Ok(response) => match response {
+                    StructuredResponse::SemanticBlame(explanation) => {
+                        let result = SemanticBlameResult {
+                            file: blame_info.file,
+                            start_line: blame_info.start_line,
+                            end_line: blame_info.end_line,
+                            commit_hash: blame_info.commit_hash,
+                            author: blame_info.author,
+                            commit_date: blame_info.commit_date,
+                            commit_message: blame_info.commit_message,
+                            explanation,
+                        };
+                        let _ = tx.send(IrisTaskResult::SemanticBlame(result));
+                    }
+                    _ => {
+                        let _ = tx.send(IrisTaskResult::Error(
+                            "Unexpected response type from agent".to_string(),
+                        ));
+                    }
+                },
+                Err(e) => {
+                    let _ = tx.send(IrisTaskResult::Error(format!(
+                        "Semantic blame error: {}",
+                        e
+                    )));
                 }
             }
         });
@@ -1933,4 +2111,44 @@ pub fn run_studio(
             Ok(())
         }
     }
+}
+
+/// Parse git blame porcelain output to extract commit info
+fn parse_blame_porcelain(output: &str) -> (String, String, String, String) {
+    let mut commit_hash = String::new();
+    let mut author = String::new();
+    let mut commit_time = String::new();
+    let mut summary = String::new();
+
+    for line in output.lines() {
+        if commit_hash.is_empty()
+            && line.len() >= 40
+            && line.chars().take(40).all(|c| c.is_ascii_hexdigit())
+        {
+            commit_hash = line.split_whitespace().next().unwrap_or("").to_string();
+        } else if let Some(rest) = line.strip_prefix("author ") {
+            author = rest.to_string();
+        } else if let Some(rest) = line.strip_prefix("author-time ") {
+            if let Ok(timestamp) = rest.parse::<i64>() {
+                commit_time = chrono::DateTime::from_timestamp(timestamp, 0).map_or_else(
+                    || "Unknown date".to_string(),
+                    |dt| dt.format("%Y-%m-%d %H:%M").to_string(),
+                );
+            }
+        } else if let Some(rest) = line.strip_prefix("summary ") {
+            summary = rest.to_string();
+        }
+    }
+
+    if commit_hash.is_empty() {
+        commit_hash = "Unknown".to_string();
+    }
+    if author.is_empty() {
+        author = "Unknown".to_string();
+    }
+    if commit_time.is_empty() {
+        commit_time = "Unknown date".to_string();
+    }
+
+    (commit_hash, author, commit_time, summary)
 }

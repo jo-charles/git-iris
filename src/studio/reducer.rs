@@ -331,6 +331,12 @@ pub fn reduce(
                     }
                     state.chat_state.add_iris_response(&response);
                 }
+
+                AgentResult::SemanticBlame(result) => {
+                    state.modes.explore.semantic_blame = Some(result);
+                    state.modes.explore.blame_loading = false;
+                    state.notify(Notification::success("Blame analysis complete"));
+                }
             }
 
             state.mark_dirty();
@@ -352,6 +358,9 @@ pub fn reduce(
                         chat.is_responding = false;
                     }
                     state.chat_state.is_responding = false;
+                }
+                TaskType::SemanticBlame => {
+                    state.modes.explore.blame_loading = false;
                 }
             }
 
@@ -1005,4 +1014,74 @@ fn reduce_mouse_event(
     }
 
     effects
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Tests
+// ═══════════════════════════════════════════════════════════════════════════════
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::Config;
+
+    fn test_state() -> StudioState {
+        StudioState::new(Config::default(), None)
+    }
+
+    #[test]
+    fn test_mode_switch() {
+        let mut state = test_state();
+        let mut history = History::new();
+
+        let effects = reduce(
+            &mut state,
+            StudioEvent::SwitchMode(Mode::Commit),
+            &mut history,
+        );
+
+        assert_eq!(state.active_mode, Mode::Commit);
+        assert!(!effects.is_empty()); // Should have LoadData effect
+    }
+
+    #[test]
+    fn test_focus_panel() {
+        let mut state = test_state();
+        let mut history = History::new();
+
+        let _ = reduce(
+            &mut state,
+            StudioEvent::FocusPanel(PanelId::Right),
+            &mut history,
+        );
+
+        assert_eq!(state.focused_panel, PanelId::Right);
+    }
+
+    #[test]
+    fn test_notify() {
+        let mut state = test_state();
+        let mut history = History::new();
+
+        let _ = reduce(
+            &mut state,
+            StudioEvent::Notify {
+                level: NotificationLevel::Success,
+                message: "Test notification".to_string(),
+            },
+            &mut history,
+        );
+
+        assert!(!state.notifications.is_empty());
+    }
+
+    #[test]
+    fn test_quit_produces_effect() {
+        let mut state = test_state();
+        let mut history = History::new();
+
+        let effects = reduce(&mut state, StudioEvent::Quit, &mut history);
+
+        assert!(effects.iter().any(|e| matches!(e, SideEffect::Quit)));
+    }
 }

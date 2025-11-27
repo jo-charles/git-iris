@@ -170,10 +170,32 @@ fn handle_code_view_key(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffec
 
         // Ask "why" about current line - semantic blame
         KeyCode::Char('w') => {
-            // TODO: Semantic blame will use AI to explain why code exists
-            state.notify(Notification::info("Semantic blame coming soon"));
-            state.mark_dirty();
-            vec![]
+            let file = state.modes.explore.current_file.clone();
+            if let Some(file) = file {
+                if state.modes.explore.blame_loading {
+                    state.notify(Notification::info("Already analyzing..."));
+                    state.mark_dirty();
+                    vec![]
+                } else {
+                    let line = state.modes.explore.current_line;
+                    let end_line = state.modes.explore.selection.map_or(line, |(_, end)| end);
+
+                    // Set loading state
+                    state.modes.explore.blame_loading = true;
+                    state.set_iris_thinking("Analyzing code history...");
+                    state.mark_dirty();
+
+                    vec![SideEffect::GatherBlameAndSpawnAgent {
+                        file,
+                        start_line: line,
+                        end_line,
+                    }]
+                }
+            } else {
+                state.notify(Notification::warning("No file selected"));
+                state.mark_dirty();
+                vec![]
+            }
         }
 
         // Open in $EDITOR

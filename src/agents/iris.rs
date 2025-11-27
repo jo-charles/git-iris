@@ -22,6 +22,7 @@ const CAPABILITY_REVIEW: &str = include_str!("capabilities/review.toml");
 const CAPABILITY_CHANGELOG: &str = include_str!("capabilities/changelog.toml");
 const CAPABILITY_RELEASE_NOTES: &str = include_str!("capabilities/release_notes.toml");
 const CAPABILITY_CHAT: &str = include_str!("capabilities/chat.toml");
+const CAPABILITY_SEMANTIC_BLAME: &str = include_str!("capabilities/semantic_blame.toml");
 
 use crate::agents::tools::{GitRepoInfo, ParallelAnalyze, Workspace};
 // Added to ensure builder extension methods like `.max_tokens` are in scope
@@ -62,6 +63,8 @@ pub enum StructuredResponse {
     ReleaseNotes(crate::types::MarkdownReleaseNotes),
     /// Markdown-based review (LLM-driven structure)
     MarkdownReview(crate::types::MarkdownReview),
+    /// Semantic blame explanation (plain text)
+    SemanticBlame(String),
     PlainText(String),
 }
 
@@ -82,6 +85,9 @@ impl fmt::Display for StructuredResponse {
             }
             StructuredResponse::MarkdownReview(review) => {
                 write!(f, "{}", review.format())
+            }
+            StructuredResponse::SemanticBlame(explanation) => {
+                write!(f, "{explanation}")
             }
             StructuredResponse::PlainText(text) => {
                 write!(f, "{text}")
@@ -780,6 +786,13 @@ Guidelines:
                     .await?;
                 Ok(StructuredResponse::MarkdownReview(response))
             }
+            "SemanticBlame" => {
+                // For semantic blame, we want plain text response
+                let agent = self.build_agent()?;
+                let full_prompt = format!("{system_prompt}\n\n{user_prompt}");
+                let response = agent.prompt(&full_prompt).multi_turn(10).await?;
+                Ok(StructuredResponse::SemanticBlame(response))
+            }
             _ => {
                 // Fallback to regular agent for unknown types
                 let agent = self.build_agent()?;
@@ -802,6 +815,7 @@ Guidelines:
             "changelog" => CAPABILITY_CHANGELOG,
             "release_notes" => CAPABILITY_RELEASE_NOTES,
             "chat" => CAPABILITY_CHAT,
+            "semantic_blame" => CAPABILITY_SEMANTIC_BLAME,
             _ => {
                 // Return generic prompt for unknown capabilities
                 return Ok((

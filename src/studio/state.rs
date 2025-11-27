@@ -779,6 +779,10 @@ pub struct ExploreState {
     pub file_tree: FileTreeState,
     /// Code view state
     pub code_view: CodeViewState,
+    /// Current semantic blame result (for context panel)
+    pub semantic_blame: Option<super::events::SemanticBlameResult>,
+    /// Whether semantic blame is loading
+    pub blame_loading: bool,
 }
 
 impl std::fmt::Debug for ExploreState {

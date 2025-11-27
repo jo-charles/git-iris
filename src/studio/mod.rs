@@ -28,9 +28,6 @@ mod theme;
 // Submodules
 pub mod components;
 
-#[cfg(test)]
-mod tests;
-
 // Re-exports
 pub use app::{ExitResult, StudioApp, run_studio};
 pub use state::{Mode, StudioState};

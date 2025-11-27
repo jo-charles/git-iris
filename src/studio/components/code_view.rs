@@ -274,10 +274,15 @@ fn render_code_line(
         Style::default().fg(theme::TEXT_SECONDARY)
     };
 
-    // Truncate content if too long
+    // Truncate content if too long (use char count, not byte count for UTF-8 safety)
     let available_width = max_width.saturating_sub(line_num_width + 3); // 3 = " | "
-    let display_content = if content.len() > available_width {
-        format!("{}...", &content[..available_width.saturating_sub(3)])
+    let char_count = content.chars().count();
+    let display_content = if char_count > available_width {
+        let truncated: String = content
+            .chars()
+            .take(available_width.saturating_sub(3))
+            .collect();
+        format!("{}...", truncated)
     } else {
         content.to_string()
     };

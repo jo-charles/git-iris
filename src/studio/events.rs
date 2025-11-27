@@ -212,6 +212,7 @@ pub enum TaskType {
     Changelog,
     ReleaseNotes,
     Chat,
+    SemanticBlame,
 }
 
 impl std::fmt::Display for TaskType {
@@ -223,6 +224,7 @@ impl std::fmt::Display for TaskType {
             Self::Changelog => write!(f, "changelog"),
             Self::ReleaseNotes => write!(f, "release_notes"),
             Self::Chat => write!(f, "chat"),
+            Self::SemanticBlame => write!(f, "semantic_blame"),
         }
     }
 }
@@ -247,6 +249,29 @@ pub enum AgentResult {
 
     /// Chat response
     ChatResponse(String),
+
+    /// Semantic blame explanation
+    SemanticBlame(SemanticBlameResult),
+}
+
+/// Result from semantic blame query
+#[derive(Debug, Clone)]
+pub struct SemanticBlameResult {
+    /// The file that was analyzed
+    pub file: PathBuf,
+    /// Line range analyzed
+    pub start_line: usize,
+    pub end_line: usize,
+    /// The commit that introduced this code
+    pub commit_hash: String,
+    /// Commit author
+    pub author: String,
+    /// When the commit was made
+    pub commit_date: String,
+    /// Original commit message
+    pub commit_message: String,
+    /// AI-generated explanation of why this code exists
+    pub explanation: String,
 }
 
 /// Types of content that can be updated
@@ -391,6 +416,34 @@ pub enum SideEffect {
 
     /// Quit the application
     Quit,
+
+    /// Gather blame info for a file region and spawn semantic blame agent
+    GatherBlameAndSpawnAgent {
+        file: PathBuf,
+        start_line: usize,
+        end_line: usize,
+    },
+}
+
+/// Blame information gathered from git
+#[derive(Debug, Clone)]
+pub struct BlameInfo {
+    /// The file that was blamed
+    pub file: PathBuf,
+    /// Start line of the region
+    pub start_line: usize,
+    /// End line of the region
+    pub end_line: usize,
+    /// Commit hash that introduced the code
+    pub commit_hash: String,
+    /// Author name
+    pub author: String,
+    /// Commit date
+    pub commit_date: String,
+    /// Original commit message
+    pub commit_message: String,
+    /// The actual code content in the range
+    pub code_content: String,
 }
 
 /// Agent task to spawn
@@ -420,6 +473,11 @@ pub enum AgentTask {
     Chat {
         message: String,
         context: ChatContext,
+    },
+    #[allow(dead_code)]
+    // Kept for future use - currently GatherBlameAndSpawnAgent handles this directly
+    SemanticBlame {
+        blame_info: BlameInfo,
     },
 }
 
