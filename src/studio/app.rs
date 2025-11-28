@@ -743,8 +743,7 @@ impl StudioApp {
         use crate::agents::status::IRIS_STATUS;
         use crate::agents::tools::{ContentUpdate, create_content_update_channel};
         use crate::studio::state::{ChatMessage, ChatRole};
-        use std::sync::Arc;
-        use std::sync::atomic::{AtomicBool, Ordering};
+        use tokio_util::sync::CancellationToken;
 
         let Some(agent) = self.agent_service.clone() else {
             let tx = self.iris_result_tx.clone();
@@ -754,7 +753,7 @@ impl StudioApp {
             return;
         };
 
-        // Create content update channel for tool-based updates
+        // Create bounded content update channel for tool-based updates
         let (content_tx, mut content_rx) = create_content_update_channel();
 
         // Capture context before spawning async task
@@ -772,44 +771,50 @@ impl StudioApp {
             .current_content
             .or_else(|| self.get_current_content_for_chat());
 
-        // Flag to signal when the main task is done
-        let is_done = Arc::new(AtomicBool::new(false));
-        let is_done_clone = is_done.clone();
-        let is_done_updates = is_done.clone();
+        // Cancellation token to signal when the main task is done
+        let cancel_token = CancellationToken::new();
+        let cancel_status = cancel_token.clone();
+        let cancel_updates = cancel_token.clone();
 
-        // Spawn a status polling task
+        // Spawn a status polling task (polls global state, so still uses interval)
         tokio::spawn(async move {
             use crate::agents::status::IrisPhase;
             let mut last_tool: Option<String> = None;
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(100));
 
-            while !is_done_clone.load(Ordering::Relaxed) {
-                let status = IRIS_STATUS.get_current();
+            loop {
+                tokio::select! {
+                    _ = cancel_status.cancelled() => break,
+                    _ = interval.tick() => {
+                        let status = IRIS_STATUS.get_current();
 
-                // Check if we're in a tool execution phase
-                if let IrisPhase::ToolExecution {
-                    ref tool_name,
-                    ref reason,
-                } = status.phase
-                {
-                    // Only send if it's a new tool
-                    if last_tool.as_ref() != Some(tool_name) {
-                        let _ = tx_status.send(IrisTaskResult::ToolStatus {
-                            tool_name: tool_name.clone(),
-                            message: reason.clone(),
-                        });
-                        last_tool = Some(tool_name.clone());
+                        // Check if we're in a tool execution phase
+                        if let IrisPhase::ToolExecution {
+                            ref tool_name,
+                            ref reason,
+                        } = status.phase
+                        {
+                            // Only send if it's a new tool
+                            if last_tool.as_ref() != Some(tool_name) {
+                                let _ = tx_status.send(IrisTaskResult::ToolStatus {
+                                    tool_name: tool_name.clone(),
+                                    message: reason.clone(),
+                                });
+                                last_tool = Some(tool_name.clone());
+                            }
+                        }
                     }
                 }
-
-                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
             }
         });
 
-        // Spawn a task to listen for content updates from tools
+        // Spawn a task to listen for content updates from tools (uses select! for zero latency)
         tokio::spawn(async move {
-            while !is_done_updates.load(Ordering::Relaxed) {
-                match content_rx.try_recv() {
-                    Ok(update) => {
+            loop {
+                tokio::select! {
+                    _ = cancel_updates.cancelled() => break,
+                    update = content_rx.recv() => {
+                        let Some(update) = update else { break };
                         let chat_update = match update {
                             ContentUpdate::Commit {
                                 emoji,
@@ -834,10 +839,6 @@ impl StudioApp {
                         };
                         let _ = tx_updates.send(IrisTaskResult::ChatUpdate(chat_update));
                     }
-                    Err(tokio::sync::mpsc::error::TryRecvError::Empty) => {
-                        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
-                    }
-                    Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => break,
                 }
             }
         });
@@ -926,8 +927,8 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
                 }
             }
 
-            // Signal that we're done so the status polling task stops
-            is_done.store(true, Ordering::Relaxed);
+            // Signal that we're done so the helper tasks stop
+            cancel_token.cancel();
         });
     }
 

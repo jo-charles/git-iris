@@ -31,13 +31,16 @@ pub enum ContentUpdate {
     Review { content: String },
 }
 
-/// Sender for content updates - passed to tools and listened to by Studio
-pub type ContentUpdateSender = mpsc::UnboundedSender<ContentUpdate>;
-pub type ContentUpdateReceiver = mpsc::UnboundedReceiver<ContentUpdate>;
+/// Channel capacity for content updates
+pub const CONTENT_UPDATE_CHANNEL_CAPACITY: usize = 100;
 
-/// Create a new content update channel
+/// Sender for content updates - passed to tools and listened to by Studio
+pub type ContentUpdateSender = mpsc::Sender<ContentUpdate>;
+pub type ContentUpdateReceiver = mpsc::Receiver<ContentUpdate>;
+
+/// Create a new bounded content update channel
 pub fn create_content_update_channel() -> (ContentUpdateSender, ContentUpdateReceiver) {
-    mpsc::unbounded_channel()
+    mpsc::channel(CONTENT_UPDATE_CHANNEL_CAPACITY)
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -98,7 +101,7 @@ impl Tool for UpdateCommitTool {
             message: args.message.clone().unwrap_or_default(),
         };
 
-        self.sender.send(update).map_err(|e| {
+        self.sender.try_send(update).map_err(|e| {
             tracing::error!("Failed to send content update: {}", e);
             ContentUpdateError(format!("Failed to send update: {}", e))
         })?;
@@ -161,7 +164,7 @@ impl Tool for UpdatePRTool {
         };
 
         self.sender
-            .send(update)
+            .try_send(update)
             .map_err(|e| ContentUpdateError(format!("Failed to send update: {}", e)))?;
 
         let result = json!({
@@ -219,7 +222,7 @@ impl Tool for UpdateReviewTool {
         };
 
         self.sender
-            .send(update)
+            .try_send(update)
             .map_err(|e| ContentUpdateError(format!("Failed to send update: {}", e)))?;
 
         let result = json!({

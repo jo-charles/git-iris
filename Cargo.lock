@@ -911,6 +911,7 @@ dependencies = [
  "tiktoken-rs",
  "tokio",
  "tokio-retry",
+ "tokio-util",
  "toml",
  "tracing",
  "tracing-subscriber",
