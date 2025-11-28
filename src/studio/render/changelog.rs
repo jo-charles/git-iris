@@ -21,7 +21,13 @@ fn scrollable_title(base_title: &str, scroll: usize, total_lines: usize, visible
         } else {
             ((scroll.min(max_scroll)) * 100) / max_scroll
         };
-        format!(" {} ({}/{}) {}% ", base_title, scroll + 1, total_lines, percent)
+        format!(
+            " {} ({}/{}) {}% ",
+            base_title,
+            scroll + 1,
+            total_lines,
+            percent
+        )
     }
 }
 

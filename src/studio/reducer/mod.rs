@@ -7,7 +7,6 @@
 //!
 //! Side effects are returned for the app to execute after state update.
 
-mod agent;
 mod modal;
 mod navigation;
 
@@ -15,12 +14,10 @@ use crossterm::event::MouseEventKind;
 
 use super::events::{
     AgentResult, AgentTask, ChatContext, ContentPayload, ContentType, DataType, ModalType,
-    NotificationLevel, RefField, ScrollDirection, SideEffect, StudioEvent, TaskType,
+    NotificationLevel, ScrollDirection, SideEffect, StudioEvent, TaskType,
 };
 use super::history::{ChatRole, ContentData, History};
-use super::state::{
-    EmojiMode, Modal, Mode, Notification, PanelId, RefSelectorTarget, SettingsState, StudioState,
-};
+use super::state::{EmojiMode, Modal, Mode, Notification, StudioState};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Reducer Function
@@ -591,7 +588,7 @@ pub fn reduce(
         // Modal Events
         // ─────────────────────────────────────────────────────────────────────────
         StudioEvent::OpenModal(modal_type) => {
-            state.modal = Some(create_modal(state, modal_type));
+            state.modal = Some(modal::create_modal(state, modal_type));
             state.mark_dirty();
         }
 
@@ -615,7 +612,7 @@ pub fn reduce(
                 }
                 ModalType::RefSelector { field } => {
                     if let Some(ref_value) = data {
-                        apply_ref_selection(state, field, ref_value);
+                        modal::apply_ref_selection(state, field, ref_value);
                     }
                 }
                 ModalType::PresetSelector => {
@@ -656,7 +653,7 @@ pub fn reduce(
         }
 
         StudioEvent::Scroll { direction, amount } => {
-            apply_scroll(state, direction, amount);
+            navigation::apply_scroll(state, direction, amount);
         }
 
         StudioEvent::ToggleEditMode => {
@@ -845,433 +842,6 @@ fn get_diff_summary(state: &StudioState) -> Option<String> {
     }
 }
 
-/// Create a modal from a modal type
-fn create_modal(state: &StudioState, modal_type: ModalType) -> Modal {
-    match modal_type {
-        ModalType::Help => Modal::Help,
-        ModalType::Chat => Modal::Chat,
-        ModalType::Settings => Modal::Settings(SettingsState::from_config(&state.config)),
-        ModalType::PresetSelector => {
-            let presets = state.get_commit_presets();
-            Modal::PresetSelector {
-                input: String::new(),
-                presets,
-                selected: 0,
-                scroll: 0,
-            }
-        }
-        ModalType::EmojiSelector => {
-            let emojis = state.get_emoji_list();
-            Modal::EmojiSelector {
-                input: String::new(),
-                emojis,
-                selected: 0,
-                scroll: 0,
-            }
-        }
-        ModalType::RefSelector { field } => {
-            let refs = state.get_branch_refs();
-            let target = match field {
-                RefField::From => match state.active_mode {
-                    Mode::Review => RefSelectorTarget::ReviewFrom,
-                    Mode::Changelog => RefSelectorTarget::ChangelogFrom,
-                    Mode::ReleaseNotes => RefSelectorTarget::ReleaseNotesFrom,
-                    _ => RefSelectorTarget::ReviewFrom,
-                },
-                RefField::To => match state.active_mode {
-                    Mode::Review => RefSelectorTarget::ReviewTo,
-                    Mode::Changelog => RefSelectorTarget::ChangelogTo,
-                    Mode::ReleaseNotes => RefSelectorTarget::ReleaseNotesTo,
-                    _ => RefSelectorTarget::ReviewTo,
-                },
-                RefField::Base => RefSelectorTarget::PrFrom,
-            };
-            Modal::RefSelector {
-                input: String::new(),
-                refs,
-                selected: 0,
-                target,
-            }
-        }
-        ModalType::ConfirmCommit => {
-            if let Some(msg) = state
-                .modes
-                .commit
-                .messages
-                .get(state.modes.commit.current_index)
-            {
-                Modal::Confirm {
-                    message: format!("Commit with message:\n\n{}", msg.title),
-                    action: "commit".to_string(),
-                }
-            } else {
-                Modal::Confirm {
-                    message: "No commit message to commit".to_string(),
-                    action: "cancel".to_string(),
-                }
-            }
-        }
-        ModalType::ConfirmQuit => Modal::Confirm {
-            message: "Quit Iris Studio?".to_string(),
-            action: "quit".to_string(),
-        },
-    }
-}
-
-/// Apply ref selection to the appropriate mode
-fn apply_ref_selection(state: &mut StudioState, field: RefField, value: String) {
-    match (state.active_mode, field) {
-        (Mode::Review, RefField::From) => {
-            state.modes.review.from_ref = value;
-        }
-        (Mode::Review, RefField::To) => {
-            state.modes.review.to_ref = value;
-        }
-        (Mode::PR, RefField::Base) => {
-            state.modes.pr.base_branch = value;
-        }
-        (Mode::PR, RefField::To) => {
-            state.modes.pr.to_ref = value;
-        }
-        (Mode::Changelog, RefField::From) => {
-            state.modes.changelog.from_ref = value;
-        }
-        (Mode::Changelog, RefField::To) => {
-            state.modes.changelog.to_ref = value;
-        }
-        (Mode::ReleaseNotes, RefField::From) => {
-            state.modes.release_notes.from_ref = value;
-        }
-        (Mode::ReleaseNotes, RefField::To) => {
-            state.modes.release_notes.to_ref = value;
-        }
-        _ => {}
-    }
-}
-
-/// Apply scroll to the current focused panel
-#[allow(clippy::cognitive_complexity)]
-fn apply_scroll(state: &mut StudioState, direction: ScrollDirection, amount: usize) {
-    match state.active_mode {
-        Mode::Explore => match state.focused_panel {
-            PanelId::Left => {
-                // File tree navigation
-                match direction {
-                    ScrollDirection::Up => {
-                        for _ in 0..amount {
-                            state.modes.explore.file_tree.select_prev();
-                        }
-                    }
-                    ScrollDirection::Down => {
-                        for _ in 0..amount {
-                            state.modes.explore.file_tree.select_next();
-                        }
-                    }
-                    ScrollDirection::PageUp => {
-                        state.modes.explore.file_tree.page_up(amount);
-                    }
-                    ScrollDirection::PageDown => {
-                        state.modes.explore.file_tree.page_down(amount);
-                    }
-                    ScrollDirection::Top => {
-                        state.modes.explore.file_tree.select_first();
-                    }
-                    ScrollDirection::Bottom => {
-                        state.modes.explore.file_tree.select_last();
-                    }
-                }
-            }
-            PanelId::Center => {
-                // Code view scroll
-                match direction {
-                    ScrollDirection::Up => {
-                        state.modes.explore.code_view.scroll_up(amount);
-                    }
-                    ScrollDirection::Down => {
-                        state.modes.explore.code_view.scroll_down(amount);
-                    }
-                    _ => {}
-                }
-            }
-            PanelId::Right => {
-                // Context/blame panel scroll
-                // Currently uses semantic_blame display - no scroll state yet
-            }
-        },
-        Mode::Commit => match state.focused_panel {
-            PanelId::Left => {
-                // File tree navigation (uses selection, not scroll directly)
-                match direction {
-                    ScrollDirection::Up => {
-                        for _ in 0..amount {
-                            state.modes.commit.file_tree.select_prev();
-                        }
-                    }
-                    ScrollDirection::Down => {
-                        for _ in 0..amount {
-                            state.modes.commit.file_tree.select_next();
-                        }
-                    }
-                    ScrollDirection::PageUp => {
-                        state.modes.commit.file_tree.page_up(amount);
-                    }
-                    ScrollDirection::PageDown => {
-                        state.modes.commit.file_tree.page_down(amount);
-                    }
-                    ScrollDirection::Top => {
-                        state.modes.commit.file_tree.select_first();
-                    }
-                    ScrollDirection::Bottom => {
-                        state.modes.commit.file_tree.select_last();
-                    }
-                }
-            }
-            PanelId::Center => {
-                // Message editor scroll - handled by component
-            }
-            PanelId::Right => {
-                // Diff view scroll
-                match direction {
-                    ScrollDirection::Up => {
-                        state.modes.commit.diff_view.scroll_up(amount);
-                    }
-                    ScrollDirection::Down => {
-                        state.modes.commit.diff_view.scroll_down(amount);
-                    }
-                    _ => {}
-                }
-            }
-        },
-        Mode::Review => match state.focused_panel {
-            PanelId::Left => {
-                // File tree navigation
-                match direction {
-                    ScrollDirection::Up => {
-                        for _ in 0..amount {
-                            state.modes.review.file_tree.select_prev();
-                        }
-                    }
-                    ScrollDirection::Down => {
-                        for _ in 0..amount {
-                            state.modes.review.file_tree.select_next();
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            PanelId::Center => {
-                // Review content scroll (center panel shows review, not diff)
-                let max_scroll = state
-                    .modes
-                    .review
-                    .review_content
-                    .lines()
-                    .count()
-                    .saturating_sub(1);
-                match direction {
-                    ScrollDirection::Up => {
-                        state.modes.review.review_scroll =
-                            state.modes.review.review_scroll.saturating_sub(amount);
-                    }
-                    ScrollDirection::Down => {
-                        state.modes.review.review_scroll =
-                            (state.modes.review.review_scroll + amount).min(max_scroll);
-                    }
-                    _ => {}
-                }
-            }
-            PanelId::Right => {
-                // Diff view scroll (right panel shows diff)
-                match direction {
-                    ScrollDirection::Up => {
-                        state.modes.review.diff_view.scroll_up(amount);
-                    }
-                    ScrollDirection::Down => {
-                        state.modes.review.diff_view.scroll_down(amount);
-                    }
-                    _ => {}
-                }
-            }
-        },
-        Mode::PR => match state.focused_panel {
-            PanelId::Left => {
-                // Commits list navigation
-                match direction {
-                    ScrollDirection::Up => {
-                        if state.modes.pr.selected_commit > 0 {
-                            state.modes.pr.selected_commit =
-                                state.modes.pr.selected_commit.saturating_sub(amount);
-                            // Adjust scroll if needed
-                            if state.modes.pr.selected_commit < state.modes.pr.commit_scroll {
-                                state.modes.pr.commit_scroll = state.modes.pr.selected_commit;
-                            }
-                        }
-                    }
-                    ScrollDirection::Down => {
-                        let max_idx = state.modes.pr.commits.len().saturating_sub(1);
-                        state.modes.pr.selected_commit =
-                            (state.modes.pr.selected_commit + amount).min(max_idx);
-                    }
-                    _ => {}
-                }
-            }
-            PanelId::Center => {
-                // PR content scroll (center panel shows PR description)
-                let max_scroll = state.modes.pr.pr_content.lines().count().saturating_sub(1);
-                match direction {
-                    ScrollDirection::Up => {
-                        state.modes.pr.pr_scroll = state.modes.pr.pr_scroll.saturating_sub(amount);
-                    }
-                    ScrollDirection::Down => {
-                        state.modes.pr.pr_scroll =
-                            (state.modes.pr.pr_scroll + amount).min(max_scroll);
-                    }
-                    _ => {}
-                }
-            }
-            PanelId::Right => {
-                // Diff view scroll (right panel shows diff)
-                match direction {
-                    ScrollDirection::Up => {
-                        state.modes.pr.diff_view.scroll_up(amount);
-                    }
-                    ScrollDirection::Down => {
-                        state.modes.pr.diff_view.scroll_down(amount);
-                    }
-                    _ => {}
-                }
-            }
-        },
-        Mode::Changelog => match state.focused_panel {
-            PanelId::Left => {
-                // Commits list navigation
-                match direction {
-                    ScrollDirection::Up => {
-                        if state.modes.changelog.selected_commit > 0 {
-                            state.modes.changelog.selected_commit =
-                                state.modes.changelog.selected_commit.saturating_sub(amount);
-                            if state.modes.changelog.selected_commit
-                                < state.modes.changelog.commit_scroll
-                            {
-                                state.modes.changelog.commit_scroll =
-                                    state.modes.changelog.selected_commit;
-                            }
-                        }
-                    }
-                    ScrollDirection::Down => {
-                        let max_idx = state.modes.changelog.commits.len().saturating_sub(1);
-                        state.modes.changelog.selected_commit =
-                            (state.modes.changelog.selected_commit + amount).min(max_idx);
-                    }
-                    _ => {}
-                }
-            }
-            PanelId::Center => {
-                // Changelog content scroll
-                let max_scroll = state
-                    .modes
-                    .changelog
-                    .changelog_content
-                    .lines()
-                    .count()
-                    .saturating_sub(1);
-                match direction {
-                    ScrollDirection::Up => {
-                        state.modes.changelog.changelog_scroll = state
-                            .modes
-                            .changelog
-                            .changelog_scroll
-                            .saturating_sub(amount);
-                    }
-                    ScrollDirection::Down => {
-                        state.modes.changelog.changelog_scroll =
-                            (state.modes.changelog.changelog_scroll + amount).min(max_scroll);
-                    }
-                    _ => {}
-                }
-            }
-            PanelId::Right => {
-                // Diff view scroll
-                match direction {
-                    ScrollDirection::Up => {
-                        state.modes.changelog.diff_view.scroll_up(amount);
-                    }
-                    ScrollDirection::Down => {
-                        state.modes.changelog.diff_view.scroll_down(amount);
-                    }
-                    _ => {}
-                }
-            }
-        },
-        Mode::ReleaseNotes => match state.focused_panel {
-            PanelId::Left => {
-                // Commits list navigation
-                match direction {
-                    ScrollDirection::Up => {
-                        if state.modes.release_notes.selected_commit > 0 {
-                            state.modes.release_notes.selected_commit = state
-                                .modes
-                                .release_notes
-                                .selected_commit
-                                .saturating_sub(amount);
-                            if state.modes.release_notes.selected_commit
-                                < state.modes.release_notes.commit_scroll
-                            {
-                                state.modes.release_notes.commit_scroll =
-                                    state.modes.release_notes.selected_commit;
-                            }
-                        }
-                    }
-                    ScrollDirection::Down => {
-                        let max_idx = state.modes.release_notes.commits.len().saturating_sub(1);
-                        state.modes.release_notes.selected_commit =
-                            (state.modes.release_notes.selected_commit + amount).min(max_idx);
-                    }
-                    _ => {}
-                }
-            }
-            PanelId::Center => {
-                // Release notes content scroll
-                let max_scroll = state
-                    .modes
-                    .release_notes
-                    .release_notes_content
-                    .lines()
-                    .count()
-                    .saturating_sub(1);
-                match direction {
-                    ScrollDirection::Up => {
-                        state.modes.release_notes.release_notes_scroll = state
-                            .modes
-                            .release_notes
-                            .release_notes_scroll
-                            .saturating_sub(amount);
-                    }
-                    ScrollDirection::Down => {
-                        state.modes.release_notes.release_notes_scroll =
-                            (state.modes.release_notes.release_notes_scroll + amount)
-                                .min(max_scroll);
-                    }
-                    _ => {}
-                }
-            }
-            PanelId::Right => {
-                // Diff view scroll
-                match direction {
-                    ScrollDirection::Up => {
-                        state.modes.release_notes.diff_view.scroll_up(amount);
-                    }
-                    ScrollDirection::Down => {
-                        state.modes.release_notes.diff_view.scroll_down(amount);
-                    }
-                    _ => {}
-                }
-            }
-        },
-    }
-    state.mark_dirty();
-}
-
 /// Handle key events - delegates to handlers which return effects directly
 fn reduce_key_event(
     state: &mut StudioState,
@@ -1314,10 +884,10 @@ fn reduce_mouse_event(
     // Normal scroll handling for main views
     match mouse.kind {
         MouseEventKind::ScrollUp => {
-            apply_scroll(state, ScrollDirection::Up, 3);
+            navigation::apply_scroll(state, ScrollDirection::Up, 3);
         }
         MouseEventKind::ScrollDown => {
-            apply_scroll(state, ScrollDirection::Down, 3);
+            navigation::apply_scroll(state, ScrollDirection::Down, 3);
         }
         MouseEventKind::Down(_) => {
             // Click handling - would need terminal position context
@@ -1338,6 +908,7 @@ fn reduce_mouse_event(
 mod tests {
     use super::*;
     use crate::config::Config;
+    use crate::studio::state::PanelId;
 
     fn test_state() -> StudioState {
         StudioState::new(Config::default(), None)

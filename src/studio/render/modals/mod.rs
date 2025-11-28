@@ -47,7 +47,10 @@ fn modal_size(modal: &Modal, area: Rect) -> (u16, u16) {
                 .unwrap_or(30) as u16
                 + 10;
             let list_height = (refs.len() as u16 + 4).min(20);
-            (needed_width.max(40).min(max_width), list_height.min(max_height))
+            (
+                needed_width.max(40).min(max_width),
+                list_height.min(max_height),
+            )
         }
         // Preset selector with scrollable list
         Modal::PresetSelector { presets, .. } => {

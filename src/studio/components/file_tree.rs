@@ -14,6 +14,7 @@ use std::path::{Path, PathBuf};
 use unicode_width::UnicodeWidthStr;
 
 use crate::studio::theme;
+use crate::studio::utils::truncate_width;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Git Status
@@ -661,7 +662,7 @@ fn render_entry(entry: &FlatEntry, is_selected: bool, width: usize) -> Line<'sta
     let max_name_width = width.saturating_sub(fixed_width);
 
     // Truncate name if needed (using unicode width)
-    let display_name = truncate_to_width(&entry.name, max_name_width);
+    let display_name = truncate_width(&entry.name, max_name_width);
 
     Line::from(vec![
         Span::styled(marker, marker_style),
@@ -679,39 +680,6 @@ fn render_entry(entry: &FlatEntry, is_selected: bool, width: usize) -> Line<'sta
         Span::raw(" "),
         Span::styled(status_indicator, status_style),
     ])
-}
-
-/// Truncate a string to fit within the given display width
-fn truncate_to_width(s: &str, max_width: usize) -> String {
-    if max_width == 0 {
-        return String::new();
-    }
-
-    let s_width = s.width();
-    if s_width <= max_width {
-        return s.to_string();
-    }
-
-    if max_width <= 1 {
-        return ".".to_string();
-    }
-
-    // Find the longest prefix that fits
-    let mut result = String::new();
-    let mut current_width = 0;
-    let target_width = max_width - 1; // Reserve 1 for ellipsis
-
-    for c in s.chars() {
-        let char_width = c.to_string().width();
-        if current_width + char_width > target_width {
-            break;
-        }
-        result.push(c);
-        current_width += char_width;
-    }
-
-    result.push('…');
-    result
 }
 
 /// Get icon for file based on extension (Unicode symbols, no emoji)

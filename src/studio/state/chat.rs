@@ -212,12 +212,5 @@ impl ChatState {
 // Helper Functions
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/// Safely truncate a string to `max_chars`, adding "..." if truncated.
-/// Handles UTF-8 correctly (no panic on multi-byte chars).
-pub fn truncate_preview(s: &str, max_chars: usize) -> String {
-    if s.chars().count() <= max_chars {
-        s.to_string()
-    } else {
-        format!("{}...", s.chars().take(max_chars).collect::<String>())
-    }
-}
+// Re-export from utils for backwards compatibility
+pub use crate::studio::utils::truncate_chars as truncate_preview;

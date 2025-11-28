@@ -1,225 +1,122 @@
-//! Navigation-related reducer functions
+//! Navigation-related reducer helper functions
 //!
-//! Handles: `SwitchMode`, `FocusPanel`, `FocusNext`, `FocusPrev`, Scroll, `SelectFile`
+//! Provides the `apply_scroll` helper for scroll handling.
+//! The main reducer in mod.rs handles the actual event dispatch.
 
-use super::super::events::{DataType, ScrollDirection, SideEffect, StudioEvent};
-use super::super::history::History;
+use super::super::events::ScrollDirection;
 use super::super::state::{Mode, PanelId, StudioState};
-
-/// Reduce navigation-related events
-pub fn reduce(
-    state: &mut StudioState,
-    event: StudioEvent,
-    history: &mut History,
-) -> Vec<SideEffect> {
-    let mut effects = Vec::new();
-
-    match event {
-        StudioEvent::SwitchMode(new_mode) => {
-            let old_mode = state.active_mode;
-            if old_mode != new_mode {
-                history.record_mode_switch(old_mode, new_mode);
-                state.switch_mode(new_mode);
-
-                // Trigger data loading for the new mode
-                effects.extend(get_mode_data_load_effect(state, new_mode));
-            }
-        }
-
-        StudioEvent::FocusPanel(panel) => {
-            state.focused_panel = panel;
-            state.mark_dirty();
-        }
-
-        StudioEvent::FocusNext => {
-            state.focus_next_panel();
-            state.mark_dirty();
-        }
-
-        StudioEvent::FocusPrev => {
-            state.focus_prev_panel();
-            state.mark_dirty();
-        }
-
-        StudioEvent::Scroll { direction, amount } => {
-            apply_scroll(state, direction, amount);
-        }
-
-        StudioEvent::SelectFile(path) => {
-            match state.active_mode {
-                Mode::Explore => {
-                    state.modes.explore.current_file = Some(path);
-                }
-                Mode::Commit => {
-                    if let Some(idx) = state
-                        .git_status
-                        .staged_files
-                        .iter()
-                        .position(|f| f == &path)
-                    {
-                        state.modes.commit.selected_file_index = idx;
-                    }
-                }
-                _ => {}
-            }
-            state.mark_dirty();
-        }
-
-        _ => {}
-    }
-
-    effects
-}
-
-fn get_mode_data_load_effect(state: &StudioState, mode: Mode) -> Vec<SideEffect> {
-    match mode {
-        Mode::Commit => {
-            vec![SideEffect::LoadData {
-                data_type: DataType::CommitDiff,
-                from_ref: None,
-                to_ref: None,
-            }]
-        }
-        Mode::Review => {
-            let from = state.modes.review.from_ref.clone();
-            let to = state.modes.review.to_ref.clone();
-            vec![SideEffect::LoadData {
-                data_type: DataType::ReviewDiff,
-                from_ref: Some(from),
-                to_ref: Some(to),
-            }]
-        }
-        Mode::PR => {
-            let base = state.modes.pr.base_branch.clone();
-            let to = state.modes.pr.to_ref.clone();
-            vec![SideEffect::LoadData {
-                data_type: DataType::PRDiff,
-                from_ref: Some(base),
-                to_ref: Some(to),
-            }]
-        }
-        Mode::Changelog => {
-            let from = state.modes.changelog.from_ref.clone();
-            let to = state.modes.changelog.to_ref.clone();
-            vec![SideEffect::LoadData {
-                data_type: DataType::ChangelogCommits,
-                from_ref: Some(from),
-                to_ref: Some(to),
-            }]
-        }
-        Mode::ReleaseNotes => {
-            let from = state.modes.release_notes.from_ref.clone();
-            let to = state.modes.release_notes.to_ref.clone();
-            vec![SideEffect::LoadData {
-                data_type: DataType::ReleaseNotesCommits,
-                from_ref: Some(from),
-                to_ref: Some(to),
-            }]
-        }
-        Mode::Explore => vec![],
-    }
-}
 
 /// Apply scroll to the current focused panel
 #[allow(clippy::cognitive_complexity)]
 pub fn apply_scroll(state: &mut StudioState, direction: ScrollDirection, amount: usize) {
     match state.active_mode {
         Mode::Explore => match state.focused_panel {
-            PanelId::Left => match direction {
-                ScrollDirection::Up => {
-                    for _ in 0..amount {
-                        state.modes.explore.file_tree.select_prev();
+            PanelId::Left => {
+                // File tree navigation
+                match direction {
+                    ScrollDirection::Up => {
+                        for _ in 0..amount {
+                            state.modes.explore.file_tree.select_prev();
+                        }
+                    }
+                    ScrollDirection::Down => {
+                        for _ in 0..amount {
+                            state.modes.explore.file_tree.select_next();
+                        }
+                    }
+                    ScrollDirection::PageUp => {
+                        state.modes.explore.file_tree.page_up(amount);
+                    }
+                    ScrollDirection::PageDown => {
+                        state.modes.explore.file_tree.page_down(amount);
+                    }
+                    ScrollDirection::Top => {
+                        state.modes.explore.file_tree.select_first();
+                    }
+                    ScrollDirection::Bottom => {
+                        state.modes.explore.file_tree.select_last();
                     }
                 }
-                ScrollDirection::Down => {
-                    for _ in 0..amount {
-                        state.modes.explore.file_tree.select_next();
+            }
+            PanelId::Center => {
+                // Code view scroll
+                match direction {
+                    ScrollDirection::Up => {
+                        state.modes.explore.code_view.scroll_up(amount);
                     }
+                    ScrollDirection::Down => {
+                        state.modes.explore.code_view.scroll_down(amount);
+                    }
+                    _ => {}
                 }
-                ScrollDirection::PageUp => {
-                    state.modes.explore.file_tree.page_up(amount);
-                }
-                ScrollDirection::PageDown => {
-                    state.modes.explore.file_tree.page_down(amount);
-                }
-                ScrollDirection::Top => {
-                    state.modes.explore.file_tree.select_first();
-                }
-                ScrollDirection::Bottom => {
-                    state.modes.explore.file_tree.select_last();
-                }
-            },
-            PanelId::Center => match direction {
-                ScrollDirection::Up => {
-                    state.modes.explore.code_view.scroll_up(amount);
-                }
-                ScrollDirection::Down => {
-                    state.modes.explore.code_view.scroll_down(amount);
-                }
-                _ => {}
-            },
-            PanelId::Right => {}
+            }
+            PanelId::Right => {
+                // Context/blame panel scroll - no scroll state yet
+            }
         },
         Mode::Commit => match state.focused_panel {
-            PanelId::Left => match direction {
-                ScrollDirection::Up => {
-                    for _ in 0..amount {
-                        state.modes.commit.file_tree.select_prev();
+            PanelId::Left => {
+                // File tree navigation
+                match direction {
+                    ScrollDirection::Up => {
+                        for _ in 0..amount {
+                            state.modes.commit.file_tree.select_prev();
+                        }
+                    }
+                    ScrollDirection::Down => {
+                        for _ in 0..amount {
+                            state.modes.commit.file_tree.select_next();
+                        }
+                    }
+                    ScrollDirection::PageUp => {
+                        state.modes.commit.file_tree.page_up(amount);
+                    }
+                    ScrollDirection::PageDown => {
+                        state.modes.commit.file_tree.page_down(amount);
+                    }
+                    ScrollDirection::Top => {
+                        state.modes.commit.file_tree.select_first();
+                    }
+                    ScrollDirection::Bottom => {
+                        state.modes.commit.file_tree.select_last();
                     }
                 }
-                ScrollDirection::Down => {
-                    for _ in 0..amount {
-                        state.modes.commit.file_tree.select_next();
+            }
+            PanelId::Center => {
+                // Message editor scroll - handled by component
+            }
+            PanelId::Right => {
+                // Diff view scroll
+                match direction {
+                    ScrollDirection::Up => {
+                        state.modes.commit.diff_view.scroll_up(amount);
                     }
+                    ScrollDirection::Down => {
+                        state.modes.commit.diff_view.scroll_down(amount);
+                    }
+                    _ => {}
                 }
-                ScrollDirection::PageUp => {
-                    state.modes.commit.file_tree.page_up(amount);
-                }
-                ScrollDirection::PageDown => {
-                    state.modes.commit.file_tree.page_down(amount);
-                }
-                ScrollDirection::Top => {
-                    state.modes.commit.file_tree.select_first();
-                }
-                ScrollDirection::Bottom => {
-                    state.modes.commit.file_tree.select_last();
-                }
-            },
-            PanelId::Center => {}
-            PanelId::Right => match direction {
-                ScrollDirection::Up => {
-                    state.modes.commit.diff_view.scroll_up(amount);
-                }
-                ScrollDirection::Down => {
-                    state.modes.commit.diff_view.scroll_down(amount);
-                }
-                _ => {}
-            },
+            }
         },
         Mode::Review => match state.focused_panel {
-            PanelId::Left => match direction {
-                ScrollDirection::Up => {
-                    for _ in 0..amount {
-                        state.modes.review.file_tree.select_prev();
+            PanelId::Left => {
+                // File tree navigation
+                match direction {
+                    ScrollDirection::Up => {
+                        for _ in 0..amount {
+                            state.modes.review.file_tree.select_prev();
+                        }
                     }
-                }
-                ScrollDirection::Down => {
-                    for _ in 0..amount {
-                        state.modes.review.file_tree.select_next();
+                    ScrollDirection::Down => {
+                        for _ in 0..amount {
+                            state.modes.review.file_tree.select_next();
+                        }
                     }
+                    _ => {}
                 }
-                _ => {}
-            },
-            PanelId::Center => match direction {
-                ScrollDirection::Up => {
-                    state.modes.review.diff_view.scroll_up(amount);
-                }
-                ScrollDirection::Down => {
-                    state.modes.review.diff_view.scroll_down(amount);
-                }
-                _ => {}
-            },
-            PanelId::Right => {
+            }
+            PanelId::Center => {
+                // Review content scroll (center panel shows review, not diff)
                 let max_scroll = state
                     .modes
                     .review
@@ -239,31 +136,42 @@ pub fn apply_scroll(state: &mut StudioState, direction: ScrollDirection, amount:
                     _ => {}
                 }
             }
+            PanelId::Right => {
+                // Diff view scroll (right panel shows diff)
+                match direction {
+                    ScrollDirection::Up => {
+                        state.modes.review.diff_view.scroll_up(amount);
+                    }
+                    ScrollDirection::Down => {
+                        state.modes.review.diff_view.scroll_down(amount);
+                    }
+                    _ => {}
+                }
+            }
         },
         Mode::PR => match state.focused_panel {
-            PanelId::Left => match direction {
-                ScrollDirection::Up => {
-                    for _ in 0..amount {
-                        state.modes.pr.file_tree.select_prev();
+            PanelId::Left => {
+                // Commits list navigation
+                match direction {
+                    ScrollDirection::Up => {
+                        if state.modes.pr.selected_commit > 0 {
+                            state.modes.pr.selected_commit =
+                                state.modes.pr.selected_commit.saturating_sub(amount);
+                            if state.modes.pr.selected_commit < state.modes.pr.commit_scroll {
+                                state.modes.pr.commit_scroll = state.modes.pr.selected_commit;
+                            }
+                        }
                     }
-                }
-                ScrollDirection::Down => {
-                    for _ in 0..amount {
-                        state.modes.pr.file_tree.select_next();
+                    ScrollDirection::Down => {
+                        let max_idx = state.modes.pr.commits.len().saturating_sub(1);
+                        state.modes.pr.selected_commit =
+                            (state.modes.pr.selected_commit + amount).min(max_idx);
                     }
+                    _ => {}
                 }
-                _ => {}
-            },
-            PanelId::Center => match direction {
-                ScrollDirection::Up => {
-                    state.modes.pr.diff_view.scroll_up(amount);
-                }
-                ScrollDirection::Down => {
-                    state.modes.pr.diff_view.scroll_down(amount);
-                }
-                _ => {}
-            },
-            PanelId::Right => {
+            }
+            PanelId::Center => {
+                // PR content scroll (center panel shows PR description)
                 let max_scroll = state.modes.pr.pr_content.lines().count().saturating_sub(1);
                 match direction {
                     ScrollDirection::Up => {
@@ -276,9 +184,45 @@ pub fn apply_scroll(state: &mut StudioState, direction: ScrollDirection, amount:
                     _ => {}
                 }
             }
+            PanelId::Right => {
+                // Diff view scroll (right panel shows diff)
+                match direction {
+                    ScrollDirection::Up => {
+                        state.modes.pr.diff_view.scroll_up(amount);
+                    }
+                    ScrollDirection::Down => {
+                        state.modes.pr.diff_view.scroll_down(amount);
+                    }
+                    _ => {}
+                }
+            }
         },
         Mode::Changelog => match state.focused_panel {
-            PanelId::Center | PanelId::Right => {
+            PanelId::Left => {
+                // Commits list navigation
+                match direction {
+                    ScrollDirection::Up => {
+                        if state.modes.changelog.selected_commit > 0 {
+                            state.modes.changelog.selected_commit =
+                                state.modes.changelog.selected_commit.saturating_sub(amount);
+                            if state.modes.changelog.selected_commit
+                                < state.modes.changelog.commit_scroll
+                            {
+                                state.modes.changelog.commit_scroll =
+                                    state.modes.changelog.selected_commit;
+                            }
+                        }
+                    }
+                    ScrollDirection::Down => {
+                        let max_idx = state.modes.changelog.commits.len().saturating_sub(1);
+                        state.modes.changelog.selected_commit =
+                            (state.modes.changelog.selected_commit + amount).min(max_idx);
+                    }
+                    _ => {}
+                }
+            }
+            PanelId::Center => {
+                // Changelog content scroll
                 let max_scroll = state
                     .modes
                     .changelog
@@ -301,10 +245,48 @@ pub fn apply_scroll(state: &mut StudioState, direction: ScrollDirection, amount:
                     _ => {}
                 }
             }
-            PanelId::Left => {}
+            PanelId::Right => {
+                // Diff view scroll
+                match direction {
+                    ScrollDirection::Up => {
+                        state.modes.changelog.diff_view.scroll_up(amount);
+                    }
+                    ScrollDirection::Down => {
+                        state.modes.changelog.diff_view.scroll_down(amount);
+                    }
+                    _ => {}
+                }
+            }
         },
         Mode::ReleaseNotes => match state.focused_panel {
-            PanelId::Center | PanelId::Right => {
+            PanelId::Left => {
+                // Commits list navigation
+                match direction {
+                    ScrollDirection::Up => {
+                        if state.modes.release_notes.selected_commit > 0 {
+                            state.modes.release_notes.selected_commit = state
+                                .modes
+                                .release_notes
+                                .selected_commit
+                                .saturating_sub(amount);
+                            if state.modes.release_notes.selected_commit
+                                < state.modes.release_notes.commit_scroll
+                            {
+                                state.modes.release_notes.commit_scroll =
+                                    state.modes.release_notes.selected_commit;
+                            }
+                        }
+                    }
+                    ScrollDirection::Down => {
+                        let max_idx = state.modes.release_notes.commits.len().saturating_sub(1);
+                        state.modes.release_notes.selected_commit =
+                            (state.modes.release_notes.selected_commit + amount).min(max_idx);
+                    }
+                    _ => {}
+                }
+            }
+            PanelId::Center => {
+                // Release notes content scroll
                 let max_scroll = state
                     .modes
                     .release_notes
@@ -328,7 +310,18 @@ pub fn apply_scroll(state: &mut StudioState, direction: ScrollDirection, amount:
                     _ => {}
                 }
             }
-            PanelId::Left => {}
+            PanelId::Right => {
+                // Diff view scroll
+                match direction {
+                    ScrollDirection::Up => {
+                        state.modes.release_notes.diff_view.scroll_up(amount);
+                    }
+                    ScrollDirection::Down => {
+                        state.modes.release_notes.diff_view.scroll_down(amount);
+                    }
+                    _ => {}
+                }
+            }
         },
     }
     state.mark_dirty();

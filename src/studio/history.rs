@@ -29,16 +29,8 @@ const MAX_CHAT_MESSAGES: usize = 500;
 /// Max content versions per (mode, `content_type`) key
 const MAX_CONTENT_VERSIONS: usize = 50;
 
-/// UTF-8 safe string truncation (no panic on multi-byte boundaries)
-fn truncate_preview(s: &str, max_chars: usize) -> String {
-    if s.chars().count() <= max_chars {
-        s.to_string()
-    } else {
-        format!("{}...", s.chars().take(max_chars).collect::<String>())
-    }
-}
-
 use super::state::Mode;
+use super::utils::truncate_chars;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Session Metadata (for persistence)
@@ -281,7 +273,7 @@ impl History {
             },
             change: HistoryChange::ChatMessage {
                 role,
-                preview: truncate_preview(content, 100),
+                preview: truncate_chars(content, 100),
             },
         };
 
@@ -321,7 +313,7 @@ impl History {
             },
             change: HistoryChange::ChatMessage {
                 role,
-                preview: truncate_preview(content, 100),
+                preview: truncate_chars(content, 100),
             },
         };
 

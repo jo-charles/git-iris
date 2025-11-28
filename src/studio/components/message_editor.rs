@@ -2,6 +2,9 @@
 //!
 //! Text editor for commit messages using tui-textarea.
 
+use crate::studio::theme;
+use crate::studio::utils::truncate_width;
+use crate::types::GeneratedMessage;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -9,10 +12,6 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 use tui_textarea::TextArea;
-use unicode_width::UnicodeWidthStr;
-
-use crate::studio::theme;
-use crate::types::GeneratedMessage;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Message Editor State
@@ -300,35 +299,6 @@ pub fn render_message_editor(
     }
 }
 
-/// Truncate a string to fit within the given display width (accounting for unicode)
-fn truncate_str(s: &str, max_width: usize) -> String {
-    if max_width == 0 {
-        return String::new();
-    }
-    let s_width = s.width();
-    if s_width <= max_width {
-        s.to_string()
-    } else if max_width <= 1 {
-        ".".to_string()
-    } else {
-        // Build string char by char until we hit width limit
-        let mut result = String::new();
-        let mut current_width = 0;
-        let target_width = max_width - 1; // Leave room for ellipsis
-
-        for c in s.chars() {
-            let char_width = c.to_string().width();
-            if current_width + char_width > target_width {
-                break;
-            }
-            result.push(c);
-            current_width += char_width;
-        }
-        result.push('…');
-        result
-    }
-}
-
 /// Render the message in view mode (non-editing)
 fn render_message_view(frame: &mut Frame, area: Rect, state: &MessageEditorState) {
     let Some(msg) = state.current_generated() else {
@@ -345,7 +315,7 @@ fn render_message_view(frame: &mut Frame, area: Rect, state: &MessageEditorState
     } else {
         width.saturating_sub(emoji.chars().count() + 1)
     };
-    let title = truncate_str(&msg.title, title_width);
+    let title = truncate_width(&msg.title, title_width);
 
     if emoji.is_empty() {
         lines.push(Line::from(Span::styled(
@@ -372,7 +342,7 @@ fn render_message_view(frame: &mut Frame, area: Rect, state: &MessageEditorState
 
     // Body (truncated lines)
     for body_line in msg.message.lines() {
-        let truncated = truncate_str(body_line, width);
+        let truncated = truncate_width(body_line, width);
         lines.push(Line::from(Span::styled(
             truncated,
             Style::default().fg(theme::TEXT_PRIMARY),
@@ -402,7 +372,7 @@ pub fn render_message_preview(msg: &GeneratedMessage, width: usize) -> Line<'sta
     } else {
         width.saturating_sub(emoji.chars().count() + 1)
     };
-    let title = truncate_str(&msg.title, title_width);
+    let title = truncate_width(&msg.title, title_width);
 
     if emoji.is_empty() {
         Line::from(Span::styled(title, theme::dimmed()))

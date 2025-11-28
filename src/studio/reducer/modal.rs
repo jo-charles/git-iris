@@ -1,86 +1,10 @@
-//! Modal-related reducer functions
+//! Modal-related reducer helper functions
 //!
-//! Handles: `OpenModal`, `CloseModal`, `ModalConfirmed`
+//! Provides helper functions for modal operations.
+//! The main reducer in mod.rs handles the actual event dispatch.
 
-use super::super::events::{ModalType, RefField, SideEffect, StudioEvent};
-use super::super::history::History;
-use super::super::state::{EmojiMode, Modal, Mode, RefSelectorTarget, SettingsState, StudioState};
-
-/// Reduce modal-related events
-pub fn reduce(
-    state: &mut StudioState,
-    event: StudioEvent,
-    _history: &mut History,
-) -> Vec<SideEffect> {
-    let mut effects = Vec::new();
-
-    match event {
-        StudioEvent::OpenModal(modal_type) => {
-            state.modal = Some(create_modal(state, modal_type));
-            state.mark_dirty();
-        }
-
-        StudioEvent::CloseModal => {
-            state.modal = None;
-            state.mark_dirty();
-        }
-
-        StudioEvent::ModalConfirmed { modal_type, data } => {
-            reduce_modal_confirmed(state, &mut effects, modal_type, data);
-            state.modal = None;
-            state.mark_dirty();
-        }
-
-        _ => {}
-    }
-
-    effects
-}
-
-fn reduce_modal_confirmed(
-    state: &mut StudioState,
-    effects: &mut Vec<SideEffect>,
-    modal_type: ModalType,
-    data: Option<String>,
-) {
-    match modal_type {
-        ModalType::ConfirmCommit => {
-            if let Some(msg) = state
-                .modes
-                .commit
-                .messages
-                .get(state.modes.commit.current_index)
-            {
-                let message = crate::types::format_commit_message(msg);
-                effects.push(SideEffect::ExecuteCommit { message });
-            }
-        }
-        ModalType::RefSelector { field } => {
-            if let Some(ref_value) = data {
-                apply_ref_selection(state, field, ref_value);
-            }
-        }
-        ModalType::PresetSelector => {
-            if let Some(preset) = data {
-                state.modes.commit.preset = preset;
-            }
-        }
-        ModalType::EmojiSelector => {
-            if let Some(emoji) = data {
-                if emoji == "none" {
-                    state.modes.commit.emoji_mode = EmojiMode::None;
-                    state.modes.commit.use_gitmoji = false;
-                } else if emoji == "auto" {
-                    state.modes.commit.emoji_mode = EmojiMode::Auto;
-                    state.modes.commit.use_gitmoji = true;
-                } else {
-                    state.modes.commit.emoji_mode = EmojiMode::Custom(emoji);
-                }
-            }
-        }
-        _ => {}
-    }
-}
+use super::super::events::{ModalType, RefField};
+use super::super::state::{Modal, Mode, RefSelectorTarget, SettingsState, StudioState};
 
 /// Create a modal from a modal type
 pub fn create_modal(state: &StudioState, modal_type: ModalType) -> Modal {

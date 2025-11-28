@@ -24,6 +24,7 @@ mod reducer;
 mod render;
 mod state;
 mod theme;
+pub mod utils;
 
 // Submodules
 pub mod components;

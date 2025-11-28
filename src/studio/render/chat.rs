@@ -172,10 +172,7 @@ pub fn render_messages(
                     .fg(theme::ERROR_RED)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::styled(
-                error.clone(),
-                Style::default().fg(theme::ERROR_RED),
-            ),
+            Span::styled(error.clone(), Style::default().fg(theme::ERROR_RED)),
         ]));
         lines.push(Line::from(""));
     }
