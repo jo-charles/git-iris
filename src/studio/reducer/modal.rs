@@ -72,6 +72,24 @@ pub fn create_modal(state: &StudioState, modal_type: ModalType) -> Modal {
                 }
             }
         }
+        ModalType::ConfirmAmend => {
+            if let Some(msg) = state
+                .modes
+                .commit
+                .messages
+                .get(state.modes.commit.current_index)
+            {
+                Modal::Confirm {
+                    message: format!("Amend previous commit with message:\n\n{}", msg.title),
+                    action: "amend".to_string(),
+                }
+            } else {
+                Modal::Confirm {
+                    message: "No commit message to amend with".to_string(),
+                    action: "cancel".to_string(),
+                }
+            }
+        }
         ModalType::ConfirmQuit => Modal::Confirm {
             message: "Quit Iris Studio?".to_string(),
             action: "quit".to_string(),

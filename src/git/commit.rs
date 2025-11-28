@@ -134,12 +134,12 @@ pub fn amend_commit(repo: &Repository, message: &str, is_remote: bool) -> Result
 
     // Amend the HEAD commit with the new tree and message
     let commit_oid = head_commit.amend(
-        Some("HEAD"),      // Update the HEAD reference
-        Some(&signature),  // New author (use current)
-        Some(&signature),  // New committer (use current)
-        None,              // Keep original encoding
-        Some(message),     // New message
-        Some(&tree),       // New tree (includes staged changes)
+        Some("HEAD"),     // Update the HEAD reference
+        Some(&signature), // New author (use current)
+        Some(&signature), // New committer (use current)
+        None,             // Keep original encoding
+        Some(message),    // New message
+        Some(&tree),      // New tree (includes staged changes)
     )?;
 
     let branch_name = repo.head()?.shorthand().unwrap_or("HEAD").to_string();

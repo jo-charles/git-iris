@@ -572,9 +572,7 @@ async fn handle_gen_with_agent(
         // Use IrisAgentService for commit message generation
         // For amend, we pass the original message as context
         let context = if config.amend {
-            let original_message = commit_service
-                .get_head_commit_message()
-                .unwrap_or_default();
+            let original_message = commit_service.get_head_commit_message().unwrap_or_default();
             TaskContext::for_amend(original_message)
         } else {
             TaskContext::for_gen()

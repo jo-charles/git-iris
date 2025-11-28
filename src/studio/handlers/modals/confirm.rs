@@ -34,6 +34,20 @@ pub fn handle(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffect> {
                         vec![]
                     }
                 }
+                "amend" => {
+                    // Get the commit message and execute amend
+                    if let Some(msg) = state
+                        .modes
+                        .commit
+                        .messages
+                        .get(state.modes.commit.current_index)
+                    {
+                        let message = crate::types::format_commit_message(msg);
+                        vec![SideEffect::ExecuteAmend { message }]
+                    } else {
+                        vec![]
+                    }
+                }
                 "quit" => vec![SideEffect::Quit],
                 _ => vec![],
             }

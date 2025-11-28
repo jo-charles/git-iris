@@ -56,7 +56,11 @@ pub enum StudioEvent {
         instructions: Option<String>,
         preset: String,
         use_gitmoji: bool,
+        amend: bool,
     },
+
+    /// Toggle amend mode for commit
+    ToggleAmendMode,
 
     /// Generate code review
     GenerateReview { from_ref: String, to_ref: String },
@@ -337,6 +341,7 @@ pub enum ModalType {
     EmojiSelector,
     RefSelector { field: RefField },
     ConfirmCommit,
+    ConfirmAmend,
     ConfirmQuit,
 }
 
@@ -412,6 +417,9 @@ pub enum SideEffect {
     /// Execute git commit
     ExecuteCommit { message: String },
 
+    /// Execute git commit --amend
+    ExecuteAmend { message: String },
+
     /// Show notification (if needs timing/animation)
     #[allow(dead_code)] // Kept for future use - handled in executor but not yet constructed
     ShowNotification {
@@ -463,6 +471,7 @@ pub enum AgentTask {
         instructions: Option<String>,
         preset: String,
         use_gitmoji: bool,
+        amend: bool,
     },
     Review {
         from_ref: String,

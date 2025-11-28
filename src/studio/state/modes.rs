@@ -85,6 +85,10 @@ pub struct CommitState {
     pub message_editor: MessageEditorState,
     /// Show all tracked files (vs only staged/modified)
     pub show_all_files: bool,
+    /// Whether we're amending the previous commit
+    pub amend_mode: bool,
+    /// Original commit message (when amending)
+    pub original_message: Option<String>,
 }
 
 impl Default for CommitState {
@@ -103,6 +107,8 @@ impl Default for CommitState {
             diff_view: DiffViewState::new(),
             message_editor: MessageEditorState::new(),
             show_all_files: false,
+            amend_mode: false,
+            original_message: None,
         }
     }
 }
@@ -115,6 +121,7 @@ impl std::fmt::Debug for CommitState {
             .field("selected_file_index", &self.selected_file_index)
             .field("editing_message", &self.editing_message)
             .field("generating", &self.generating)
+            .field("amend_mode", &self.amend_mode)
             .finish_non_exhaustive()
     }
 }

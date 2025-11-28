@@ -286,11 +286,39 @@ fn handle_message_key(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffect>
             vec![]
         }
 
-        // Commit - use message from editor (may have been modified)
+        // Toggle amend mode
+        KeyCode::Char('A') => {
+            state.modes.commit.amend_mode = !state.modes.commit.amend_mode;
+            if state.modes.commit.amend_mode {
+                // Load original message from HEAD
+                if let Some(repo) = &state.repo
+                    && let Ok(msg) = repo.get_head_commit_message()
+                {
+                    state.modes.commit.original_message = Some(msg);
+                }
+                state.notify(crate::studio::state::Notification::info(
+                    "Amend mode: ON - will replace previous commit".to_string(),
+                ));
+            } else {
+                state.modes.commit.original_message = None;
+                state.notify(crate::studio::state::Notification::info(
+                    "Amend mode: OFF".to_string(),
+                ));
+            }
+            // Clear messages when toggling amend mode (they need regeneration)
+            state.modes.commit.messages.clear();
+            state.modes.commit.message_editor.clear();
+            state.mark_dirty();
+            vec![]
+        }
+
+        // Commit/Amend - use message from editor (may have been modified)
         KeyCode::Enter => {
             let message = state.modes.commit.message_editor.get_message();
             if message.is_empty() {
                 vec![]
+            } else if state.modes.commit.amend_mode {
+                vec![SideEffect::ExecuteAmend { message }]
             } else {
                 vec![SideEffect::ExecuteCommit { message }]
             }

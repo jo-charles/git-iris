@@ -47,7 +47,15 @@ pub fn render_commit_panel(
                 EmojiMode::Custom(e) => e,
             };
             let preset_name = &state.modes.commit.preset;
-            let title = format!("Message · {} {}", preset_name, emoji_indicator);
+            let amend_indicator = if state.modes.commit.amend_mode {
+                " [AMEND]"
+            } else {
+                ""
+            };
+            let title = format!(
+                "Message · {} {}{}",
+                preset_name, emoji_indicator, amend_indicator
+            );
 
             // Render message editor
             render_message_editor(

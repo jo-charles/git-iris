@@ -133,9 +133,15 @@ pub fn reduce(
             instructions,
             preset,
             use_gitmoji,
+            amend,
         } => {
             state.modes.commit.generating = true;
-            state.set_iris_thinking("Generating commit message...");
+            let thinking_msg = if amend {
+                "Generating amended commit message..."
+            } else {
+                "Generating commit message..."
+            };
+            state.set_iris_thinking(thinking_msg);
             history.record_agent_start(TaskType::Commit);
 
             effects.push(SideEffect::SpawnAgent {
@@ -143,6 +149,7 @@ pub fn reduce(
                     instructions,
                     preset,
                     use_gitmoji,
+                    amend,
                 },
             });
         }
@@ -610,6 +617,17 @@ pub fn reduce(
                         effects.push(SideEffect::ExecuteCommit { message });
                     }
                 }
+                ModalType::ConfirmAmend => {
+                    if let Some(msg) = state
+                        .modes
+                        .commit
+                        .messages
+                        .get(state.modes.commit.current_index)
+                    {
+                        let message = crate::types::format_commit_message(msg);
+                        effects.push(SideEffect::ExecuteAmend { message });
+                    }
+                }
                 ModalType::RefSelector { field } => {
                     if let Some(ref_value) = data {
                         modal::apply_ref_selection(state, field, ref_value);
@@ -720,6 +738,24 @@ pub fn reduce(
             } else {
                 EmojiMode::Custom(emoji)
             };
+            state.mark_dirty();
+        }
+
+        StudioEvent::ToggleAmendMode => {
+            state.modes.commit.amend_mode = !state.modes.commit.amend_mode;
+            if state.modes.commit.amend_mode {
+                // Load original message from HEAD if repo is available
+                if let Some(repo) = &state.repo
+                    && let Ok(msg) = repo.get_head_commit_message()
+                {
+                    state.modes.commit.original_message = Some(msg);
+                }
+            } else {
+                state.modes.commit.original_message = None;
+            }
+            // Clear messages when toggling amend mode
+            state.modes.commit.messages.clear();
+            state.modes.commit.message_editor.clear();
             state.mark_dirty();
         }
 

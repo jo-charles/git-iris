@@ -195,6 +195,10 @@ impl StudioApp {
                     return Some(self.perform_commit(&message));
                 }
 
+                SideEffect::ExecuteAmend { message } => {
+                    return Some(self.perform_amend(&message));
+                }
+
                 SideEffect::Redraw => {
                     self.state.mark_dirty();
                 }
@@ -262,8 +266,9 @@ impl StudioApp {
                         instructions,
                         preset,
                         use_gitmoji,
+                        amend,
                     } => {
-                        self.spawn_commit_generation(instructions, preset, use_gitmoji);
+                        self.spawn_commit_generation(instructions, preset, use_gitmoji, amend);
                     }
                     AgentTask::Review { from_ref, to_ref } => {
                         self.spawn_review_generation(from_ref, to_ref);
@@ -751,7 +756,8 @@ impl StudioApp {
         self.state.modes.commit.generating = true;
         let preset = self.state.modes.commit.preset.clone();
         let use_gitmoji = self.state.modes.commit.use_gitmoji;
-        self.spawn_commit_generation(None, preset, use_gitmoji);
+        let amend = self.state.modes.commit.amend_mode;
+        self.spawn_commit_generation(None, preset, use_gitmoji, amend);
     }
 
     /// Auto-generate code review on mode entry
@@ -1051,6 +1057,20 @@ impl StudioApp {
                 Ok(result) => {
                     let output = crate::output::format_commit_result(&result, message);
                     ExitResult::Committed(output)
+                }
+                Err(e) => ExitResult::Error(e.to_string()),
+            }
+        } else {
+            ExitResult::Error("Commit service not available".to_string())
+        }
+    }
+
+    fn perform_amend(&self, message: &str) -> ExitResult {
+        if let Some(service) = &self.commit_service {
+            match service.perform_amend(message) {
+                Ok(result) => {
+                    let output = crate::output::format_commit_result(&result, message);
+                    ExitResult::Amended(output)
                 }
                 Err(e) => ExitResult::Error(e.to_string()),
             }
@@ -1758,6 +1778,8 @@ pub enum ExitResult {
     Quit,
     /// User committed changes (with output message)
     Committed(String),
+    /// User amended the previous commit (with output message)
+    Amended(String),
     /// An error occurred
     Error(String),
 }
@@ -1815,6 +1837,10 @@ pub fn run_studio(
             Ok(())
         }
         ExitResult::Committed(message) => {
+            println!("{message}");
+            Ok(())
+        }
+        ExitResult::Amended(message) => {
             println!("{message}");
             Ok(())
         }

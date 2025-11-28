@@ -142,6 +142,19 @@ impl MessageEditorState {
         self.edit_mode = false;
     }
 
+    /// Clear all messages and reset state
+    pub fn clear(&mut self) {
+        self.generated_messages.clear();
+        self.selected_message = 0;
+        self.original_message.clear();
+        self.textarea = TextArea::default();
+        self.textarea
+            .set_cursor_line_style(Style::default().bg(theme::bg_highlight_color()));
+        self.textarea
+            .set_cursor_style(Style::default().add_modifier(Modifier::REVERSED));
+        self.edit_mode = false;
+    }
+
     /// Get current message text
     pub fn get_message(&self) -> String {
         self.textarea.lines().join("\n")

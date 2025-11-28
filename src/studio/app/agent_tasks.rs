@@ -541,6 +541,7 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
         instructions: Option<String>,
         preset: String,
         use_gitmoji: bool,
+        amend: bool,
     ) {
         use crate::agents::{StructuredResponse, TaskContext};
 
@@ -553,11 +554,26 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
             return;
         };
 
+        // Get original message for amend mode
+        let original_message = if amend {
+            self.state
+                .repo
+                .as_ref()
+                .and_then(|r| r.get_head_commit_message().ok())
+                .unwrap_or_default()
+        } else {
+            String::new()
+        };
+
         let tx = self.iris_result_tx.clone();
 
         tokio::spawn(async move {
-            // Use standard commit context
-            let context = TaskContext::for_gen();
+            // Use amend context if amending, otherwise standard commit context
+            let context = if amend {
+                TaskContext::for_amend(original_message)
+            } else {
+                TaskContext::for_gen()
+            };
 
             // Execute commit capability with style overrides
             let preset_opt = if preset == "default" {

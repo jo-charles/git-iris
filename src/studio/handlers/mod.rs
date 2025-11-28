@@ -268,6 +268,7 @@ pub fn spawn_commit_task(state: &StudioState) -> SideEffect {
             },
             preset: state.modes.commit.preset.clone(),
             use_gitmoji: state.modes.commit.emoji_mode != EmojiMode::None,
+            amend: state.modes.commit.amend_mode,
         },
     }
 }
