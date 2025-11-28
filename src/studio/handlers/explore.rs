@@ -98,6 +98,27 @@ fn handle_file_tree_key(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffec
     }
 }
 
+/// Update selection range based on anchor and current line
+fn update_visual_selection(state: &mut StudioState) {
+    if let Some(anchor) = state.modes.explore.selection_anchor {
+        let current = state.modes.explore.current_line;
+        let (start, end) = if current < anchor {
+            (current, anchor)
+        } else {
+            (anchor, current)
+        };
+        state.modes.explore.selection = Some((start, end));
+        state.modes.explore.code_view.set_selection(start, end);
+    }
+}
+
+/// Clear visual selection state
+fn clear_selection(state: &mut StudioState) {
+    state.modes.explore.selection = None;
+    state.modes.explore.selection_anchor = None;
+    state.modes.explore.code_view.clear_selection();
+}
+
 fn handle_code_view_key(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffect> {
     match key.code {
         // Navigation - single line
@@ -108,6 +129,10 @@ fn handle_code_view_key(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffec
                 .code_view
                 .move_down(1, DEFAULT_VISIBLE_HEIGHT);
             state.modes.explore.current_line = state.modes.explore.code_view.selected_line();
+            // Extend selection if in visual mode
+            if state.modes.explore.selection_anchor.is_some() {
+                update_visual_selection(state);
+            }
             state.mark_dirty();
             vec![]
         }
@@ -118,6 +143,10 @@ fn handle_code_view_key(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffec
                 .code_view
                 .move_up(1, DEFAULT_VISIBLE_HEIGHT);
             state.modes.explore.current_line = state.modes.explore.code_view.selected_line();
+            // Extend selection if in visual mode
+            if state.modes.explore.selection_anchor.is_some() {
+                update_visual_selection(state);
+            }
             state.mark_dirty();
             vec![]
         }
@@ -129,6 +158,9 @@ fn handle_code_view_key(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffec
                 .code_view
                 .move_down(20, DEFAULT_VISIBLE_HEIGHT);
             state.modes.explore.current_line = state.modes.explore.code_view.selected_line();
+            if state.modes.explore.selection_anchor.is_some() {
+                update_visual_selection(state);
+            }
             state.mark_dirty();
             vec![]
         }
@@ -139,6 +171,9 @@ fn handle_code_view_key(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffec
                 .code_view
                 .move_up(20, DEFAULT_VISIBLE_HEIGHT);
             state.modes.explore.current_line = state.modes.explore.code_view.selected_line();
+            if state.modes.explore.selection_anchor.is_some() {
+                update_visual_selection(state);
+            }
             state.mark_dirty();
             vec![]
         }
@@ -146,6 +181,9 @@ fn handle_code_view_key(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffec
             // Go to first line
             state.modes.explore.code_view.goto_first();
             state.modes.explore.current_line = 1;
+            if state.modes.explore.selection_anchor.is_some() {
+                update_visual_selection(state);
+            }
             state.mark_dirty();
             vec![]
         }
@@ -157,7 +195,44 @@ fn handle_code_view_key(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffec
                 .code_view
                 .goto_last(DEFAULT_VISIBLE_HEIGHT);
             state.modes.explore.current_line = state.modes.explore.code_view.selected_line();
+            if state.modes.explore.selection_anchor.is_some() {
+                update_visual_selection(state);
+            }
             state.mark_dirty();
+            vec![]
+        }
+
+        // Visual selection mode (vim-style 'v')
+        KeyCode::Char('v') => {
+            if state.modes.explore.selection_anchor.is_some() {
+                // Already in visual mode, exit it
+                clear_selection(state);
+                state.notify(Notification::info("Selection cleared"));
+            } else {
+                // Enter visual mode
+                let current = state.modes.explore.current_line;
+                state.modes.explore.selection_anchor = Some(current);
+                state.modes.explore.selection = Some((current, current));
+                state
+                    .modes
+                    .explore
+                    .code_view
+                    .set_selection(current, current);
+                state.notify(Notification::info(
+                    "Visual mode: use j/k to select, y to copy, Esc to cancel",
+                ));
+            }
+            state.mark_dirty();
+            vec![]
+        }
+
+        // Escape - clear selection
+        KeyCode::Esc => {
+            if state.modes.explore.selection_anchor.is_some() {
+                clear_selection(state);
+                state.notify(Notification::info("Selection cleared"));
+                state.mark_dirty();
+            }
             vec![]
         }
 
@@ -198,19 +273,46 @@ fn handle_code_view_key(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffec
             }
         }
 
-        // Copy current line to clipboard
+        // Copy selection or current line to clipboard
         KeyCode::Char('y') => {
-            let line_idx = state
-                .modes
-                .explore
-                .code_view
-                .selected_line()
-                .saturating_sub(1);
-            let line_content = state.modes.explore.code_view.lines().get(line_idx).cloned();
-            if let Some(content) = line_content {
-                state.notify(Notification::success("Line copied to clipboard"));
+            let lines = state.modes.explore.code_view.lines();
+            let content = if let Some((start, end)) = state.modes.explore.selection {
+                // Copy selected lines
+                let start_idx = start.saturating_sub(1);
+                let end_idx = end.min(lines.len());
+                let selected: Vec<&str> = lines
+                    .iter()
+                    .skip(start_idx)
+                    .take(end_idx - start_idx)
+                    .map(String::as_str)
+                    .collect();
+                if selected.is_empty() {
+                    None
+                } else {
+                    Some((selected.join("\n"), selected.len()))
+                }
+            } else {
+                // Copy current line
+                let line_idx = state
+                    .modes
+                    .explore
+                    .code_view
+                    .selected_line()
+                    .saturating_sub(1);
+                lines.get(line_idx).map(|s| (s.clone(), 1))
+            };
+
+            if let Some((text, line_count)) = content {
+                let msg = if line_count > 1 {
+                    format!("{} lines copied to clipboard", line_count)
+                } else {
+                    "Line copied to clipboard".to_string()
+                };
+                state.notify(Notification::success(msg));
+                // Clear selection after copying (vim behavior)
+                clear_selection(state);
                 state.mark_dirty();
-                vec![SideEffect::CopyToClipboard(content)]
+                vec![SideEffect::CopyToClipboard(text)]
             } else {
                 state.notify(Notification::warning("Nothing to copy"));
                 state.mark_dirty();

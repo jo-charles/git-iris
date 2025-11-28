@@ -17,10 +17,13 @@ pub fn render_commit_panel(
 
     match panel_id {
         PanelId::Left => {
-            // Build title with file counts
+            // Build title with file counts and mode indicator
             let staged = state.git_status.staged_count;
             let modified = state.git_status.modified_count;
-            let title = if modified > 0 {
+
+            let title = if state.modes.commit.show_all_files {
+                format!("All Files · ✓{}", staged)
+            } else if modified > 0 {
                 format!("Changes ✓{} ○{}", staged, modified)
             } else if staged > 0 {
                 format!("Changes ✓{}", staged)

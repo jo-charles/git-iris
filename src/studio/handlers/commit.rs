@@ -127,6 +127,22 @@ fn handle_files_key(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffect> {
         // Unstage all files
         KeyCode::Char('U') => vec![SideEffect::GitUnstageAll],
 
+        // Toggle between changed files and all tracked files
+        KeyCode::Char('A') => {
+            state.modes.commit.show_all_files = !state.modes.commit.show_all_files;
+            let mode = if state.modes.commit.show_all_files {
+                "all files"
+            } else {
+                "changed files"
+            };
+            state.notify(crate::studio::state::Notification::info(format!(
+                "Showing: {}",
+                mode
+            )));
+            state.mark_dirty();
+            vec![SideEffect::RefreshGitStatus]
+        }
+
         _ => vec![],
     }
 }

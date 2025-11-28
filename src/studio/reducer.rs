@@ -972,8 +972,54 @@ fn apply_ref_selection(state: &mut StudioState, field: RefField, value: String) 
 }
 
 /// Apply scroll to the current focused panel
+#[allow(clippy::cognitive_complexity)]
 fn apply_scroll(state: &mut StudioState, direction: ScrollDirection, amount: usize) {
     match state.active_mode {
+        Mode::Explore => match state.focused_panel {
+            PanelId::Left => {
+                // File tree navigation
+                match direction {
+                    ScrollDirection::Up => {
+                        for _ in 0..amount {
+                            state.modes.explore.file_tree.select_prev();
+                        }
+                    }
+                    ScrollDirection::Down => {
+                        for _ in 0..amount {
+                            state.modes.explore.file_tree.select_next();
+                        }
+                    }
+                    ScrollDirection::PageUp => {
+                        state.modes.explore.file_tree.page_up(amount);
+                    }
+                    ScrollDirection::PageDown => {
+                        state.modes.explore.file_tree.page_down(amount);
+                    }
+                    ScrollDirection::Top => {
+                        state.modes.explore.file_tree.select_first();
+                    }
+                    ScrollDirection::Bottom => {
+                        state.modes.explore.file_tree.select_last();
+                    }
+                }
+            }
+            PanelId::Center => {
+                // Code view scroll
+                match direction {
+                    ScrollDirection::Up => {
+                        state.modes.explore.code_view.scroll_up(amount);
+                    }
+                    ScrollDirection::Down => {
+                        state.modes.explore.code_view.scroll_down(amount);
+                    }
+                    _ => {}
+                }
+            }
+            PanelId::Right => {
+                // Context/blame panel scroll
+                // Currently uses semantic_blame display - no scroll state yet
+            }
+        },
         Mode::Commit => match state.focused_panel {
             PanelId::Left => {
                 // File tree navigation (uses selection, not scroll directly)
@@ -1003,6 +1049,9 @@ fn apply_scroll(state: &mut StudioState, direction: ScrollDirection, amount: usi
                 }
             }
             PanelId::Center => {
+                // Message editor scroll - handled by component
+            }
+            PanelId::Right => {
                 // Diff view scroll
                 match direction {
                     ScrollDirection::Up => {
@@ -1014,13 +1063,38 @@ fn apply_scroll(state: &mut StudioState, direction: ScrollDirection, amount: usi
                     _ => {}
                 }
             }
-            PanelId::Right => {
-                // Message editor - navigation handled by textarea
-                // No direct scroll control needed
-            }
         },
-        Mode::Review => {
-            if state.focused_panel == PanelId::Center {
+        Mode::Review => match state.focused_panel {
+            PanelId::Left => {
+                // File tree navigation
+                match direction {
+                    ScrollDirection::Up => {
+                        for _ in 0..amount {
+                            state.modes.review.file_tree.select_prev();
+                        }
+                    }
+                    ScrollDirection::Down => {
+                        for _ in 0..amount {
+                            state.modes.review.file_tree.select_next();
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            PanelId::Center => {
+                // Diff view scroll
+                match direction {
+                    ScrollDirection::Up => {
+                        state.modes.review.diff_view.scroll_up(amount);
+                    }
+                    ScrollDirection::Down => {
+                        state.modes.review.diff_view.scroll_down(amount);
+                    }
+                    _ => {}
+                }
+            }
+            PanelId::Right => {
+                // Review content scroll
                 match direction {
                     ScrollDirection::Up => {
                         state.modes.review.review_scroll =
@@ -1032,9 +1106,38 @@ fn apply_scroll(state: &mut StudioState, direction: ScrollDirection, amount: usi
                     _ => {}
                 }
             }
-        }
-        Mode::PR => {
-            if state.focused_panel == PanelId::Center {
+        },
+        Mode::PR => match state.focused_panel {
+            PanelId::Left => {
+                // File tree navigation
+                match direction {
+                    ScrollDirection::Up => {
+                        for _ in 0..amount {
+                            state.modes.pr.file_tree.select_prev();
+                        }
+                    }
+                    ScrollDirection::Down => {
+                        for _ in 0..amount {
+                            state.modes.pr.file_tree.select_next();
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            PanelId::Center => {
+                // Diff view scroll
+                match direction {
+                    ScrollDirection::Up => {
+                        state.modes.pr.diff_view.scroll_up(amount);
+                    }
+                    ScrollDirection::Down => {
+                        state.modes.pr.diff_view.scroll_down(amount);
+                    }
+                    _ => {}
+                }
+            }
+            PanelId::Right => {
+                // PR content scroll
                 match direction {
                     ScrollDirection::Up => {
                         state.modes.pr.pr_scroll = state.modes.pr.pr_scroll.saturating_sub(amount);
@@ -1045,8 +1148,39 @@ fn apply_scroll(state: &mut StudioState, direction: ScrollDirection, amount: usi
                     _ => {}
                 }
             }
-        }
-        _ => {}
+        },
+        Mode::Changelog => match state.focused_panel {
+            PanelId::Center | PanelId::Right => match direction {
+                ScrollDirection::Up => {
+                    state.modes.changelog.changelog_scroll = state
+                        .modes
+                        .changelog
+                        .changelog_scroll
+                        .saturating_sub(amount);
+                }
+                ScrollDirection::Down => {
+                    state.modes.changelog.changelog_scroll += amount;
+                }
+                _ => {}
+            },
+            PanelId::Left => {}
+        },
+        Mode::ReleaseNotes => match state.focused_panel {
+            PanelId::Center | PanelId::Right => match direction {
+                ScrollDirection::Up => {
+                    state.modes.release_notes.release_notes_scroll = state
+                        .modes
+                        .release_notes
+                        .release_notes_scroll
+                        .saturating_sub(amount);
+                }
+                ScrollDirection::Down => {
+                    state.modes.release_notes.release_notes_scroll += amount;
+                }
+                _ => {}
+            },
+            PanelId::Left => {}
+        },
     }
     state.mark_dirty();
 }

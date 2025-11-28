@@ -160,6 +160,18 @@ impl CodeViewState {
     pub fn is_loaded(&self) -> bool {
         self.current_file.is_some()
     }
+
+    /// Select a line by visible row (for mouse clicks)
+    /// Returns true if selection changed
+    pub fn select_by_row(&mut self, row: usize) -> bool {
+        let target_line = self.scroll_offset + row + 1; // Convert to 1-indexed
+        if target_line <= self.lines.len() && target_line != self.selected_line {
+            self.selected_line = target_line;
+            true
+        } else {
+            false
+        }
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

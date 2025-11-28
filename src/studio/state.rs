@@ -786,6 +786,8 @@ pub struct ExploreState {
     pub current_line: usize,
     /// Selection range (start, end) for multi-line queries
     pub selection: Option<(usize, usize)>,
+    /// Selection anchor line for visual mode (where 'v' was pressed)
+    pub selection_anchor: Option<usize>,
     /// Code view scroll offset
     pub code_scroll: usize,
     /// Heat map enabled
@@ -815,6 +817,7 @@ impl std::fmt::Debug for ExploreState {
 }
 
 /// State for Commit mode
+#[allow(clippy::struct_excessive_bools)]
 pub struct CommitState {
     /// Generated commit messages
     pub messages: Vec<GeneratedMessage>,
@@ -840,6 +843,8 @@ pub struct CommitState {
     pub diff_view: DiffViewState,
     /// Message editor state
     pub message_editor: MessageEditorState,
+    /// Show all tracked files (vs only staged/modified)
+    pub show_all_files: bool,
 }
 
 impl Default for CommitState {
@@ -857,6 +862,7 @@ impl Default for CommitState {
             file_tree: FileTreeState::new(),
             diff_view: DiffViewState::new(),
             message_editor: MessageEditorState::new(),
+            show_all_files: false,
         }
     }
 }

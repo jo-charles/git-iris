@@ -452,6 +452,47 @@ impl FileTreeState {
     pub fn selected_index(&self) -> usize {
         self.selected
     }
+
+    /// Select an item by visible row (for mouse clicks)
+    /// Returns true if selection changed, false otherwise
+    pub fn select_by_row(&mut self, row: usize) -> bool {
+        let flat_len = self.flat_view().len();
+        let target_index = self.scroll_offset + row;
+
+        if target_index < flat_len && target_index != self.selected {
+            self.selected = target_index;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Check if the clicked row matches the currently selected item
+    /// Used for double-click detection
+    pub fn is_row_selected(&self, row: usize) -> bool {
+        let target_index = self.scroll_offset + row;
+        target_index == self.selected
+    }
+
+    /// Handle mouse click at a specific row within the visible area.
+    /// Returns a tuple of (`selection_changed`, `is_directory`) for the caller to handle.
+    pub fn handle_click(&mut self, row: usize) -> (bool, bool) {
+        let flat_len = self.flat_view().len();
+        let target_index = self.scroll_offset + row;
+
+        if target_index >= flat_len {
+            return (false, false);
+        }
+
+        let was_selected = target_index == self.selected;
+        let is_dir = self.flat_cache.get(target_index).is_some_and(|e| e.is_dir);
+
+        if !was_selected {
+            self.selected = target_index;
+        }
+
+        (!was_selected, is_dir)
+    }
 }
 
 /// Helper to insert a path into the tree structure
@@ -576,21 +617,21 @@ pub fn render_file_tree(
 fn render_entry(entry: &FlatEntry, is_selected: bool, width: usize) -> Line<'static> {
     let indent = "  ".repeat(entry.depth);
 
-    // Icon (use ASCII for consistent width)
+    // Icon with nice Unicode symbols
     let icon = if entry.is_dir {
-        if entry.is_expanded { "v" } else { ">" }
+        if entry.is_expanded { "▾" } else { "▸" }
     } else {
         get_file_icon(&entry.name)
     };
 
-    // Git status indicator (use ASCII for consistent width)
+    // Git status indicator with Unicode symbols
     let status_indicator = match entry.git_status {
-        FileGitStatus::Staged => "+",
-        FileGitStatus::Modified => "*",
-        FileGitStatus::Untracked => "?",
-        FileGitStatus::Deleted => "x",
-        FileGitStatus::Renamed => "r",
-        FileGitStatus::Conflict => "!",
+        FileGitStatus::Staged => "●",
+        FileGitStatus::Modified => "◐",
+        FileGitStatus::Untracked => "◌",
+        FileGitStatus::Deleted => "✕",
+        FileGitStatus::Renamed => "➜",
+        FileGitStatus::Conflict => "⚠",
         FileGitStatus::Normal => " ",
     };
     let status_style = entry.git_status.style();
@@ -673,23 +714,83 @@ fn truncate_to_width(s: &str, max_width: usize) -> String {
     result
 }
 
-/// Get icon for file based on extension (ASCII-only for consistent width)
+/// Get icon for file based on extension (Unicode symbols, no emoji)
 fn get_file_icon(name: &str) -> &'static str {
+    // Check for special filenames first
+    let lower_name = name.to_lowercase();
+    if lower_name == "cargo.toml" || lower_name == "cargo.lock" {
+        return "◫";
+    }
+    if lower_name.starts_with("readme") {
+        return "◈";
+    }
+    if lower_name.starts_with("license") {
+        return "§";
+    }
+    if lower_name.starts_with(".git") {
+        return "⊙";
+    }
+    if lower_name == "dockerfile" || lower_name.starts_with("docker-compose") {
+        return "◲";
+    }
+    if lower_name == "makefile" {
+        return "⚙";
+    }
+
     let ext = name.rsplit('.').next().unwrap_or("");
     match ext.to_lowercase().as_str() {
-        "rs" => "#",
-        "toml" => "=",
-        "md" => "m",
-        "json" => "j",
-        "yaml" | "yml" => "y",
-        "js" | "jsx" => "J",
-        "ts" | "tsx" => "T",
-        "py" => "p",
-        "go" => "g",
-        "sh" | "bash" | "zsh" => "$",
-        "lock" => "L",
-        "gitignore" => ".",
-        "dockerfile" => "D",
-        _ => "-",
+        // Rust
+        "rs" => "●",
+        // Config files
+        "toml" => "⚙",
+        "yaml" | "yml" => "⚙",
+        "json" => "◇",
+        "xml" => "◇",
+        "ini" | "cfg" | "conf" => "⚙",
+        // Documentation
+        "md" | "mdx" => "◈",
+        "txt" => "≡",
+        "pdf" => "▤",
+        // Web
+        "html" | "htm" => "◊",
+        "css" | "scss" | "sass" | "less" => "◊",
+        "js" | "mjs" | "cjs" => "◆",
+        "jsx" => "◆",
+        "ts" | "mts" | "cts" => "◇",
+        "tsx" => "◇",
+        "vue" => "◊",
+        "svelte" => "◊",
+        // Programming languages
+        "py" | "pyi" => "◈",
+        "go" => "◈",
+        "rb" => "◈",
+        "java" | "class" | "jar" => "◈",
+        "kt" | "kts" => "◈",
+        "swift" => "◈",
+        "c" | "h" => "○",
+        "cpp" | "cc" | "cxx" | "hpp" | "hxx" => "○",
+        "cs" => "◈",
+        "php" => "◈",
+        "lua" => "◈",
+        "r" => "◈",
+        "sql" => "◫",
+        // Shell
+        "sh" | "bash" | "zsh" | "fish" => "▷",
+        "ps1" | "psm1" => "▷",
+        // Data
+        "csv" => "◫",
+        "db" | "sqlite" | "sqlite3" => "◫",
+        // Images
+        "png" | "jpg" | "jpeg" | "gif" | "svg" | "ico" | "webp" => "◧",
+        // Archives
+        "zip" | "tar" | "gz" | "rar" | "7z" => "▣",
+        // Lock files
+        "lock" => "◉",
+        // Git
+        "gitignore" | "gitattributes" | "gitmodules" => "⊙",
+        // Env
+        "env" | "env.local" | "env.development" | "env.production" => "◉",
+        // Default
+        _ => "◦",
     }
 }

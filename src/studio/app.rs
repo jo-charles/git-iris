@@ -115,6 +115,10 @@ pub struct StudioApp {
     last_layout: Option<LayoutAreas>,
     /// Whether an explicit initial mode was set
     explicit_mode_set: bool,
+    /// Last mouse click info for double-click detection (time, x, y)
+    last_click: Option<(std::time::Instant, u16, u16)>,
+    /// Drag selection start info (panel, line number) for code view selection
+    drag_start: Option<(PanelId, usize)>,
 }
 
 impl StudioApp {
@@ -147,6 +151,8 @@ impl StudioApp {
             iris_result_tx,
             last_layout: None,
             explicit_mode_set: false,
+            last_click: None,
+            drag_start: None,
         }
     }
 
@@ -430,20 +436,26 @@ impl StudioApp {
 
     /// Update explore mode file tree from repository
     fn update_explore_file_tree(&mut self) {
-        // Build file tree from staged + modified files for now
-        // In the future, we can scan the working directory
-        let mut all_files = Vec::new();
-        let mut statuses = Vec::new();
+        // Get all tracked files from the repository
+        let Some(repo) = &self.state.repo else { return };
+        let all_files: Vec<std::path::PathBuf> = match repo.get_all_tracked_files() {
+            Ok(files) => files.into_iter().map(std::path::PathBuf::from).collect(),
+            Err(e) => {
+                eprintln!("Failed to get tracked files: {}", e);
+                return;
+            }
+        };
 
+        // Build status lookup from git status
+        let mut statuses = Vec::new();
         for path in &self.state.git_status.staged_files {
-            all_files.push(path.clone());
             statuses.push((path.clone(), FileGitStatus::Staged));
         }
         for path in &self.state.git_status.modified_files {
-            if !all_files.contains(path) {
-                all_files.push(path.clone());
-            }
             statuses.push((path.clone(), FileGitStatus::Modified));
+        }
+        for path in &self.state.git_status.untracked_files {
+            statuses.push((path.clone(), FileGitStatus::Untracked));
         }
 
         if !all_files.is_empty() {
@@ -554,13 +566,68 @@ impl StudioApp {
                         }
                     }
                     Event::Mouse(mouse) => {
-                        // Handle click-to-focus specially (needs layout info)
-                        if let MouseEventKind::Down(MouseButton::Left) = mouse.kind
-                            && let Some(panel) = self.panel_at(mouse.column, mouse.row)
-                            && self.state.focused_panel != panel
-                        {
-                            self.state.focused_panel = panel;
-                            self.state.mark_dirty();
+                        match mouse.kind {
+                            MouseEventKind::Down(MouseButton::Left) => {
+                                let now = std::time::Instant::now();
+                                let is_double_click =
+                                    self.last_click.is_some_and(|(time, lx, ly)| {
+                                        now.duration_since(time).as_millis() < 400
+                                            && mouse.column.abs_diff(lx) <= 2
+                                            && mouse.row.abs_diff(ly) <= 1
+                                    });
+
+                                // Handle click based on what was clicked
+                                if let Some(panel) = self.panel_at(mouse.column, mouse.row) {
+                                    // Focus panel if not focused
+                                    if self.state.focused_panel != panel {
+                                        self.state.focused_panel = panel;
+                                        self.state.mark_dirty();
+                                    }
+
+                                    // Start drag selection for code view
+                                    if let Some(line) =
+                                        self.code_view_line_at(panel, mouse.column, mouse.row)
+                                    {
+                                        self.drag_start = Some((panel, line));
+                                        // Clear any existing selection and set cursor
+                                        self.update_code_selection(panel, line, line);
+                                    } else {
+                                        self.drag_start = None;
+                                    }
+
+                                    // Handle file tree clicks
+                                    self.handle_file_tree_click(
+                                        panel,
+                                        mouse.column,
+                                        mouse.row,
+                                        is_double_click,
+                                    );
+                                }
+
+                                // Update last click for double-click detection
+                                self.last_click = Some((now, mouse.column, mouse.row));
+                            }
+                            MouseEventKind::Drag(MouseButton::Left) => {
+                                // Extend selection while dragging
+                                if let Some((start_panel, start_line)) = self.drag_start
+                                    && let Some(panel) = self.panel_at(mouse.column, mouse.row)
+                                    && panel == start_panel
+                                    && let Some(current_line) =
+                                        self.code_view_line_at(panel, mouse.column, mouse.row)
+                                {
+                                    let (sel_start, sel_end) = if current_line < start_line {
+                                        (current_line, start_line)
+                                    } else {
+                                        (start_line, current_line)
+                                    };
+                                    self.update_code_selection(panel, sel_start, sel_end);
+                                }
+                            }
+                            MouseEventKind::Up(MouseButton::Left) => {
+                                // Finalize drag selection
+                                self.drag_start = None;
+                            }
+                            _ => {}
                         }
                         // Push scroll events to queue
                         self.push_event(StudioEvent::Mouse(mouse));
@@ -1305,6 +1372,190 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
         None
     }
 
+    /// Handle mouse click in panels (file tree, code view, etc.)
+    fn handle_file_tree_click(&mut self, panel: PanelId, _x: u16, y: u16, is_double_click: bool) {
+        let Some(layout) = &self.last_layout else {
+            return;
+        };
+
+        // Get the panel rect
+        let panel_idx = match panel {
+            PanelId::Left => 0,
+            PanelId::Center => 1,
+            PanelId::Right => 2,
+        };
+
+        let Some(panel_rect) = layout.panels.get(panel_idx) else {
+            return;
+        };
+
+        // Calculate row within panel (accounting for border and title)
+        // Panel has 1 row border on each side
+        let inner_y = y.saturating_sub(panel_rect.y + 1);
+
+        // Determine which component to update based on mode and panel
+        match (self.state.active_mode, panel) {
+            // ─────────────────────────────────────────────────────────────────
+            // Explore Mode
+            // ─────────────────────────────────────────────────────────────────
+            (Mode::Explore, PanelId::Left) => {
+                let file_tree = &mut self.state.modes.explore.file_tree;
+                let (changed, is_dir) = file_tree.handle_click(inner_y as usize);
+
+                if is_double_click && is_dir {
+                    file_tree.toggle_expand();
+                } else if is_double_click && !is_dir {
+                    // Double-click on file: load it and focus code view
+                    if let Some(path) = file_tree.selected_path() {
+                        self.state.modes.explore.current_file = Some(path.clone());
+                        if let Err(e) = self.state.modes.explore.code_view.load_file(&path) {
+                            self.state.notify(Notification::warning(format!(
+                                "Could not load file: {}",
+                                e
+                            )));
+                        }
+                        self.state.focused_panel = PanelId::Center;
+                    }
+                } else if changed && !is_dir {
+                    // Single click on file: load it into code view
+                    if let Some(path) = file_tree.selected_path() {
+                        self.state.modes.explore.current_file = Some(path.clone());
+                        if let Err(e) = self.state.modes.explore.code_view.load_file(&path) {
+                            self.state.notify(Notification::warning(format!(
+                                "Could not load file: {}",
+                                e
+                            )));
+                        }
+                    }
+                }
+                self.state.mark_dirty();
+            }
+            (Mode::Explore, PanelId::Center) => {
+                // Code view: click to select line
+                let code_view = &mut self.state.modes.explore.code_view;
+                if code_view.select_by_row(inner_y as usize) {
+                    self.state.mark_dirty();
+                }
+            }
+            // ─────────────────────────────────────────────────────────────────
+            // Commit Mode
+            // ─────────────────────────────────────────────────────────────────
+            (Mode::Commit, PanelId::Left) => {
+                let file_tree = &mut self.state.modes.commit.file_tree;
+                let (changed, is_dir) = file_tree.handle_click(inner_y as usize);
+
+                if is_double_click && is_dir {
+                    file_tree.toggle_expand();
+                } else if is_double_click && !is_dir {
+                    // Double-click on file: focus on diff panel
+                    if let Some(path) = file_tree.selected_path() {
+                        self.state.modes.commit.diff_view.select_file_by_path(&path);
+                        self.state.focused_panel = PanelId::Right;
+                    }
+                } else if changed {
+                    // Single click: sync diff view
+                    if let Some(path) = file_tree.selected_path() {
+                        self.state.modes.commit.diff_view.select_file_by_path(&path);
+                    }
+                }
+                self.state.mark_dirty();
+            }
+            // ─────────────────────────────────────────────────────────────────
+            // Review Mode
+            // ─────────────────────────────────────────────────────────────────
+            (Mode::Review, PanelId::Left) => {
+                let file_tree = &mut self.state.modes.review.file_tree;
+                let (changed, is_dir) = file_tree.handle_click(inner_y as usize);
+
+                if is_double_click && is_dir {
+                    file_tree.toggle_expand();
+                } else if is_double_click && !is_dir {
+                    // Double-click on file: focus on diff panel
+                    if let Some(path) = file_tree.selected_path() {
+                        self.state.modes.review.diff_view.select_file_by_path(&path);
+                        self.state.focused_panel = PanelId::Center;
+                    }
+                } else if changed {
+                    // Single click: sync diff view
+                    if let Some(path) = file_tree.selected_path() {
+                        self.state.modes.review.diff_view.select_file_by_path(&path);
+                    }
+                }
+                self.state.mark_dirty();
+            }
+            // ─────────────────────────────────────────────────────────────────
+            // PR Mode
+            // ─────────────────────────────────────────────────────────────────
+            (Mode::PR, PanelId::Left) => {
+                let file_tree = &mut self.state.modes.pr.file_tree;
+                let (changed, is_dir) = file_tree.handle_click(inner_y as usize);
+
+                if is_double_click && is_dir {
+                    file_tree.toggle_expand();
+                } else if (changed || is_double_click)
+                    && let Some(path) = file_tree.selected_path()
+                {
+                    self.state.modes.pr.diff_view.select_file_by_path(&path);
+                }
+                self.state.mark_dirty();
+            }
+            _ => {}
+        }
+    }
+
+    /// Get the line number at a mouse position in the code view (1-indexed)
+    /// Returns None if not in a code view area
+    fn code_view_line_at(&self, panel: PanelId, _x: u16, y: u16) -> Option<usize> {
+        let layout = self.last_layout.as_ref()?;
+
+        // Get the panel rect
+        let panel_idx = match panel {
+            PanelId::Left => 0,
+            PanelId::Center => 1,
+            PanelId::Right => 2,
+        };
+
+        let panel_rect = layout.panels.get(panel_idx)?;
+
+        // Calculate row within panel (accounting for border)
+        let inner_y = y.saturating_sub(panel_rect.y + 1) as usize;
+
+        // Only handle code view panels based on mode
+        match (self.state.active_mode, panel) {
+            (Mode::Explore, PanelId::Center) => {
+                let code_view = &self.state.modes.explore.code_view;
+                let target_line = code_view.scroll_offset() + inner_y + 1;
+                if target_line <= code_view.line_count() {
+                    Some(target_line)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    }
+
+    /// Update code view selection range (for mouse drag)
+    fn update_code_selection(&mut self, panel: PanelId, start: usize, end: usize) {
+        if let (Mode::Explore, PanelId::Center) = (self.state.active_mode, panel) {
+            // Update code view state
+            self.state.modes.explore.code_view.set_selected_line(start);
+            if start == end {
+                // Single line - set anchor for potential drag extension
+                self.state.modes.explore.selection_anchor = Some(start);
+                self.state.modes.explore.code_view.clear_selection();
+                self.state.modes.explore.selection = None;
+            } else {
+                // Multi-line selection from drag
+                self.state.modes.explore.code_view.set_selection(start, end);
+                self.state.modes.explore.selection = Some((start, end));
+            }
+            // Update current line for semantic blame
+            self.state.modes.explore.current_line = start;
+            self.state.mark_dirty();
+        }
+    }
+
     /// Spawn a task to generate a commit message
     fn spawn_commit_generation(
         &self,
@@ -1685,24 +1936,53 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
     }
 
     /// Update commit mode file tree from git status
-    /// Shows all changed files: staged and unstaged with different styling
+    /// Shows either changed files (staged/unstaged) or all tracked files based on toggle
     fn update_commit_file_tree(&mut self) {
-        let mut all_files = Vec::new();
         let mut statuses = Vec::new();
 
-        // Add staged files first (they appear at the top)
+        // Build status map for known changed files
         for path in &self.state.git_status.staged_files {
-            all_files.push(path.clone());
             statuses.push((path.clone(), FileGitStatus::Staged));
         }
-
-        // Add modified (unstaged) files that aren't already in staged
         for path in &self.state.git_status.modified_files {
             if !self.state.git_status.staged_files.contains(path) {
-                all_files.push(path.clone());
                 statuses.push((path.clone(), FileGitStatus::Modified));
             }
         }
+        for path in &self.state.git_status.untracked_files {
+            statuses.push((path.clone(), FileGitStatus::Untracked));
+        }
+
+        let all_files: Vec<std::path::PathBuf> = if self.state.modes.commit.show_all_files {
+            // Show all tracked files from the repository
+            let Some(repo) = &self.state.repo else {
+                return;
+            };
+            match repo.get_all_tracked_files() {
+                Ok(files) => files.into_iter().map(std::path::PathBuf::from).collect(),
+                Err(e) => {
+                    eprintln!("Failed to get tracked files: {}", e);
+                    return;
+                }
+            }
+        } else {
+            // Show only changed files (staged + modified + untracked)
+            let mut files = Vec::new();
+            for path in &self.state.git_status.staged_files {
+                files.push(path.clone());
+            }
+            for path in &self.state.git_status.modified_files {
+                if !files.contains(path) {
+                    files.push(path.clone());
+                }
+            }
+            for path in &self.state.git_status.untracked_files {
+                if !files.contains(path) {
+                    files.push(path.clone());
+                }
+            }
+            files
+        };
 
         let tree_state = super::components::FileTreeState::from_paths(&all_files, &statuses);
         self.state.modes.commit.file_tree = tree_state;
@@ -2148,7 +2428,9 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
             }
             Mode::Explore => match self.state.focused_panel {
                 PanelId::Left => format!("{} · [↑↓]nav [Enter]open", base),
-                PanelId::Center => format!("{} · [↑↓]nav [w]why [y]copy line [Y]copy file", base),
+                PanelId::Center => {
+                    format!("{} · [↑↓]nav [v]select [y]copy [Y]copy file [w]why", base)
+                }
                 PanelId::Right => format!("{} · [c]chat", base),
             },
         }

@@ -242,6 +242,52 @@ pub fn get_untracked_files(repo: &Repository) -> Result<Vec<String>> {
     Ok(untracked)
 }
 
+/// Gets all tracked files in the repository (from HEAD tree + index)
+///
+/// This returns all files that are tracked by git, which includes:
+/// - Files committed in HEAD
+/// - Files staged in the index (including newly added files)
+///
+/// # Returns
+///
+/// A Result containing a Vec of file paths or an error.
+pub fn get_all_tracked_files(repo: &Repository) -> Result<Vec<String>> {
+    log_debug!("Getting all tracked files");
+    let mut files = std::collections::HashSet::new();
+
+    // Get files from HEAD tree
+    if let Ok(head) = repo.head()
+        && let Ok(tree) = head.peel_to_tree()
+    {
+        tree.walk(git2::TreeWalkMode::PreOrder, |dir, entry| {
+            if entry.kind() == Some(git2::ObjectType::Blob) {
+                let path = if dir.is_empty() {
+                    entry.name().unwrap_or("").to_string()
+                } else {
+                    format!("{}{}", dir, entry.name().unwrap_or(""))
+                };
+                if !path.is_empty() {
+                    files.insert(path);
+                }
+            }
+            git2::TreeWalkResult::Ok
+        })?;
+    }
+
+    // Also include files from the index (staged files, including new files)
+    let index = repo.index()?;
+    for entry in index.iter() {
+        let path = String::from_utf8_lossy(&entry.path).to_string();
+        files.insert(path);
+    }
+
+    let mut result: Vec<_> = files.into_iter().collect();
+    result.sort();
+
+    log_debug!("Found {} tracked files", result.len());
+    Ok(result)
+}
+
 /// Gets the number of commits ahead and behind the upstream tracking branch
 ///
 /// # Returns

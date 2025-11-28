@@ -2,8 +2,8 @@ use crate::config::Config;
 use crate::context::{CommitContext, RecentCommit, StagedFile};
 use crate::git::commit::{self, CommitResult};
 use crate::git::files::{
-    RepoFilesInfo, get_ahead_behind, get_file_statuses, get_unstaged_file_statuses,
-    get_untracked_files,
+    RepoFilesInfo, get_ahead_behind, get_all_tracked_files, get_file_statuses,
+    get_unstaged_file_statuses, get_untracked_files,
 };
 use crate::git::utils::is_inside_work_tree;
 use crate::log_debug;
@@ -854,6 +854,12 @@ impl GitRepo {
     pub fn get_untracked_files(&self) -> Result<Vec<String>> {
         let repo = self.open_repo()?;
         get_untracked_files(&repo)
+    }
+
+    /// Get all tracked files in the repository (from HEAD + index)
+    pub fn get_all_tracked_files(&self) -> Result<Vec<String>> {
+        let repo = self.open_repo()?;
+        get_all_tracked_files(&repo)
     }
 
     /// Get ahead/behind counts relative to upstream tracking branch
