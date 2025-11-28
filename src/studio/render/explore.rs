@@ -84,7 +84,7 @@ pub fn render_explore_panel(
 
                 let loading_text =
                     Paragraph::new(format!("{} Iris is analyzing the code history...", spinner))
-                        .style(Style::default().fg(theme::NEON_CYAN));
+                        .style(Style::default().fg(theme::accent_secondary()));
                 frame.render_widget(loading_text, inner);
             } else if let Some(ref blame) = state.modes.explore.semantic_blame {
                 // Show semantic blame result
@@ -92,7 +92,7 @@ pub fn render_explore_panel(
             } else {
                 // Show placeholder
                 let text = Paragraph::new("Select code and press 'w' to ask why")
-                    .style(Style::default().fg(theme::TEXT_DIM));
+                    .style(Style::default().fg(theme::text_dim_color()));
                 frame.render_widget(text, inner);
             }
         }
@@ -122,39 +122,36 @@ fn render_semantic_blame(
 
     let header_lines = vec![
         Line::from(vec![
-            Span::styled("File: ", Style::default().fg(theme::TEXT_DIM)),
+            Span::styled("File: ", Style::default().fg(theme::text_dim_color())),
             Span::styled(
                 file_name,
                 Style::default()
-                    .fg(theme::NEON_CYAN)
+                    .fg(theme::accent_secondary())
                     .add_modifier(Modifier::BOLD),
             ),
             Span::styled(
                 format!(" (L{}-{})", blame.start_line, blame.end_line),
-                Style::default().fg(theme::TEXT_DIM),
+                Style::default().fg(theme::text_dim_color()),
             ),
         ]),
         Line::from(vec![
-            Span::styled("Commit: ", Style::default().fg(theme::TEXT_DIM)),
+            Span::styled("Commit: ", Style::default().fg(theme::text_dim_color())),
             Span::styled(
                 &blame.commit_hash[..8.min(blame.commit_hash.len())],
-                Style::default().fg(theme::CORAL),
+                theme::commit_hash(),
             ),
-            Span::styled(" by ", Style::default().fg(theme::TEXT_DIM)),
-            Span::styled(&blame.author, Style::default().fg(theme::ELECTRIC_PURPLE)),
+            Span::styled(" by ", Style::default().fg(theme::text_dim_color())),
+            Span::styled(&blame.author, theme::author()),
         ]),
         Line::from(vec![
-            Span::styled("Date: ", Style::default().fg(theme::TEXT_DIM)),
-            Span::styled(
-                &blame.commit_date,
-                Style::default().fg(theme::ELECTRIC_YELLOW),
-            ),
+            Span::styled("Date: ", Style::default().fg(theme::text_dim_color())),
+            Span::styled(&blame.commit_date, theme::timestamp()),
         ]),
         Line::from(vec![
-            Span::styled("Message: ", Style::default().fg(theme::TEXT_DIM)),
+            Span::styled("Message: ", Style::default().fg(theme::text_dim_color())),
             Span::styled(
                 &blame.commit_message,
-                Style::default().fg(theme::TEXT_SECONDARY),
+                Style::default().fg(theme::text_secondary_color()),
             ),
         ]),
     ];
@@ -190,7 +187,7 @@ fn render_markdown_lines(text: &str) -> Vec<Line<'static>> {
                 lines.push(Line::from(Span::styled(
                     header.to_string(),
                     Style::default()
-                        .fg(theme::NEON_CYAN)
+                        .fg(theme::accent_secondary())
                         .add_modifier(Modifier::BOLD),
                 )));
                 continue;
@@ -199,7 +196,7 @@ fn render_markdown_lines(text: &str) -> Vec<Line<'static>> {
                 lines.push(Line::from(Span::styled(
                     header.to_string(),
                     Style::default()
-                        .fg(theme::ELECTRIC_PURPLE)
+                        .fg(theme::accent_primary())
                         .add_modifier(Modifier::BOLD),
                 )));
                 continue;
@@ -208,7 +205,7 @@ fn render_markdown_lines(text: &str) -> Vec<Line<'static>> {
                 lines.push(Line::from(Span::styled(
                     header.to_string(),
                     Style::default()
-                        .fg(theme::ELECTRIC_PURPLE)
+                        .fg(theme::accent_primary())
                         .add_modifier(Modifier::BOLD),
                 )));
                 continue;
@@ -216,13 +213,19 @@ fn render_markdown_lines(text: &str) -> Vec<Line<'static>> {
 
             // Handle bullet points
             if let Some(bullet_text) = trimmed.strip_prefix("- ") {
-                let mut spans = vec![Span::styled("  • ", Style::default().fg(theme::CORAL))];
+                let mut spans = vec![Span::styled(
+                    "  • ",
+                    Style::default().fg(theme::accent_tertiary()),
+                )];
                 spans.extend(parse_inline_markdown(bullet_text));
                 lines.push(Line::from(spans));
                 continue;
             }
             if let Some(bullet_text) = trimmed.strip_prefix("* ") {
-                let mut spans = vec![Span::styled("  • ", Style::default().fg(theme::CORAL))];
+                let mut spans = vec![Span::styled(
+                    "  • ",
+                    Style::default().fg(theme::accent_tertiary()),
+                )];
                 spans.extend(parse_inline_markdown(bullet_text));
                 lines.push(Line::from(spans));
                 continue;
@@ -237,7 +240,7 @@ fn render_markdown_lines(text: &str) -> Vec<Line<'static>> {
                     let rest = &trimmed[dot_pos + 2..];
                     let mut spans = vec![Span::styled(
                         format!("  {}. ", num),
-                        Style::default().fg(theme::CORAL),
+                        Style::default().fg(theme::accent_tertiary()),
                     )];
                     spans.extend(parse_inline_markdown(rest));
                     lines.push(Line::from(spans));
@@ -276,7 +279,7 @@ fn parse_inline_markdown(text: &str) -> Vec<Span<'static>> {
                 if !current.is_empty() {
                     spans.push(Span::styled(
                         std::mem::take(&mut current),
-                        Style::default().fg(theme::TEXT_PRIMARY),
+                        Style::default().fg(theme::text_primary_color()),
                     ));
                 }
                 // Collect bold text
@@ -292,7 +295,7 @@ fn parse_inline_markdown(text: &str) -> Vec<Span<'static>> {
                     spans.push(Span::styled(
                         bold_text,
                         Style::default()
-                            .fg(theme::ELECTRIC_YELLOW)
+                            .fg(theme::warning_color())
                             .add_modifier(Modifier::BOLD),
                     ));
                 }
@@ -302,7 +305,7 @@ fn parse_inline_markdown(text: &str) -> Vec<Span<'static>> {
                 if !current.is_empty() {
                     spans.push(Span::styled(
                         std::mem::take(&mut current),
-                        Style::default().fg(theme::TEXT_PRIMARY),
+                        Style::default().fg(theme::text_primary_color()),
                     ));
                 }
                 let mut code_text = String::new();
@@ -315,7 +318,7 @@ fn parse_inline_markdown(text: &str) -> Vec<Span<'static>> {
                 if !code_text.is_empty() {
                     spans.push(Span::styled(
                         code_text,
-                        Style::default().fg(theme::NEON_CYAN),
+                        Style::default().fg(theme::accent_secondary()),
                     ));
                 }
             }
@@ -326,14 +329,14 @@ fn parse_inline_markdown(text: &str) -> Vec<Span<'static>> {
     if !current.is_empty() {
         spans.push(Span::styled(
             current,
-            Style::default().fg(theme::TEXT_PRIMARY),
+            Style::default().fg(theme::text_primary_color()),
         ));
     }
 
     if spans.is_empty() {
         spans.push(Span::styled(
             text.to_string(),
-            Style::default().fg(theme::TEXT_PRIMARY),
+            Style::default().fg(theme::text_primary_color()),
         ));
     }
 

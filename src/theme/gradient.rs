@@ -25,6 +25,7 @@ impl Gradient {
     #[allow(
         clippy::cast_precision_loss,
         clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
         clippy::as_conversions
     )]
     pub fn at(&self, t: f32) -> ThemeColor {
@@ -59,10 +60,7 @@ impl Gradient {
 
     /// Generate a smooth gradient with `n` evenly spaced colors.
     #[must_use]
-    #[allow(
-        clippy::cast_precision_loss,
-        clippy::as_conversions
-    )]
+    #[allow(clippy::cast_precision_loss, clippy::as_conversions)]
     pub fn generate(&self, n: usize) -> Vec<ThemeColor> {
         if n == 0 {
             return vec![];
@@ -117,9 +115,9 @@ mod tests {
     #[test]
     fn test_gradient_multi_stop() {
         let gradient = Gradient::new(vec![
-            ThemeColor::new(255, 0, 0),   // red
-            ThemeColor::new(0, 255, 0),   // green
-            ThemeColor::new(0, 0, 255),   // blue
+            ThemeColor::new(255, 0, 0), // red
+            ThemeColor::new(0, 255, 0), // green
+            ThemeColor::new(0, 0, 255), // blue
         ]);
 
         assert_eq!(gradient.at(0.0), ThemeColor::new(255, 0, 0));

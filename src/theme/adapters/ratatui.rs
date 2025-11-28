@@ -107,7 +107,11 @@ pub fn gradient_spans(text: &str, gradient: &Gradient) -> Vec<ratatui::text::Spa
 
 /// Generate a gradient line of a given character.
 #[allow(clippy::cast_precision_loss, clippy::as_conversions)]
-pub fn gradient_line(width: usize, ch: char, gradient: &Gradient) -> Vec<ratatui::text::Span<'static>> {
+pub fn gradient_line(
+    width: usize,
+    ch: char,
+    gradient: &Gradient,
+) -> Vec<ratatui::text::Span<'static>> {
     (0..width)
         .map(|i| {
             let t = if width <= 1 {

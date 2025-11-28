@@ -41,7 +41,7 @@ impl MessageEditorState {
     /// Create a new message editor state
     pub fn new() -> Self {
         let mut textarea = TextArea::default();
-        textarea.set_cursor_line_style(Style::default().bg(theme::BG_HIGHLIGHT));
+        textarea.set_cursor_line_style(Style::default().bg(theme::bg_highlight_color()));
         textarea.set_cursor_style(Style::default().add_modifier(Modifier::REVERSED));
 
         Self {
@@ -71,7 +71,7 @@ impl MessageEditorState {
         // Clear and set new content
         self.textarea = TextArea::from(full_message.lines().map(String::from).collect::<Vec<_>>());
         self.textarea
-            .set_cursor_line_style(Style::default().bg(theme::BG_HIGHLIGHT));
+            .set_cursor_line_style(Style::default().bg(theme::bg_highlight_color()));
         self.textarea
             .set_cursor_style(Style::default().add_modifier(Modifier::REVERSED));
     }
@@ -136,7 +136,7 @@ impl MessageEditorState {
                 .collect::<Vec<_>>(),
         );
         self.textarea
-            .set_cursor_line_style(Style::default().bg(theme::BG_HIGHLIGHT));
+            .set_cursor_line_style(Style::default().bg(theme::bg_highlight_color()));
         self.textarea
             .set_cursor_style(Style::default().add_modifier(Modifier::REVERSED));
         self.edit_mode = false;
@@ -233,7 +233,7 @@ pub fn render_message_editor(
         .borders(Borders::ALL)
         .border_style(if focused {
             if state.is_editing() {
-                Style::default().fg(theme::ELECTRIC_PURPLE)
+                Style::default().fg(theme::accent_primary())
             } else {
                 theme::focused_border()
             }
@@ -266,11 +266,11 @@ pub fn render_message_editor(
                 Line::from(vec![
                     Span::styled(
                         format!("{} ", spinner),
-                        Style::default().fg(theme::ELECTRIC_PURPLE),
+                        Style::default().fg(theme::accent_primary()),
                     ),
                     Span::styled(
                         "Analyzing staged changes...",
-                        Style::default().fg(theme::TEXT_PRIMARY),
+                        Style::default().fg(theme::text_primary_color()),
                     ),
                 ]),
                 Line::from(""),
@@ -285,7 +285,7 @@ pub fn render_message_editor(
                 Line::from(""),
                 Line::from(Span::styled(
                     "Press 'r' to regenerate",
-                    Style::default().fg(theme::NEON_CYAN),
+                    Style::default().fg(theme::accent_secondary()),
                 )),
             ])
         };
@@ -321,7 +321,7 @@ fn render_message_view(frame: &mut Frame, area: Rect, state: &MessageEditorState
         lines.push(Line::from(Span::styled(
             title,
             Style::default()
-                .fg(theme::TEXT_PRIMARY)
+                .fg(theme::text_primary_color())
                 .add_modifier(Modifier::BOLD),
         )));
     } else {
@@ -331,7 +331,7 @@ fn render_message_view(frame: &mut Frame, area: Rect, state: &MessageEditorState
             Span::styled(
                 title,
                 Style::default()
-                    .fg(theme::TEXT_PRIMARY)
+                    .fg(theme::text_primary_color())
                     .add_modifier(Modifier::BOLD),
             ),
         ]));
@@ -345,18 +345,18 @@ fn render_message_view(frame: &mut Frame, area: Rect, state: &MessageEditorState
         let truncated = truncate_width(body_line, width);
         lines.push(Line::from(Span::styled(
             truncated,
-            Style::default().fg(theme::TEXT_PRIMARY),
+            Style::default().fg(theme::text_primary_color()),
         )));
     }
 
     // Help hints at bottom
     lines.push(Line::from(""));
     lines.push(Line::from(vec![
-        Span::styled("e", Style::default().fg(theme::NEON_CYAN)),
+        Span::styled("e", Style::default().fg(theme::accent_secondary())),
         Span::styled(" edit  ", theme::dimmed()),
-        Span::styled("n/p", Style::default().fg(theme::NEON_CYAN)),
+        Span::styled("n/p", Style::default().fg(theme::accent_secondary())),
         Span::styled(" cycle  ", theme::dimmed()),
-        Span::styled("Enter", Style::default().fg(theme::NEON_CYAN)),
+        Span::styled("Enter", Style::default().fg(theme::accent_secondary())),
         Span::styled(" commit", theme::dimmed()),
     ]));
 

@@ -19,7 +19,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &SettingsState) {
     let block = Block::default()
         .title(title)
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(theme::ELECTRIC_PURPLE));
+        .border_style(Style::default().fg(theme::accent_primary()));
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
@@ -40,14 +40,14 @@ pub fn render(frame: &mut Frame, area: Rect, state: &SettingsState) {
         let prefix = if is_selected { "> " } else { "  " };
         let label_style = if is_selected {
             Style::default()
-                .fg(theme::NEON_CYAN)
+                .fg(theme::accent_secondary())
                 .add_modifier(Modifier::BOLD)
         } else {
-            Style::default().fg(theme::TEXT_PRIMARY)
+            Style::default().fg(theme::text_primary_color())
         };
 
         let value_style = if is_selected {
-            Style::default().fg(theme::TEXT_PRIMARY)
+            Style::default().fg(theme::text_primary_color())
         } else {
             theme::dimmed()
         };
@@ -83,7 +83,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &SettingsState) {
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
             error,
-            Style::default().fg(theme::ERROR_RED),
+            Style::default().fg(theme::error_color()),
         )));
     }
 
@@ -93,20 +93,20 @@ pub fn render(frame: &mut Frame, area: Rect, state: &SettingsState) {
 
     if state.editing {
         lines.push(Line::from(vec![
-            Span::styled("Enter", Style::default().fg(theme::NEON_CYAN)),
+            Span::styled("Enter", Style::default().fg(theme::accent_secondary())),
             Span::styled(" confirm  ", theme::dimmed()),
-            Span::styled("Esc", Style::default().fg(theme::NEON_CYAN)),
+            Span::styled("Esc", Style::default().fg(theme::accent_secondary())),
             Span::styled(" cancel", theme::dimmed()),
         ]));
     } else {
         lines.push(Line::from(vec![
-            Span::styled("↑↓", Style::default().fg(theme::ELECTRIC_PURPLE)),
+            Span::styled("↑↓", Style::default().fg(theme::accent_primary())),
             Span::styled(" navigate  ", theme::dimmed()),
-            Span::styled("Enter/Space", Style::default().fg(theme::ELECTRIC_PURPLE)),
+            Span::styled("Enter/Space", Style::default().fg(theme::accent_primary())),
             Span::styled(" edit  ", theme::dimmed()),
-            Span::styled("s", Style::default().fg(theme::SUCCESS_GREEN)),
+            Span::styled("s", Style::default().fg(theme::success_color())),
             Span::styled(" save  ", theme::dimmed()),
-            Span::styled("Esc", Style::default().fg(theme::ELECTRIC_PURPLE)),
+            Span::styled("Esc", Style::default().fg(theme::accent_primary())),
             Span::styled(" close", theme::dimmed()),
         ]));
     }

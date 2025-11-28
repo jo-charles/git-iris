@@ -382,7 +382,9 @@ fn print_configuration(config: &Config) {
     println!(
         "{}  {}  {}",
         "━━━".truecolor(purple.0, purple.1, purple.2),
-        "IRIS CONFIGURATION".truecolor(cyan.0, cyan.1, cyan.2).bold(),
+        "IRIS CONFIGURATION"
+            .truecolor(cyan.0, cyan.1, cyan.2)
+            .bold(),
         "━━━".truecolor(purple.0, purple.1, purple.2)
     );
     println!();

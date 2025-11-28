@@ -20,7 +20,7 @@ pub fn render(
     let block = Block::default()
         .title(" Select Emoji ")
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(theme::ELECTRIC_YELLOW));
+        .border_style(Style::default().fg(theme::warning_color()));
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
@@ -42,8 +42,8 @@ pub fn render(
     let mut lines = vec![
         Line::from(vec![
             Span::styled("Filter: ", theme::dimmed()),
-            Span::styled(input, Style::default().fg(theme::TEXT_PRIMARY)),
-            Span::styled("█", Style::default().fg(theme::NEON_CYAN)),
+            Span::styled(input, Style::default().fg(theme::text_primary_color())),
+            Span::styled("█", Style::default().fg(theme::accent_secondary())),
         ]),
         Line::from(""),
     ];
@@ -59,13 +59,13 @@ pub fn render(
         let prefix = if is_selected { "▸ " } else { "  " };
         let style = if is_selected {
             Style::default()
-                .fg(theme::NEON_CYAN)
+                .fg(theme::accent_secondary())
                 .add_modifier(Modifier::BOLD)
         } else {
-            Style::default().fg(theme::TEXT_PRIMARY)
+            Style::default().fg(theme::text_primary_color())
         };
         let desc_style = if is_selected {
-            Style::default().fg(theme::TEXT_DIM)
+            Style::default().fg(theme::text_dim_color())
         } else {
             theme::dimmed()
         };
@@ -73,10 +73,10 @@ pub fn render(
         // Special styling for None and Auto options
         let emoji_style = if emoji_info.key == "none" || emoji_info.key == "auto" {
             Style::default()
-                .fg(theme::ELECTRIC_PURPLE)
+                .fg(theme::accent_primary())
                 .add_modifier(Modifier::BOLD)
         } else {
-            Style::default().fg(theme::ELECTRIC_YELLOW)
+            Style::default().fg(theme::warning_color())
         };
 
         lines.push(Line::from(vec![
@@ -104,13 +104,13 @@ pub fn render(
         String::new()
     };
     lines.push(Line::from(vec![
-        Span::styled("↑↓", Style::default().fg(theme::ELECTRIC_YELLOW)),
+        Span::styled("↑↓", Style::default().fg(theme::warning_color())),
         Span::styled(" navigate  ", theme::dimmed()),
-        Span::styled("Enter", Style::default().fg(theme::ELECTRIC_YELLOW)),
+        Span::styled("Enter", Style::default().fg(theme::warning_color())),
         Span::styled(" select  ", theme::dimmed()),
-        Span::styled("Esc", Style::default().fg(theme::ELECTRIC_YELLOW)),
+        Span::styled("Esc", Style::default().fg(theme::warning_color())),
         Span::styled(" cancel", theme::dimmed()),
-        Span::styled(scroll_hint, Style::default().fg(theme::TEXT_DIM)),
+        Span::styled(scroll_hint, Style::default().fg(theme::text_dim_color())),
     ]));
 
     let paragraph = Paragraph::new(lines);

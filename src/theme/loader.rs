@@ -2,10 +2,10 @@
 
 use std::path::Path;
 
-use super::error::ThemeError;
-use super::resolver::{resolve_gradients, resolve_styles, Resolver};
-use super::schema::ThemeFile;
 use super::Theme;
+use super::error::ThemeError;
+use super::resolver::{Resolver, resolve_gradients, resolve_styles};
+use super::schema::ThemeFile;
 
 /// Load a theme from a file path.
 ///
@@ -111,7 +111,10 @@ mod tests {
 
         // Test token resolution
         assert_eq!(theme.color("accent.primary"), ThemeColor::new(225, 53, 255));
-        assert_eq!(theme.color("accent.secondary"), ThemeColor::new(128, 255, 234));
+        assert_eq!(
+            theme.color("accent.secondary"),
+            ThemeColor::new(128, 255, 234)
+        );
 
         // Test style resolution
         let keyword_style = theme.style("keyword");

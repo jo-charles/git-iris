@@ -1,125 +1,77 @@
 //! CLI output utilities with `SilkCircuit` Neon theming.
 //!
 //! This module provides themed CLI output using the centralized theme system.
+//! All colors are resolved at runtime from the active theme.
 
 use colored::Colorize;
 use indicatif::{ProgressBar, ProgressStyle};
 use parking_lot::Mutex;
-use ratatui::style::Color;
 use std::fmt::Write;
 use std::time::Duration;
 
-use crate::theme::adapters::cli::gradient_string;
 use crate::theme;
+use crate::theme::adapters::cli::gradient_string;
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SilkCircuit Neon — Electric meets elegant
+// Theme-Based RGB Accessors for CLI Output
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// RGB tuple constants for backwards compatibility with the `colored` crate's `.truecolor()` method
+/// RGB tuple accessors for use with the `colored` crate's `.truecolor()` method.
+/// All colors resolve from the current theme at runtime.
 pub mod rgb {
     use crate::theme;
     use crate::theme::adapters::cli::ToColoredRgb;
 
-    /// Get Electric Purple RGB from theme
-    pub fn electric_purple() -> (u8, u8, u8) {
+    /// Get primary accent color (Electric Purple) RGB from theme
+    pub fn accent_primary() -> (u8, u8, u8) {
         theme::current().color("accent.primary").to_rgb()
     }
 
-    /// Get Neon Cyan RGB from theme
-    pub fn neon_cyan() -> (u8, u8, u8) {
+    /// Get secondary accent color (Neon Cyan) RGB from theme
+    pub fn accent_secondary() -> (u8, u8, u8) {
         theme::current().color("accent.secondary").to_rgb()
     }
 
-    /// Get Coral RGB from theme
-    pub fn coral() -> (u8, u8, u8) {
+    /// Get tertiary accent color (Coral) RGB from theme
+    pub fn accent_tertiary() -> (u8, u8, u8) {
         theme::current().color("accent.tertiary").to_rgb()
     }
 
-    /// Get Electric Yellow RGB from theme
-    pub fn electric_yellow() -> (u8, u8, u8) {
+    /// Get warning color (Electric Yellow) RGB from theme
+    pub fn warning() -> (u8, u8, u8) {
         theme::current().color("warning").to_rgb()
     }
 
-    /// Get Success Green RGB from theme
-    pub fn success_green() -> (u8, u8, u8) {
+    /// Get success color (Success Green) RGB from theme
+    pub fn success() -> (u8, u8, u8) {
         theme::current().color("success").to_rgb()
     }
 
-    /// Get Error Red RGB from theme
-    pub fn error_red() -> (u8, u8, u8) {
+    /// Get error color (Error Red) RGB from theme
+    pub fn error() -> (u8, u8, u8) {
         theme::current().color("error").to_rgb()
     }
 
-    /// Get Dim White RGB from theme
-    pub fn dim_white() -> (u8, u8, u8) {
+    /// Get primary text color RGB from theme
+    pub fn text_primary() -> (u8, u8, u8) {
+        theme::current().color("text.primary").to_rgb()
+    }
+
+    /// Get secondary text color RGB from theme
+    pub fn text_secondary() -> (u8, u8, u8) {
         theme::current().color("text.secondary").to_rgb()
     }
 
-    /// Get Dim Separator RGB from theme
-    pub fn dim_separator() -> (u8, u8, u8) {
-        theme::current().color("text.dim").to_rgb()
+    /// Get muted text color RGB from theme
+    pub fn text_muted() -> (u8, u8, u8) {
+        theme::current().color("text.muted").to_rgb()
     }
 
-    // Legacy constants for backwards compatibility
-    pub const ELECTRIC_PURPLE: (u8, u8, u8) = (225, 53, 255);
-    pub const NEON_CYAN: (u8, u8, u8) = (128, 255, 234);
-    pub const CORAL: (u8, u8, u8) = (255, 106, 193);
-    pub const ELECTRIC_YELLOW: (u8, u8, u8) = (241, 250, 140);
-    pub const SUCCESS_GREEN: (u8, u8, u8) = (80, 250, 123);
-    pub const ERROR_RED: (u8, u8, u8) = (255, 99, 99);
-    pub const DIM_WHITE: (u8, u8, u8) = (180, 180, 190);
-    pub const DIM_SEPARATOR: (u8, u8, u8) = (60, 60, 70);
+    /// Get dim text color RGB from theme
+    pub fn text_dim() -> (u8, u8, u8) {
+        theme::current().color("text.dim").to_rgb()
+    }
 }
-
-// Ratatui Color constants for TUI rendering (legacy, prefer theme::current())
-/// Electric Purple #e135ff — Keywords, control flow, importance
-pub const ELECTRIC_PURPLE: Color = Color::Rgb(225, 53, 255);
-/// Pure Pink #ff00ff — Tags, booleans, maximum emphasis
-pub const PURE_PINK: Color = Color::Rgb(255, 0, 255);
-/// Soft Pink #ff99ff — Strings, secondary emphasis
-pub const SOFT_PINK: Color = Color::Rgb(255, 153, 255);
-/// Neon Cyan #80ffea — Functions, methods, interactions
-pub const NEON_CYAN: Color = Color::Rgb(128, 255, 234);
-/// Bright Cyan #00ffcc — High-energy interaction
-pub const BRIGHT_CYAN: Color = Color::Rgb(0, 255, 204);
-/// Coral #ff6ac1 — Numbers, constants
-pub const CORAL: Color = Color::Rgb(255, 106, 193);
-/// Electric Yellow #f1fa8c — Classes, types, warnings
-pub const ELECTRIC_YELLOW: Color = Color::Rgb(241, 250, 140);
-/// Success Green #50fa7b — Success states, confirmations
-pub const SUCCESS_GREEN: Color = Color::Rgb(80, 250, 123);
-/// Error Red #ff6363 — Errors, danger, removals
-pub const ERROR_RED: Color = Color::Rgb(255, 99, 99);
-/// Soft White #f8f8f2 — Primary text
-pub const SOFT_WHITE: Color = Color::Rgb(248, 248, 242);
-/// Purple Muted #6272a4 — Comments, secondary text
-pub const PURPLE_MUTED: Color = Color::Rgb(98, 114, 164);
-/// Dim Gray — Alias for purple muted
-pub const DIM_GRAY: Color = PURPLE_MUTED;
-/// Deep Purple #bd93f9 — Accents, borders
-pub const DEEP_PURPLE: Color = Color::Rgb(189, 147, 249);
-/// Void #282a36 — Background hints, surfaces
-pub const VOID: Color = Color::Rgb(40, 42, 54);
-/// Dark Base #12101a — Deep background
-pub const DARK_BASE: Color = Color::Rgb(18, 16, 26);
-/// Highlight #1a162a — Elevated surfaces
-pub const HIGHLIGHT: Color = Color::Rgb(26, 22, 42);
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Legacy aliases (for backwards compatibility during transition)
-// ═══════════════════════════════════════════════════════════════════════════════
-
-pub const STARLIGHT: Color = SOFT_WHITE;
-pub const NEBULA_PURPLE: Color = DEEP_PURPLE;
-pub const CELESTIAL_BLUE: Color = NEON_CYAN;
-pub const SOLAR_YELLOW: Color = ELECTRIC_YELLOW;
-pub const AURORA_GREEN: Color = SUCCESS_GREEN;
-pub const PLASMA_CYAN: Color = NEON_CYAN;
-pub const METEOR_RED: Color = ERROR_RED;
-pub const GALAXY_PINK: Color = CORAL;
-pub const COMET_ORANGE: Color = ELECTRIC_YELLOW;
-pub const BLACK_HOLE: Color = VOID;
 
 /// Track quiet mode state
 static QUIET_MODE: std::sync::LazyLock<Mutex<bool>> =
@@ -310,92 +262,4 @@ fn apply_gradient(text: &str, gradient: &[(u8, u8, u8)]) -> String {
     });
 
     result
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// SilkCircuit Gradient Utilities for TUI
-// ═══════════════════════════════════════════════════════════════════════════════
-
-/// Gradient preset: Electric Purple -> Pure Pink -> Neon Cyan (primary brand)
-pub const GRADIENT_AURORA: [(u8, u8, u8); 5] = [
-    rgb::ELECTRIC_PURPLE, // #e135ff
-    (243, 27, 255),       // midpoint toward pink
-    (255, 0, 255),        // PURE_PINK inline (not in rgb module)
-    (191, 128, 244),      // midpoint toward cyan
-    rgb::NEON_CYAN,       // #80ffea
-];
-
-/// Gradient preset: Coral -> Electric Yellow (warm accent)
-pub const GRADIENT_SUNSET: [(u8, u8, u8); 3] = [
-    rgb::CORAL,           // #ff6ac1
-    (248, 178, 130),      // midpoint
-    rgb::ELECTRIC_YELLOW, // #f1fa8c
-];
-
-/// Gradient preset: Success Green -> Neon Cyan (positive/success)
-pub const GRADIENT_EMERALD: [(u8, u8, u8); 3] = [
-    rgb::SUCCESS_GREEN, // #50fa7b
-    (104, 255, 178),    // midpoint
-    rgb::NEON_CYAN,     // #80ffea
-];
-
-/// Gradient preset: Error Red -> Coral (warning/error)
-pub const GRADIENT_EMBER: [(u8, u8, u8); 3] = [
-    rgb::ERROR_RED,  // #ff6363
-    (255, 102, 146), // midpoint
-    rgb::CORAL,      // #ff6ac1
-];
-
-/// Interpolate smoothly between two colors
-#[allow(
-    clippy::cast_possible_truncation,
-    clippy::cast_sign_loss,
-    clippy::as_conversions
-)]
-pub fn interpolate_color(start: (u8, u8, u8), end: (u8, u8, u8), t: f32) -> (u8, u8, u8) {
-    let t = t.clamp(0.0, 1.0);
-    (
-        (f32::from(start.0) + (f32::from(end.0) - f32::from(start.0)) * t) as u8,
-        (f32::from(start.1) + (f32::from(end.1) - f32::from(start.1)) * t) as u8,
-        (f32::from(start.2) + (f32::from(end.2) - f32::from(start.2)) * t) as u8,
-    )
-}
-
-/// Generate a smooth gradient of N colors from a preset
-#[allow(
-    clippy::cast_precision_loss,
-    clippy::cast_possible_truncation,
-    clippy::cast_sign_loss,
-    clippy::as_conversions
-)]
-pub fn generate_smooth_gradient(preset: &[(u8, u8, u8)], steps: usize) -> Vec<(u8, u8, u8)> {
-    if steps == 0 || preset.is_empty() {
-        return vec![];
-    }
-    if steps == 1 {
-        return vec![preset[0]];
-    }
-
-    let mut result = Vec::with_capacity(steps);
-    let preset_len = preset.len();
-
-    for i in 0..steps {
-        let t = i as f32 / (steps - 1) as f32;
-        let scaled = t * (preset_len - 1) as f32;
-        let idx = scaled.floor() as usize;
-        let local_t = scaled - scaled.floor();
-
-        if idx >= preset_len - 1 {
-            result.push(preset[preset_len - 1]);
-        } else {
-            result.push(interpolate_color(preset[idx], preset[idx + 1], local_t));
-        }
-    }
-
-    result
-}
-
-/// Convert RGB tuple to ratatui Color
-pub const fn rgb_to_color(rgb: (u8, u8, u8)) -> Color {
-    Color::Rgb(rgb.0, rgb.1, rgb.2)
 }

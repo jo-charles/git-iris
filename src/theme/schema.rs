@@ -66,8 +66,8 @@ pub enum ThemeVariant {
 }
 
 /// Style definition from TOML.
-#[derive(Debug, Clone, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Deserialize, Default)]
+#[allow(clippy::struct_excessive_bools)] // Text style modifiers are inherently boolean flags
 pub struct StyleDef {
     /// Foreground color token reference.
     #[serde(default)]
@@ -93,7 +93,6 @@ pub struct StyleDef {
     #[serde(default)]
     pub dim: bool,
 }
-
 
 #[cfg(test)]
 mod tests {

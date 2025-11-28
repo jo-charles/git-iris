@@ -12,7 +12,7 @@ pub fn render(frame: &mut Frame, area: Rect, input: &str) {
     let block = Block::default()
         .title(" Instructions for Iris ")
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(theme::NEON_CYAN));
+        .border_style(theme::focused_border());
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
@@ -23,9 +23,9 @@ pub fn render(frame: &mut Frame, area: Rect, input: &str) {
         )),
         Line::from(""),
         Line::from(vec![
-            Span::styled("> ", Style::default().fg(theme::ELECTRIC_PURPLE)),
-            Span::styled(input, Style::default().fg(theme::TEXT_PRIMARY)),
-            Span::styled("█", Style::default().fg(theme::NEON_CYAN)),
+            Span::styled("> ", Style::default().fg(theme::accent_primary())),
+            Span::styled(input, Style::default().fg(theme::text_primary_color())),
+            Span::styled("█", Style::default().fg(theme::accent_secondary())),
         ]),
         Line::from(""),
         Line::from(Span::styled(

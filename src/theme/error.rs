@@ -24,30 +24,25 @@ pub enum ThemeError {
         source: ColorParseError,
     },
     /// Circular reference detected in token resolution.
-    CircularReference {
-        token: String,
-        chain: Vec<String>,
-    },
+    CircularReference { token: String, chain: Vec<String> },
     /// Referenced token not found.
-    UnresolvedToken {
-        token: String,
-        reference: String,
-    },
+    UnresolvedToken { token: String, reference: String },
     /// Missing required section in theme file.
-    MissingSection {
-        section: String,
-    },
+    MissingSection { section: String },
     /// Theme not found by name.
-    ThemeNotFound {
-        name: String,
-    },
+    ThemeNotFound { name: String },
 }
 
 impl fmt::Display for ThemeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::IoError { path, source } => {
-                write!(f, "failed to read theme file '{}': {}", path.display(), source)
+                write!(
+                    f,
+                    "failed to read theme file '{}': {}",
+                    path.display(),
+                    source
+                )
             }
             Self::ParseError { path, source } => {
                 if let Some(path) = path {
@@ -67,10 +62,7 @@ impl fmt::Display for ThemeError {
                 )
             }
             Self::UnresolvedToken { token, reference } => {
-                write!(
-                    f,
-                    "token '{token}' references unknown token '{reference}'"
-                )
+                write!(f, "token '{token}' references unknown token '{reference}'")
             }
             Self::MissingSection { section } => {
                 write!(f, "missing required section '[{section}]' in theme file")

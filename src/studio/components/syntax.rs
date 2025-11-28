@@ -43,7 +43,10 @@ impl SyntaxHighlighter {
     pub fn highlight_line(&self, line: &str) -> Vec<(Style, String)> {
         let Some(syntax) = self.syntax else {
             // No syntax highlighting - return plain
-            return vec![(Style::default().fg(theme::TEXT_PRIMARY), line.to_string())];
+            return vec![(
+                Style::default().fg(theme::text_primary_color()),
+                line.to_string(),
+            )];
         };
 
         // Try to get a dark theme, fallback to any available theme, or give up
@@ -54,7 +57,10 @@ impl SyntaxHighlighter {
             .or_else(|| THEME_SET.themes.values().next())
         else {
             // No themes available - return plain text
-            return vec![(Style::default().fg(theme::TEXT_PRIMARY), line.to_string())];
+            return vec![(
+                Style::default().fg(theme::text_primary_color()),
+                line.to_string(),
+            )];
         };
 
         let mut highlighter = HighlightLines::new(syntax, theme);
@@ -64,7 +70,10 @@ impl SyntaxHighlighter {
                 .into_iter()
                 .map(|(style, text)| (syntect_to_ratatui(style), text.to_string()))
                 .collect(),
-            Err(_) => vec![(Style::default().fg(theme::TEXT_PRIMARY), line.to_string())],
+            Err(_) => vec![(
+                Style::default().fg(theme::text_primary_color()),
+                line.to_string(),
+            )],
         }
     }
 
@@ -109,39 +118,39 @@ fn syntect_color_to_silkcircuit(color: syntect::highlighting::Color) -> Color {
 
     // Keywords, control flow (often purple/magenta in themes)
     if is_purple_ish(r, g, b) {
-        return theme::ELECTRIC_PURPLE;
+        return theme::accent_primary();
     }
 
     // Strings (often green/teal)
     if is_green_ish(r, g, b) && saturation > 0.3 {
-        return theme::SUCCESS_GREEN;
+        return theme::success_color();
     }
 
     // Numbers, constants (often orange/coral)
     if is_orange_ish(r, g, b) {
-        return theme::CORAL;
+        return theme::accent_tertiary();
     }
 
     // Functions, methods (often cyan/blue)
     if is_cyan_ish(r, g, b) {
-        return theme::NEON_CYAN;
+        return theme::accent_secondary();
     }
 
     // Types, classes (often yellow)
     if is_yellow_ish(r, g, b) {
-        return theme::ELECTRIC_YELLOW;
+        return theme::warning_color();
     }
 
     // Comments (usually gray/dim)
     if saturation < 0.15 && luminance < 0.6 {
-        return theme::TEXT_MUTED;
+        return theme::text_muted_color();
     }
 
     // Default: use original color if it's reasonably visible
     if luminance > 0.2 {
         Color::Rgb(r, g, b)
     } else {
-        theme::TEXT_SECONDARY
+        theme::text_secondary_color()
     }
 }
 

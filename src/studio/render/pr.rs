@@ -59,8 +59,7 @@ pub fn render_pr_panel(state: &mut StudioState, frame: &mut Frame, area: Rect, p
             frame.render_widget(block, area);
 
             if state.modes.pr.commits.is_empty() {
-                let text = Paragraph::new("No commits to show")
-                    .style(Style::default().fg(theme::TEXT_DIM));
+                let text = Paragraph::new("No commits to show").style(theme::dimmed());
                 frame.render_widget(text, inner);
             } else {
                 let items: Vec<ListItem> = state
@@ -76,14 +75,14 @@ pub fn render_pr_panel(state: &mut StudioState, frame: &mut Frame, area: Rect, p
                         let prefix = if is_selected { "▸ " } else { "  " };
                         let style = if is_selected {
                             Style::default()
-                                .fg(theme::TEXT_PRIMARY)
+                                .fg(theme::text_primary_color())
                                 .add_modifier(Modifier::BOLD)
                         } else {
-                            Style::default().fg(theme::TEXT_DIM)
+                            Style::default().fg(theme::text_dim_color())
                         };
                         ListItem::new(Line::from(vec![
                             Span::styled(prefix, style),
-                            Span::styled(&commit.hash, Style::default().fg(theme::CORAL)),
+                            Span::styled(&commit.hash, theme::commit_hash()),
                             Span::raw(" "),
                             Span::styled(&commit.message, style),
                         ]))
@@ -142,7 +141,7 @@ pub fn render_pr_panel(state: &mut StudioState, frame: &mut Frame, area: Rect, p
                 } else {
                     "Press 'r' to generate a PR description"
                 };
-                let text = Paragraph::new(hint).style(Style::default().fg(theme::TEXT_DIM));
+                let text = Paragraph::new(hint).style(theme::dimmed());
                 frame.render_widget(text, inner);
             }
         }

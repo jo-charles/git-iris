@@ -148,10 +148,7 @@ mod tests {
         // Force color output for testing
         colored::control::set_override(true);
 
-        let gradient = Gradient::new(vec![
-            ThemeColor::new(255, 0, 0),
-            ThemeColor::new(0, 0, 255),
-        ]);
+        let gradient = Gradient::new(vec![ThemeColor::new(255, 0, 0), ThemeColor::new(0, 0, 255)]);
         let result = gradient_string("test", &gradient);
         // Verify output contains ANSI codes (when color is forced)
         assert!(result.contains("\x1b[") || result.contains("test"));

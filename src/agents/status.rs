@@ -1,9 +1,4 @@
 use crate::messages::ColoredMessage;
-use crate::ui::{
-    AURORA_GREEN, CELESTIAL_BLUE, GALAXY_PINK, METEOR_RED, NEBULA_PURPLE, PLASMA_CYAN,
-    SOLAR_YELLOW, STARLIGHT,
-};
-use ratatui::style::Color;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -48,7 +43,8 @@ pub struct TokenMetrics {
 pub struct IrisStatus {
     pub phase: IrisPhase,
     pub message: String,
-    pub color: Color,
+    /// Theme token for color resolution (e.g., "accent.secondary", "success")
+    pub token: &'static str,
     pub started_at: Instant,
     pub current_step: usize,
     pub total_steps: Option<usize>,
@@ -61,7 +57,7 @@ impl IrisStatus {
         Self {
             phase: IrisPhase::Initializing,
             message: "🤖 Initializing...".to_string(),
-            color: CELESTIAL_BLUE,
+            token: "accent.secondary",
             started_at: Instant::now(),
             current_step: 0,
             total_steps: None,
@@ -72,15 +68,14 @@ impl IrisStatus {
 
     /// Create a dynamic status with LLM-generated message (constrained to 80 chars)
     pub fn dynamic(phase: IrisPhase, message: String, step: usize, total: Option<usize>) -> Self {
-        let color = match phase {
-            IrisPhase::Initializing => CELESTIAL_BLUE,
-            IrisPhase::Planning => NEBULA_PURPLE,
-            IrisPhase::ToolExecution { .. } | IrisPhase::Completed => AURORA_GREEN,
-            IrisPhase::PlanExpansion => PLASMA_CYAN,
-            IrisPhase::Synthesis => GALAXY_PINK,
-            IrisPhase::Analysis => SOLAR_YELLOW,
-            IrisPhase::Generation => STARLIGHT,
-            IrisPhase::Error(_) => METEOR_RED,
+        let token = match phase {
+            IrisPhase::Initializing | IrisPhase::PlanExpansion => "accent.secondary",
+            IrisPhase::Planning => "accent.deep",
+            IrisPhase::ToolExecution { .. } | IrisPhase::Completed => "success",
+            IrisPhase::Synthesis => "accent.tertiary",
+            IrisPhase::Analysis => "warning",
+            IrisPhase::Generation => "text.primary",
+            IrisPhase::Error(_) => "error",
         };
 
         // Constrain message to 80 characters as requested
@@ -93,7 +88,7 @@ impl IrisStatus {
         Self {
             phase,
             message: constrained_message,
-            color,
+            token,
             started_at: Instant::now(),
             current_step: step,
             total_steps: total,
@@ -119,7 +114,7 @@ impl IrisStatus {
         Self {
             phase: IrisPhase::Generation,
             message: constrained_message,
-            color: STARLIGHT,
+            token: "text.primary",
             started_at: Instant::now(),
             current_step: step,
             total_steps: total,
@@ -153,7 +148,7 @@ impl IrisStatus {
         Self {
             phase: IrisPhase::Error(error.to_string()),
             message: constrained_message,
-            color: METEOR_RED,
+            token: "error",
             started_at: Instant::now(),
             current_step: 0,
             total_steps: None,
@@ -167,7 +162,7 @@ impl IrisStatus {
         Self {
             phase: IrisPhase::Completed,
             message: "🎉 Done!".to_string(),
-            color: AURORA_GREEN,
+            token: "success",
             started_at: Instant::now(),
             current_step: 0,
             total_steps: None,
@@ -276,7 +271,7 @@ impl IrisStatusTracker {
         let status = self.get_current();
         ColoredMessage {
             text: status.format_for_display(),
-            color: status.color,
+            token: status.token,
         }
     }
 

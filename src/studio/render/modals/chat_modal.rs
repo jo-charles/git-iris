@@ -2,7 +2,6 @@
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::Style;
 use ratatui::widgets::{Block, Borders, Paragraph};
 use std::time::Instant;
 
@@ -15,7 +14,7 @@ pub fn render(frame: &mut Frame, area: Rect, chat_state: &ChatState, last_render
         .title(" ◈ Chat with Iris ")
         .title_bottom(chat::help_footer())
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(theme::ELECTRIC_PURPLE));
+        .border_style(theme::keyword());
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
@@ -55,7 +54,7 @@ pub fn render(frame: &mut Frame, area: Rect, chat_state: &ChatState, last_render
     // Render input box
     let input_block = Block::default()
         .borders(Borders::TOP)
-        .border_style(Style::default().fg(theme::TEXT_DIM));
+        .border_style(theme::dimmed());
     let input_inner = input_block.inner(input_area);
     frame.render_widget(input_block, input_area);
 

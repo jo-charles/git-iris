@@ -63,7 +63,7 @@ pub fn render_release_notes_panel(
             if state.modes.release_notes.commits.is_empty() {
                 let text =
                     Paragraph::new("No commits to show\n\nPress 'f' for from ref, 't' for to ref")
-                        .style(Style::default().fg(theme::TEXT_DIM));
+                        .style(theme::dimmed());
                 frame.render_widget(text, inner);
             } else {
                 let items: Vec<ListItem> = state
@@ -79,14 +79,14 @@ pub fn render_release_notes_panel(
                         let prefix = if is_selected { "▸ " } else { "  " };
                         let style = if is_selected {
                             Style::default()
-                                .fg(theme::TEXT_PRIMARY)
+                                .fg(theme::text_primary_color())
                                 .add_modifier(Modifier::BOLD)
                         } else {
-                            Style::default().fg(theme::TEXT_DIM)
+                            Style::default().fg(theme::text_dim_color())
                         };
                         ListItem::new(Line::from(vec![
                             Span::styled(prefix, style),
-                            Span::styled(&commit.hash, Style::default().fg(theme::CORAL)),
+                            Span::styled(&commit.hash, theme::commit_hash()),
                             Span::raw(" "),
                             Span::styled(&commit.message, style),
                         ]))
@@ -145,7 +145,7 @@ pub fn render_release_notes_panel(
                 } else {
                     "Press 'r' to generate release notes"
                 };
-                let text = Paragraph::new(hint).style(Style::default().fg(theme::TEXT_DIM));
+                let text = Paragraph::new(hint).style(theme::dimmed());
                 frame.render_widget(text, inner);
             }
         }

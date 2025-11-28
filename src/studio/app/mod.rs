@@ -1089,7 +1089,7 @@ impl StudioApp {
         let mut spans: Vec<Span> = Vec::new();
         spans.push(Span::styled(
             " ◆ ",
-            Style::default().fg(theme::ELECTRIC_PURPLE),
+            Style::default().fg(theme::accent_primary()),
         ));
 
         // Gradient text for "Iris Studio"
@@ -1109,11 +1109,14 @@ impl StudioApp {
 
         // Branch info with git icon
         if !branch.is_empty() {
-            spans.push(Span::styled("⎇ ", Style::default().fg(theme::TEXT_DIM)));
+            spans.push(Span::styled(
+                "⎇ ",
+                Style::default().fg(theme::text_dim_color()),
+            ));
             spans.push(Span::styled(
                 format!("{} ", branch),
                 Style::default()
-                    .fg(theme::NEON_CYAN)
+                    .fg(theme::accent_secondary())
                     .add_modifier(Modifier::BOLD),
             ));
         }
@@ -1122,7 +1125,7 @@ impl StudioApp {
         if staged > 0 {
             spans.push(Span::styled(
                 format!("✓{} ", staged),
-                Style::default().fg(theme::SUCCESS_GREEN),
+                Style::default().fg(theme::success_color()),
             ));
         }
 
@@ -1130,7 +1133,7 @@ impl StudioApp {
         if modified > 0 {
             spans.push(Span::styled(
                 format!("○{} ", modified),
-                Style::default().fg(theme::ELECTRIC_YELLOW),
+                Style::default().fg(theme::warning_color()),
             ));
         }
 
@@ -1152,7 +1155,7 @@ impl StudioApp {
                 spans.push(Span::styled(
                     format!(" {} ", mode.shortcut()),
                     Style::default()
-                        .fg(theme::ELECTRIC_PURPLE)
+                        .fg(theme::accent_primary())
                         .add_modifier(Modifier::BOLD),
                 ));
                 // Mode name with gradient
@@ -1171,14 +1174,20 @@ impl StudioApp {
                 // Underline with gradient
                 spans.push(Span::styled(
                     "━",
-                    Style::default().fg(theme::ELECTRIC_PURPLE),
+                    Style::default().fg(theme::accent_primary()),
                 ));
-                spans.push(Span::styled("━", Style::default().fg(theme::SOFT_PURPLE)));
-                spans.push(Span::styled("━", Style::default().fg(theme::NEON_CYAN)));
+                spans.push(Span::styled(
+                    "━",
+                    Style::default().fg(theme::gradient_purple_cyan(0.5)),
+                ));
+                spans.push(Span::styled(
+                    "━",
+                    Style::default().fg(theme::accent_secondary()),
+                ));
             } else if is_available {
                 spans.push(Span::styled(
                     format!(" {} ", mode.shortcut()),
-                    Style::default().fg(theme::TEXT_MUTED),
+                    Style::default().fg(theme::text_muted_color()),
                 ));
                 spans.push(Span::styled(
                     mode.display_name().to_string(),
@@ -1187,13 +1196,16 @@ impl StudioApp {
             } else {
                 spans.push(Span::styled(
                     format!(" {} {} ", mode.shortcut(), mode.display_name()),
-                    Style::default().fg(theme::TEXT_MUTED),
+                    Style::default().fg(theme::text_muted_color()),
                 ));
             }
 
             // Separator between tabs
             if idx < Mode::all().len() - 1 {
-                spans.push(Span::styled(" │ ", Style::default().fg(theme::TEXT_MUTED)));
+                spans.push(Span::styled(
+                    " │ ",
+                    Style::default().fg(theme::text_muted_color()),
+                ));
             }
         }
 
@@ -1678,7 +1690,7 @@ impl StudioApp {
                 let spinner = self.state.iris_status.spinner_char().unwrap_or('◎');
                 Span::styled(
                     format!("{} {}", spinner, task),
-                    Style::default().fg(theme::NEON_CYAN),
+                    Style::default().fg(theme::accent_secondary()),
                 )
             }
             IrisStatus::Error(msg) => Span::styled(format!("Error: {}", msg), theme::error()),

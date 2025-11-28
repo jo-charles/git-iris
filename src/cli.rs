@@ -418,7 +418,7 @@ pub async fn main() -> anyhow::Result<()> {
     }
 
     // Initialize theme
-    initialize_theme(cli.theme.as_deref())?;
+    initialize_theme(cli.theme.as_deref());
 
     // Enable debug mode if requested
     if cli.debug {
@@ -442,7 +442,7 @@ pub async fn main() -> anyhow::Result<()> {
 }
 
 /// Initialize the theme from CLI flag or config
-fn initialize_theme(cli_theme: Option<&str>) -> anyhow::Result<()> {
+fn initialize_theme(cli_theme: Option<&str>) {
     use crate::config::Config;
 
     // CLI flag takes precedence
@@ -450,21 +450,26 @@ fn initialize_theme(cli_theme: Option<&str>) -> anyhow::Result<()> {
         Some(name.to_string())
     } else {
         // Try to load from config
-        Config::load()
-            .ok()
-            .and_then(|c| if c.theme.is_empty() { None } else { Some(c.theme) })
+        Config::load().ok().and_then(|c| {
+            if c.theme.is_empty() {
+                None
+            } else {
+                Some(c.theme)
+            }
+        })
     };
 
     // Load the theme if specified, otherwise default is already active
     if let Some(name) = theme_name {
         if let Err(e) = theme::load_theme_by_name(&name) {
-            ui::print_warning(&format!("Failed to load theme '{}': {}. Using default.", name, e));
+            ui::print_warning(&format!(
+                "Failed to load theme '{}': {}. Using default.",
+                name, e
+            ));
         } else {
             log_debug!("Loaded theme: {}", name);
         }
     }
-
-    Ok(())
 }
 
 /// Configuration for the Gen command
@@ -959,7 +964,10 @@ pub async fn handle_command(
             print,
         ),
         Commands::ListPresets => commands::handle_list_presets_command(),
-        Commands::Themes => handle_themes(),
+        Commands::Themes => {
+            handle_themes();
+            Ok(())
+        }
         Commands::Pr {
             common,
             print,
@@ -977,7 +985,7 @@ pub async fn handle_command(
 }
 
 /// Handle the `Themes` command - list available themes
-fn handle_themes() -> anyhow::Result<()> {
+fn handle_themes() {
     ui::print_version(crate_version!());
     ui::print_newline();
 
@@ -989,7 +997,9 @@ fn handle_themes() -> anyhow::Result<()> {
     let header_color = theme::current().color("accent.primary");
     println!(
         "{}",
-        "Available Themes:".truecolor(header_color.r, header_color.g, header_color.b).bold()
+        "Available Themes:"
+            .truecolor(header_color.r, header_color.g, header_color.b)
+            .bold()
     );
     println!();
 
@@ -1008,14 +1018,17 @@ fn handle_themes() -> anyhow::Result<()> {
         print!(
             "{}{}",
             marker.truecolor(name_color.r, name_color.g, name_color.b),
-            info.name.truecolor(name_color.r, name_color.g, name_color.b).bold()
+            info.name
+                .truecolor(name_color.r, name_color.g, name_color.b)
+                .bold()
         );
 
         // Show display name if different from filename
         if info.display_name != info.name {
             print!(
                 " ({})",
-                info.display_name.truecolor(desc_color.r, desc_color.g, desc_color.b)
+                info.display_name
+                    .truecolor(desc_color.r, desc_color.g, desc_color.b)
             );
         }
 
@@ -1047,11 +1060,12 @@ fn handle_themes() -> anyhow::Result<()> {
     let hint_color = theme::current().color("text.dim");
     println!(
         "{}",
-        "Use --theme <name> to override, or set 'theme' in config.toml"
-            .truecolor(hint_color.r, hint_color.g, hint_color.b)
+        "Use --theme <name> to override, or set 'theme' in config.toml".truecolor(
+            hint_color.r,
+            hint_color.g,
+            hint_color.b
+        )
     );
-
-    Ok(())
 }
 
 /// Handle the `Pr` command with agent framework

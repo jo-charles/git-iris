@@ -206,7 +206,7 @@ pub fn render_code_view(
     // Show placeholder if no file loaded
     if !state.is_loaded() {
         let placeholder = Paragraph::new("Select a file from the tree")
-            .style(Style::default().fg(theme::TEXT_DIM));
+            .style(Style::default().fg(theme::text_dim_color()));
         frame.render_widget(placeholder, inner);
         return;
     }
@@ -273,20 +273,18 @@ fn render_code_line(
     let is_in_selection =
         selection.is_some_and(|(start, end)| line_num >= start && line_num <= end);
 
-    // Line number style
+    // Line number style - use semantic style, with highlight when selected
     let line_num_style = if is_selected {
-        Style::default()
-            .fg(theme::NEON_CYAN)
-            .add_modifier(Modifier::BOLD)
+        theme::line_number().add_modifier(Modifier::BOLD)
     } else {
-        Style::default().fg(theme::TEXT_MUTED)
+        theme::line_number()
     };
 
     // Selection indicator
     let indicator = if is_selected { ">" } else { " " };
     let indicator_style = if is_selected {
         Style::default()
-            .fg(theme::ELECTRIC_PURPLE)
+            .fg(theme::accent_primary())
             .add_modifier(Modifier::BOLD)
     } else {
         Style::default()
@@ -299,7 +297,7 @@ fn render_code_line(
             format!("{:>width$}", line_num, width = line_num_width),
             line_num_style,
         ),
-        Span::styled(" │ ", Style::default().fg(theme::TEXT_MUTED)),
+        Span::styled(" │ ", Style::default().fg(theme::text_muted_color())),
     ];
 
     // Calculate available width for content
@@ -331,7 +329,7 @@ fn render_code_line(
 
             // Apply selection/highlight overlay
             let final_style = if is_in_selection {
-                style.bg(theme::SELECTION_BG)
+                style.bg(theme::bg_selection_color())
             } else if is_selected {
                 // Keep syntax colors but ensure visibility
                 style
@@ -344,18 +342,21 @@ fn render_code_line(
 
         // Add truncation indicator if needed
         if content.width() > available_width {
-            spans.push(Span::styled("...", Style::default().fg(theme::TEXT_MUTED)));
+            spans.push(Span::styled(
+                "...",
+                Style::default().fg(theme::text_muted_color()),
+            ));
         }
     } else {
         // Fallback: no syntax highlighting
         let content_style = if is_in_selection {
             Style::default()
-                .fg(theme::TEXT_PRIMARY)
-                .bg(theme::SELECTION_BG)
+                .fg(theme::text_primary_color())
+                .bg(theme::bg_selection_color())
         } else if is_selected {
-            Style::default().fg(theme::TEXT_PRIMARY)
+            Style::default().fg(theme::text_primary_color())
         } else {
-            Style::default().fg(theme::TEXT_SECONDARY)
+            Style::default().fg(theme::text_secondary_color())
         };
 
         let content_width = content.width();

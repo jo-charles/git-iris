@@ -1,7 +1,7 @@
 //! Builtin themes embedded in the binary.
 
-use super::loader::load_from_str;
 use super::Theme;
+use super::loader::load_from_str;
 
 /// The embedded `SilkCircuit` Neon theme TOML.
 const SILKCIRCUIT_NEON_TOML: &str = include_str!("silkcircuit_neon.toml");

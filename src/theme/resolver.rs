@@ -8,6 +8,9 @@ use super::gradient::Gradient;
 use super::schema::{StyleDef, ThemeFile};
 use super::style::ThemeStyle;
 
+/// Resolved color maps from theme resolution.
+pub type ResolvedColors = (HashMap<String, ThemeColor>, HashMap<String, ThemeColor>);
+
 /// Resolver state for building a theme.
 pub struct Resolver {
     /// Original palette from TOML.
@@ -35,9 +38,7 @@ impl Resolver {
     ///
     /// # Errors
     /// Returns an error if there are circular references or invalid colors.
-    pub fn resolve(
-        mut self,
-    ) -> Result<(HashMap<String, ThemeColor>, HashMap<String, ThemeColor>), ThemeError> {
+    pub fn resolve(mut self) -> Result<ResolvedColors, ThemeError> {
         // First pass: resolve palette (can only contain hex values)
         for (name, value) in &self.palette_raw {
             let color = ThemeColor::from_hex(value).map_err(|e| ThemeError::InvalidColor {
@@ -57,7 +58,11 @@ impl Resolver {
     }
 
     /// Resolve a single token, tracking the resolution chain to detect cycles.
-    fn resolve_token(&mut self, name: &str, chain: &mut HashSet<String>) -> Result<ThemeColor, ThemeError> {
+    fn resolve_token(
+        &mut self,
+        name: &str,
+        chain: &mut HashSet<String>,
+    ) -> Result<ThemeColor, ThemeError> {
         // Already resolved?
         if let Some(color) = self.tokens.get(name) {
             return Ok(*color);
@@ -92,7 +97,11 @@ impl Resolver {
     }
 
     /// Resolve a value which could be a hex color, palette reference, or token reference.
-    fn resolve_value(&mut self, value: &str, chain: &mut HashSet<String>) -> Result<ThemeColor, ThemeError> {
+    fn resolve_value(
+        &mut self,
+        value: &str,
+        chain: &mut HashSet<String>,
+    ) -> Result<ThemeColor, ThemeError> {
         // Is it a hex color?
         if value.starts_with('#') {
             return ThemeColor::from_hex(value).map_err(|e| ThemeError::InvalidColor {
@@ -126,8 +135,14 @@ pub fn resolve_styles(
         .iter()
         .map(|(name, def)| {
             let style = ThemeStyle {
-                fg: def.fg.as_ref().and_then(|s| resolve_color_ref(s, palette, tokens)),
-                bg: def.bg.as_ref().and_then(|s| resolve_color_ref(s, palette, tokens)),
+                fg: def
+                    .fg
+                    .as_ref()
+                    .and_then(|s| resolve_color_ref(s, palette, tokens)),
+                bg: def
+                    .bg
+                    .as_ref()
+                    .and_then(|s| resolve_color_ref(s, palette, tokens)),
                 bold: def.bold,
                 italic: def.italic,
                 underline: def.underline,

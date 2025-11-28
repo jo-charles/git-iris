@@ -109,8 +109,12 @@ pub fn render_markdown_for_terminal(markdown: &str) -> String {
                 output,
                 "\n{} {} {}",
                 "─".truecolor(cyan.0, cyan.1, cyan.2),
-                style_header_text(header).truecolor(cyan.0, cyan.1, cyan.2).bold(),
-                "─".repeat(30usize.saturating_sub(header.len())).truecolor(dim.0, dim.1, dim.2)
+                style_header_text(header)
+                    .truecolor(cyan.0, cyan.1, cyan.2)
+                    .bold(),
+                "─"
+                    .repeat(30usize.saturating_sub(header.len()))
+                    .truecolor(dim.0, dim.1, dim.2)
             )
             .expect("write to string should not fail");
         } else if let Some(header) = line.strip_prefix("## ") {
@@ -120,8 +124,12 @@ pub fn render_markdown_for_terminal(markdown: &str) -> String {
                 output,
                 "\n{} {} {}",
                 "─".truecolor(purple.0, purple.1, purple.2),
-                style_header_text(header).truecolor(purple.0, purple.1, purple.2).bold(),
-                "─".repeat(32usize.saturating_sub(header.len())).truecolor(dim.0, dim.1, dim.2)
+                style_header_text(header)
+                    .truecolor(purple.0, purple.1, purple.2)
+                    .bold(),
+                "─"
+                    .repeat(32usize.saturating_sub(header.len()))
+                    .truecolor(dim.0, dim.1, dim.2)
             )
             .expect("write to string should not fail");
         } else if let Some(header) = line.strip_prefix("# ") {
@@ -132,7 +140,9 @@ pub fn render_markdown_for_terminal(markdown: &str) -> String {
                 output,
                 "{}  {}  {}",
                 "━━━".truecolor(purple.0, purple.1, purple.2),
-                style_header_text(header).truecolor(cyan.0, cyan.1, cyan.2).bold(),
+                style_header_text(header)
+                    .truecolor(cyan.0, cyan.1, cyan.2)
+                    .bold(),
                 "━━━".truecolor(purple.0, purple.1, purple.2)
             )
             .expect("write to string should not fail");
@@ -141,13 +151,23 @@ pub fn render_markdown_for_terminal(markdown: &str) -> String {
         else if let Some(content) = line.strip_prefix("- ") {
             let coral = colors::accent_tertiary();
             let styled = style_line_content(content);
-            writeln!(output, "  {} {}", "•".truecolor(coral.0, coral.1, coral.2), styled)
-                .expect("write to string should not fail");
+            writeln!(
+                output,
+                "  {} {}",
+                "•".truecolor(coral.0, coral.1, coral.2),
+                styled
+            )
+            .expect("write to string should not fail");
         } else if let Some(content) = line.strip_prefix("* ") {
             let coral = colors::accent_tertiary();
             let styled = style_line_content(content);
-            writeln!(output, "  {} {}", "•".truecolor(coral.0, coral.1, coral.2), styled)
-                .expect("write to string should not fail");
+            writeln!(
+                output,
+                "  {} {}",
+                "•".truecolor(coral.0, coral.1, coral.2),
+                styled
+            )
+            .expect("write to string should not fail");
         }
         // Handle numbered lists
         else if line.chars().next().is_some_and(|c| c.is_ascii_digit()) && line.contains(". ") {
@@ -157,7 +177,9 @@ pub fn render_markdown_for_terminal(markdown: &str) -> String {
                 writeln!(
                     output,
                     "  {} {}",
-                    format!("{}.", num).truecolor(coral.0, coral.1, coral.2).bold(),
+                    format!("{}.", num)
+                        .truecolor(coral.0, coral.1, coral.2)
+                        .bold(),
                     styled
                 )
                 .expect("write to string should not fail");
@@ -203,7 +225,9 @@ fn style_line_content(content: &str) -> String {
                 // Flush current text
                 if !current_text.is_empty() {
                     result.push_str(
-                        &current_text.truecolor(text_color.0, text_color.1, text_color.2).to_string(),
+                        &current_text
+                            .truecolor(text_color.0, text_color.1, text_color.2)
+                            .to_string(),
                     );
                     current_text.clear();
                 }
@@ -222,19 +246,27 @@ fn style_line_content(content: &str) -> String {
                 let styled_badge = match badge_upper.as_str() {
                     "CRITICAL" => format!(
                         "[{}]",
-                        "CRITICAL".truecolor(error_color.0, error_color.1, error_color.2).bold()
+                        "CRITICAL"
+                            .truecolor(error_color.0, error_color.1, error_color.2)
+                            .bold()
                     ),
                     "HIGH" => format!(
                         "[{}]",
-                        "HIGH".truecolor(error_color.0, error_color.1, error_color.2).bold()
+                        "HIGH"
+                            .truecolor(error_color.0, error_color.1, error_color.2)
+                            .bold()
                     ),
                     "MEDIUM" => format!(
                         "[{}]",
-                        "MEDIUM".truecolor(warning_color.0, warning_color.1, warning_color.2).bold()
+                        "MEDIUM"
+                            .truecolor(warning_color.0, warning_color.1, warning_color.2)
+                            .bold()
                     ),
                     "LOW" => format!(
                         "[{}]",
-                        "LOW".truecolor(coral_color.0, coral_color.1, coral_color.2).bold()
+                        "LOW"
+                            .truecolor(coral_color.0, coral_color.1, coral_color.2)
+                            .bold()
                     ),
                     _ => format!(
                         "[{}]",
@@ -248,7 +280,9 @@ fn style_line_content(content: &str) -> String {
                 // Flush current text
                 if !current_text.is_empty() {
                     result.push_str(
-                        &current_text.truecolor(text_color.0, text_color.1, text_color.2).to_string(),
+                        &current_text
+                            .truecolor(text_color.0, text_color.1, text_color.2)
+                            .to_string(),
                     );
                     current_text.clear();
                 }
@@ -266,7 +300,10 @@ fn style_line_content(content: &str) -> String {
                 }
 
                 result.push_str(
-                    &bold.truecolor(cyan_color.0, cyan_color.1, cyan_color.2).bold().to_string(),
+                    &bold
+                        .truecolor(cyan_color.0, cyan_color.1, cyan_color.2)
+                        .bold()
+                        .to_string(),
                 );
             }
             // Handle inline code `code`
@@ -274,7 +311,9 @@ fn style_line_content(content: &str) -> String {
                 // Flush current text
                 if !current_text.is_empty() {
                     result.push_str(
-                        &current_text.truecolor(text_color.0, text_color.1, text_color.2).to_string(),
+                        &current_text
+                            .truecolor(text_color.0, text_color.1, text_color.2)
+                            .to_string(),
                     );
                     current_text.clear();
                 }
@@ -289,7 +328,9 @@ fn style_line_content(content: &str) -> String {
                 }
 
                 result.push_str(
-                    &code.truecolor(warning_color.0, warning_color.1, warning_color.2).to_string(),
+                    &code
+                        .truecolor(warning_color.0, warning_color.1, warning_color.2)
+                        .to_string(),
                 );
             }
             _ => {
@@ -301,7 +342,9 @@ fn style_line_content(content: &str) -> String {
     // Flush remaining text
     if !current_text.is_empty() {
         result.push_str(
-            &current_text.truecolor(text_color.0, text_color.1, text_color.2).to_string(),
+            &current_text
+                .truecolor(text_color.0, text_color.1, text_color.2)
+                .to_string(),
         );
     }
 

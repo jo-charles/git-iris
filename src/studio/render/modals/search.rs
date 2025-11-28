@@ -12,7 +12,7 @@ pub fn render(frame: &mut Frame, area: Rect, query: &str, results: &[String], se
     let block = Block::default()
         .title(" Search Files ")
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(theme::NEON_CYAN));
+        .border_style(Style::default().fg(theme::accent_secondary()));
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
@@ -27,8 +27,8 @@ pub fn render(frame: &mut Frame, area: Rect, query: &str, results: &[String], se
     let mut lines = vec![
         Line::from(vec![
             Span::styled("Filter: ", theme::dimmed()),
-            Span::styled(query, Style::default().fg(theme::TEXT_PRIMARY)),
-            Span::styled("█", Style::default().fg(theme::NEON_CYAN)),
+            Span::styled(query, Style::default().fg(theme::text_primary_color())),
+            Span::styled("█", Style::default().fg(theme::accent_secondary())),
         ]),
         Line::from(""),
     ];
@@ -60,10 +60,10 @@ pub fn render(frame: &mut Frame, area: Rect, query: &str, results: &[String], se
             let prefix = if is_selected { "▸ " } else { "  " };
             let style = if is_selected {
                 Style::default()
-                    .fg(theme::NEON_CYAN)
+                    .fg(theme::accent_secondary())
                     .add_modifier(Modifier::BOLD)
             } else {
-                Style::default().fg(theme::TEXT_PRIMARY)
+                Style::default().fg(theme::text_primary_color())
             };
             lines.push(Line::from(Span::styled(
                 format!("{}{}", prefix, file),
@@ -75,11 +75,11 @@ pub fn render(frame: &mut Frame, area: Rect, query: &str, results: &[String], se
     // Add footer
     lines.push(Line::from(""));
     lines.push(Line::from(vec![
-        Span::styled("↑↓", Style::default().fg(theme::NEON_CYAN)),
+        Span::styled("↑↓", Style::default().fg(theme::accent_secondary())),
         Span::styled(" navigate  ", theme::dimmed()),
-        Span::styled("Enter", Style::default().fg(theme::NEON_CYAN)),
+        Span::styled("Enter", Style::default().fg(theme::accent_secondary())),
         Span::styled(" jump  ", theme::dimmed()),
-        Span::styled("Esc", Style::default().fg(theme::NEON_CYAN)),
+        Span::styled("Esc", Style::default().fg(theme::accent_secondary())),
         Span::styled(" cancel", theme::dimmed()),
     ]));
 

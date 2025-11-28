@@ -23,16 +23,16 @@ pub fn render_messages(
             ChatRole::User => (
                 "◆ You",
                 Style::default()
-                    .fg(theme::NEON_CYAN)
+                    .fg(theme::accent_secondary())
                     .add_modifier(Modifier::BOLD),
-                Style::default().fg(theme::TEXT_PRIMARY),
+                Style::default().fg(theme::text_primary_color()),
             ),
             ChatRole::Iris => (
                 "◇ Iris",
                 Style::default()
-                    .fg(theme::ELECTRIC_PURPLE)
+                    .fg(theme::accent_primary())
                     .add_modifier(Modifier::BOLD),
-                Style::default().fg(theme::TEXT_SECONDARY),
+                Style::default().fg(theme::text_secondary_color()),
             ),
         };
 
@@ -47,7 +47,7 @@ pub fn render_messages(
             lines.push(Line::from(""));
             lines.push(Line::from(Span::styled(
                 "─".repeat(content_width.min(40)),
-                Style::default().fg(theme::TEXT_DIM),
+                Style::default().fg(theme::text_dim_color()),
             )));
             lines.push(Line::from(""));
         }
@@ -59,7 +59,7 @@ pub fn render_messages(
             lines.push(Line::from(""));
             lines.push(Line::from(Span::styled(
                 "─".repeat(content_width.min(40)),
-                Style::default().fg(theme::TEXT_DIM),
+                Style::default().fg(theme::text_dim_color()),
             )));
             lines.push(Line::from(""));
         }
@@ -70,23 +70,23 @@ pub fn render_messages(
             lines.push(Line::from(Span::styled(
                 "◇ Iris",
                 Style::default()
-                    .fg(theme::ELECTRIC_PURPLE)
+                    .fg(theme::accent_primary())
                     .add_modifier(Modifier::BOLD),
             )));
 
             // Render the streaming content with markdown formatting
-            let content_style = Style::default().fg(theme::TEXT_SECONDARY);
+            let content_style = Style::default().fg(theme::text_secondary_color());
             let formatted_lines = format_markdown(streaming, content_width, content_style);
             lines.extend(formatted_lines);
 
             // Show tool activity history
             for tool in &chat_state.tool_history {
                 lines.push(Line::from(vec![
-                    Span::styled("  ⚙ ", Style::default().fg(theme::NEON_CYAN)),
+                    Span::styled("  ⚙ ", Style::default().fg(theme::accent_secondary())),
                     Span::styled(
                         tool.clone(),
                         Style::default()
-                            .fg(theme::TEXT_MUTED)
+                            .fg(theme::text_muted_color())
                             .add_modifier(Modifier::ITALIC),
                     ),
                 ]));
@@ -97,7 +97,7 @@ pub fn render_messages(
                 theme::SPINNER_BRAILLE[last_render_ms as usize / 80 % theme::SPINNER_BRAILLE.len()];
             lines.push(Line::from(Span::styled(
                 format!(" {}", spinner),
-                Style::default().fg(theme::ELECTRIC_PURPLE),
+                Style::default().fg(theme::accent_primary()),
             )));
         } else {
             // Just show thinking indicator when no streaming content yet
@@ -107,11 +107,11 @@ pub fn render_messages(
             // Show tool history when thinking
             for tool in &chat_state.tool_history {
                 lines.push(Line::from(vec![
-                    Span::styled("  ⚙ ", Style::default().fg(theme::NEON_CYAN)),
+                    Span::styled("  ⚙ ", Style::default().fg(theme::accent_secondary())),
                     Span::styled(
                         tool.clone(),
                         Style::default()
-                            .fg(theme::TEXT_MUTED)
+                            .fg(theme::text_muted_color())
                             .add_modifier(Modifier::ITALIC),
                     ),
                 ]));
@@ -122,12 +122,12 @@ pub fn render_messages(
                 lines.push(Line::from(vec![
                     Span::styled(
                         format!("{} ⚙ ", spinner),
-                        Style::default().fg(theme::NEON_CYAN),
+                        Style::default().fg(theme::accent_secondary()),
                     ),
                     Span::styled(
                         tool.clone(),
                         Style::default()
-                            .fg(theme::TEXT_SECONDARY)
+                            .fg(theme::text_secondary_color())
                             .add_modifier(Modifier::ITALIC),
                     ),
                 ]));
@@ -135,21 +135,21 @@ pub fn render_messages(
                 lines.push(Line::from(vec![
                     Span::styled(
                         format!("{} ", spinner),
-                        Style::default().fg(theme::ELECTRIC_PURPLE),
+                        Style::default().fg(theme::accent_primary()),
                     ),
                     Span::styled(
                         "Iris is thinking",
                         Style::default()
-                            .fg(theme::ELECTRIC_PURPLE)
+                            .fg(theme::accent_primary())
                             .add_modifier(Modifier::ITALIC),
                     ),
-                    Span::styled("...", Style::default().fg(theme::TEXT_DIM)),
+                    Span::styled("...", Style::default().fg(theme::text_dim_color())),
                 ]));
             } else {
                 // Show spinner after tool history
                 lines.push(Line::from(Span::styled(
                     format!("  {}", spinner),
-                    Style::default().fg(theme::ELECTRIC_PURPLE),
+                    Style::default().fg(theme::accent_primary()),
                 )));
             }
         }
@@ -161,7 +161,7 @@ pub fn render_messages(
             lines.push(Line::from(""));
             lines.push(Line::from(Span::styled(
                 "─".repeat(content_width.min(40)),
-                Style::default().fg(theme::TEXT_DIM),
+                Style::default().fg(theme::text_dim_color()),
             )));
         }
         lines.push(Line::from(""));
@@ -169,10 +169,10 @@ pub fn render_messages(
             Span::styled(
                 "  ⚠ Error: ",
                 Style::default()
-                    .fg(theme::ERROR_RED)
+                    .fg(theme::error_color())
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::styled(error.clone(), Style::default().fg(theme::ERROR_RED)),
+            Span::styled(error.clone(), Style::default().fg(theme::error_color())),
         ]));
         lines.push(Line::from(""));
     }
@@ -183,20 +183,20 @@ pub fn render_messages(
         lines.push(Line::from(Span::styled(
             "✨ Ask Iris anything about your changes",
             Style::default()
-                .fg(theme::TEXT_SECONDARY)
+                .fg(theme::text_secondary_color())
                 .add_modifier(Modifier::ITALIC),
         )));
         lines.push(Line::from(""));
         lines.push(Line::from(vec![
-            Span::styled("  • ", Style::default().fg(theme::ELECTRIC_PURPLE)),
+            Span::styled("  • ", Style::default().fg(theme::accent_primary())),
             Span::styled("\"Make the title shorter\"", theme::dimmed()),
         ]));
         lines.push(Line::from(vec![
-            Span::styled("  • ", Style::default().fg(theme::ELECTRIC_PURPLE)),
+            Span::styled("  • ", Style::default().fg(theme::accent_primary())),
             Span::styled("\"Add more context to the body\"", theme::dimmed()),
         ]));
         lines.push(Line::from(vec![
-            Span::styled("  • ", Style::default().fg(theme::ELECTRIC_PURPLE)),
+            Span::styled("  • ", Style::default().fg(theme::accent_primary())),
             Span::styled("\"Explain what this change does\"", theme::dimmed()),
         ]));
     }
@@ -241,10 +241,10 @@ pub fn format_markdown(content: &str, max_width: usize, base_style: Style) -> Ve
                 Tag::Heading { level, .. } => {
                     flush_line(&mut lines, &mut current_spans, list_depth);
                     let color = match level {
-                        pulldown_cmark::HeadingLevel::H1 => theme::ELECTRIC_PURPLE,
-                        pulldown_cmark::HeadingLevel::H2 => theme::NEON_CYAN,
-                        pulldown_cmark::HeadingLevel::H3 => theme::CORAL,
-                        _ => theme::TEXT_SECONDARY,
+                        pulldown_cmark::HeadingLevel::H1 => theme::accent_primary(),
+                        pulldown_cmark::HeadingLevel::H2 => theme::accent_secondary(),
+                        pulldown_cmark::HeadingLevel::H3 => theme::accent_tertiary(),
+                        _ => theme::text_secondary_color(),
                     };
                     style_stack.push(Style::default().fg(color).add_modifier(Modifier::BOLD));
                     current_spans.push(Span::styled("  ", base_style));
@@ -271,13 +271,13 @@ pub fn format_markdown(content: &str, max_width: usize, base_style: Style) -> Ve
                     if let Some(num) = ordered_list_num.as_mut() {
                         current_spans.push(Span::styled(
                             format!("{}{}. ", indent, num),
-                            Style::default().fg(theme::ELECTRIC_PURPLE),
+                            Style::default().fg(theme::accent_primary()),
                         ));
                         *num += 1;
                     } else {
                         current_spans.push(Span::styled(
                             format!("{}• ", indent),
-                            Style::default().fg(theme::ELECTRIC_PURPLE),
+                            Style::default().fg(theme::accent_primary()),
                         ));
                     }
                 }
@@ -307,7 +307,10 @@ pub fn format_markdown(content: &str, max_width: usize, base_style: Style) -> Ve
                 }
                 Tag::BlockQuote(_) => {
                     flush_line(&mut lines, &mut current_spans, list_depth);
-                    current_spans.push(Span::styled("  │ ", Style::default().fg(theme::TEXT_DIM)));
+                    current_spans.push(Span::styled(
+                        "  │ ",
+                        Style::default().fg(theme::text_dim_color()),
+                    ));
                 }
                 Tag::Link { .. } | Tag::Image { .. } => {
                     // Add space before link if needed
@@ -317,7 +320,7 @@ pub fn format_markdown(content: &str, max_width: usize, base_style: Style) -> Ve
                     _in_link = true;
                     style_stack.push(
                         Style::default()
-                            .fg(theme::NEON_CYAN)
+                            .fg(theme::accent_secondary())
                             .add_modifier(Modifier::UNDERLINED),
                     );
                 }
@@ -381,7 +384,7 @@ pub fn format_markdown(content: &str, max_width: usize, base_style: Style) -> Ve
                         flush_line(&mut lines, &mut current_spans, list_depth);
                         current_spans.push(Span::styled(
                             format!("  │ {} │", row_text),
-                            Style::default().fg(theme::TEXT_SECONDARY),
+                            Style::default().fg(theme::text_secondary_color()),
                         ));
                         flush_line(&mut lines, &mut current_spans, list_depth);
                         table_row.clear();
@@ -434,14 +437,14 @@ pub fn format_markdown(content: &str, max_width: usize, base_style: Style) -> Ve
                 flush_line(&mut lines, &mut current_spans, list_depth);
                 lines.push(Line::from(Span::styled(
                     "─".repeat(max_width.min(60)),
-                    Style::default().fg(theme::TEXT_DIM),
+                    Style::default().fg(theme::text_dim_color()),
                 )));
             }
             Event::TaskListMarker(checked) => {
                 let marker = if checked { "☑ " } else { "☐ " };
                 current_spans.push(Span::styled(
                     marker.to_string(),
-                    Style::default().fg(theme::ELECTRIC_PURPLE),
+                    Style::default().fg(theme::accent_primary()),
                 ));
             }
             _ => {}
@@ -532,7 +535,7 @@ fn render_code_block(
     let lang_label = if lang.is_empty() { "code" } else { lang };
     lines.push(Line::from(Span::styled(
         format!("  ┌─ {} ", lang_label),
-        Style::default().fg(theme::TEXT_DIM),
+        Style::default().fg(theme::text_dim_color()),
     )));
 
     // Create syntax highlighter for the language
@@ -546,7 +549,10 @@ fn render_code_block(
         };
 
         // Build spans for this line
-        let mut line_spans = vec![Span::styled("  │ ", Style::default().fg(theme::TEXT_DIM))];
+        let mut line_spans = vec![Span::styled(
+            "  │ ",
+            Style::default().fg(theme::text_dim_color()),
+        )];
 
         if highlighter.is_available() {
             // Syntax highlighted
@@ -557,7 +563,7 @@ fn render_code_block(
             // Fallback to plain green
             line_spans.push(Span::styled(
                 truncated,
-                Style::default().fg(theme::SUCCESS_GREEN),
+                Style::default().fg(theme::success_color()),
             ));
         }
 
@@ -566,7 +572,7 @@ fn render_code_block(
 
     lines.push(Line::from(Span::styled(
         "  └─",
-        Style::default().fg(theme::TEXT_DIM),
+        Style::default().fg(theme::text_dim_color()),
     )));
 }
 
@@ -642,16 +648,19 @@ pub fn render_input_line(input: &str, cursor_visible: bool) -> Line<'static> {
     let cursor_char = if cursor_visible { "▌" } else { " " };
 
     Line::from(vec![
-        Span::styled("❯ ", Style::default().fg(theme::ELECTRIC_PURPLE)),
-        Span::styled(input.to_string(), Style::default().fg(theme::TEXT_PRIMARY)),
+        Span::styled("❯ ", Style::default().fg(theme::accent_primary())),
+        Span::styled(
+            input.to_string(),
+            Style::default().fg(theme::text_primary_color()),
+        ),
         Span::styled(
             cursor_char.to_string(),
-            Style::default().fg(theme::NEON_CYAN),
+            Style::default().fg(theme::accent_secondary()),
         ),
     ])
 }
 
 /// Render the help footer
 pub fn help_footer() -> Line<'static> {
-    Line::from(" [Enter] send · [Esc] close · [↑↓] scroll ").fg(theme::TEXT_DIM)
+    Line::from(" [Enter] send · [Esc] close · [↑↓] scroll ").fg(theme::text_dim_color())
 }

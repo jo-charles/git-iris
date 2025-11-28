@@ -43,7 +43,7 @@ impl DiffLineType {
             Self::Removed => theme::diff_removed(),
             Self::HunkHeader => theme::diff_hunk(),
             Self::FileHeader => Style::default()
-                .fg(theme::TEXT_PRIMARY)
+                .fg(theme::text_primary_color())
                 .add_modifier(Modifier::BOLD),
             Self::Empty => Style::default(),
         }
@@ -628,10 +628,10 @@ fn render_diff_line(line: &DiffLine, line_num_width: usize, width: usize) -> Lin
             let prefix = line.line_type.prefix();
             let prefix_style = match line.line_type {
                 DiffLineType::Added => Style::default()
-                    .fg(theme::SUCCESS_GREEN)
+                    .fg(theme::success_color())
                     .add_modifier(Modifier::BOLD),
                 DiffLineType::Removed => Style::default()
-                    .fg(theme::ERROR_RED)
+                    .fg(theme::error_color())
                     .add_modifier(Modifier::BOLD),
                 _ => theme::dimmed(),
             };
@@ -661,9 +661,9 @@ pub fn render_diff_summary(diff: &FileDiff) -> Line<'static> {
     let path = diff.path.display().to_string();
 
     let status = if diff.is_new {
-        Span::styled(" new ", Style::default().fg(theme::SUCCESS_GREEN))
+        Span::styled(" new ", Style::default().fg(theme::success_color()))
     } else if diff.is_deleted {
-        Span::styled(" del ", Style::default().fg(theme::ERROR_RED))
+        Span::styled(" del ", Style::default().fg(theme::error_color()))
     } else {
         Span::raw("")
     };
@@ -673,9 +673,12 @@ pub fn render_diff_summary(diff: &FileDiff) -> Line<'static> {
         status,
         Span::styled(
             format!("+{added}"),
-            Style::default().fg(theme::SUCCESS_GREEN),
+            Style::default().fg(theme::success_color()),
         ),
         Span::raw(" "),
-        Span::styled(format!("-{removed}"), Style::default().fg(theme::ERROR_RED)),
+        Span::styled(
+            format!("-{removed}"),
+            Style::default().fg(theme::error_color()),
+        ),
     ])
 }

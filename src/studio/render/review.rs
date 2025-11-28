@@ -2,7 +2,6 @@
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::Style;
 use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders, Paragraph};
 
@@ -100,7 +99,7 @@ pub fn render_review_panel(
                 } else {
                     "Press 'r' to generate a code review"
                 };
-                let text = Paragraph::new(hint).style(Style::default().fg(theme::TEXT_DIM));
+                let text = Paragraph::new(hint).style(theme::dimmed());
                 frame.render_widget(text, inner);
             }
         }

@@ -251,21 +251,22 @@ pub fn list_available_themes() -> Vec<ThemeInfo> {
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.extension().is_some_and(|ext| ext == "toml")
-                    && let Ok(theme) = loader::load_from_file(&path) {
-                        let name = path
-                            .file_stem()
-                            .and_then(|s| s.to_str())
-                            .unwrap_or("unknown")
-                            .to_string();
+                    && let Ok(theme) = loader::load_from_file(&path)
+                {
+                    let name = path
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("unknown")
+                        .to_string();
 
-                        themes.push(ThemeInfo {
-                            name,
-                            display_name: theme.meta.name,
-                            variant: theme.meta.variant,
-                            builtin: false,
-                            path: Some(path),
-                        });
-                    }
+                    themes.push(ThemeInfo {
+                        name,
+                        display_name: theme.meta.name,
+                        variant: theme.meta.variant,
+                        builtin: false,
+                        path: Some(path),
+                    });
+                }
             }
         }
     }

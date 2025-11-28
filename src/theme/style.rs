@@ -7,6 +7,7 @@ use super::color::ThemeColor;
 /// This represents a complete text style that can be applied to UI elements.
 /// Adapters convert this to framework-specific styles (Ratatui Style, etc.).
 #[derive(Clone, Debug, Default, PartialEq)]
+#[allow(clippy::struct_excessive_bools)] // Text style modifiers are inherently boolean flags
 pub struct ThemeStyle {
     /// Foreground (text) color.
     pub fg: Option<ThemeColor>,

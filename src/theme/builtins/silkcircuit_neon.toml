@@ -69,6 +69,7 @@ gray_500 = "#6e7daf"
 "accent.primary" = "purple_500"
 "accent.secondary" = "cyan_400"
 "accent.tertiary" = "coral_400"
+"accent.deep" = "purple_400"
 
 # Semantic colors
 success = "green_400"

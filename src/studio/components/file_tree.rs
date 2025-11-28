@@ -640,7 +640,7 @@ fn render_entry(entry: &FlatEntry, is_selected: bool, width: usize) -> Line<'sta
     // Selection marker
     let marker = if is_selected { ">" } else { " " };
     let marker_style = if is_selected {
-        Style::default().fg(theme::ELECTRIC_PURPLE)
+        Style::default().fg(theme::accent_primary())
     } else {
         Style::default()
     };
@@ -650,10 +650,10 @@ fn render_entry(entry: &FlatEntry, is_selected: bool, width: usize) -> Line<'sta
         theme::selected()
     } else if entry.is_dir {
         Style::default()
-            .fg(theme::NEON_CYAN)
+            .fg(theme::accent_secondary())
             .add_modifier(Modifier::BOLD)
     } else {
-        Style::default().fg(theme::TEXT_PRIMARY)
+        Style::default().fg(theme::text_primary_color())
     };
 
     // Calculate available width for name using unicode width
@@ -671,9 +671,9 @@ fn render_entry(entry: &FlatEntry, is_selected: bool, width: usize) -> Line<'sta
         Span::styled(
             format!("{} ", icon),
             if entry.is_dir {
-                Style::default().fg(theme::NEON_CYAN)
+                Style::default().fg(theme::accent_secondary())
             } else {
-                Style::default().fg(theme::TEXT_DIM)
+                Style::default().fg(theme::text_dim_color())
             },
         ),
         Span::styled(display_name, name_style),
