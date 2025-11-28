@@ -1060,19 +1060,7 @@ fn apply_scroll(state: &mut StudioState, direction: ScrollDirection, amount: usi
                 }
             }
             PanelId::Center => {
-                // Diff view scroll
-                match direction {
-                    ScrollDirection::Up => {
-                        state.modes.review.diff_view.scroll_up(amount);
-                    }
-                    ScrollDirection::Down => {
-                        state.modes.review.diff_view.scroll_down(amount);
-                    }
-                    _ => {}
-                }
-            }
-            PanelId::Right => {
-                // Review content scroll
+                // Review content scroll (center panel shows review, not diff)
                 let max_scroll = state
                     .modes
                     .review
@@ -1092,38 +1080,43 @@ fn apply_scroll(state: &mut StudioState, direction: ScrollDirection, amount: usi
                     _ => {}
                 }
             }
+            PanelId::Right => {
+                // Diff view scroll (right panel shows diff)
+                match direction {
+                    ScrollDirection::Up => {
+                        state.modes.review.diff_view.scroll_up(amount);
+                    }
+                    ScrollDirection::Down => {
+                        state.modes.review.diff_view.scroll_down(amount);
+                    }
+                    _ => {}
+                }
+            }
         },
         Mode::PR => match state.focused_panel {
             PanelId::Left => {
-                // File tree navigation
+                // Commits list navigation
                 match direction {
                     ScrollDirection::Up => {
-                        for _ in 0..amount {
-                            state.modes.pr.file_tree.select_prev();
+                        if state.modes.pr.selected_commit > 0 {
+                            state.modes.pr.selected_commit =
+                                state.modes.pr.selected_commit.saturating_sub(amount);
+                            // Adjust scroll if needed
+                            if state.modes.pr.selected_commit < state.modes.pr.commit_scroll {
+                                state.modes.pr.commit_scroll = state.modes.pr.selected_commit;
+                            }
                         }
                     }
                     ScrollDirection::Down => {
-                        for _ in 0..amount {
-                            state.modes.pr.file_tree.select_next();
-                        }
+                        let max_idx = state.modes.pr.commits.len().saturating_sub(1);
+                        state.modes.pr.selected_commit =
+                            (state.modes.pr.selected_commit + amount).min(max_idx);
                     }
                     _ => {}
                 }
             }
             PanelId::Center => {
-                // Diff view scroll
-                match direction {
-                    ScrollDirection::Up => {
-                        state.modes.pr.diff_view.scroll_up(amount);
-                    }
-                    ScrollDirection::Down => {
-                        state.modes.pr.diff_view.scroll_down(amount);
-                    }
-                    _ => {}
-                }
-            }
-            PanelId::Right => {
-                // PR content scroll
+                // PR content scroll (center panel shows PR description)
                 let max_scroll = state.modes.pr.pr_content.lines().count().saturating_sub(1);
                 match direction {
                     ScrollDirection::Up => {
@@ -1136,9 +1129,45 @@ fn apply_scroll(state: &mut StudioState, direction: ScrollDirection, amount: usi
                     _ => {}
                 }
             }
+            PanelId::Right => {
+                // Diff view scroll (right panel shows diff)
+                match direction {
+                    ScrollDirection::Up => {
+                        state.modes.pr.diff_view.scroll_up(amount);
+                    }
+                    ScrollDirection::Down => {
+                        state.modes.pr.diff_view.scroll_down(amount);
+                    }
+                    _ => {}
+                }
+            }
         },
         Mode::Changelog => match state.focused_panel {
-            PanelId::Center | PanelId::Right => {
+            PanelId::Left => {
+                // Commits list navigation
+                match direction {
+                    ScrollDirection::Up => {
+                        if state.modes.changelog.selected_commit > 0 {
+                            state.modes.changelog.selected_commit =
+                                state.modes.changelog.selected_commit.saturating_sub(amount);
+                            if state.modes.changelog.selected_commit
+                                < state.modes.changelog.commit_scroll
+                            {
+                                state.modes.changelog.commit_scroll =
+                                    state.modes.changelog.selected_commit;
+                            }
+                        }
+                    }
+                    ScrollDirection::Down => {
+                        let max_idx = state.modes.changelog.commits.len().saturating_sub(1);
+                        state.modes.changelog.selected_commit =
+                            (state.modes.changelog.selected_commit + amount).min(max_idx);
+                    }
+                    _ => {}
+                }
+            }
+            PanelId::Center => {
+                // Changelog content scroll
                 let max_scroll = state
                     .modes
                     .changelog
@@ -1161,10 +1190,48 @@ fn apply_scroll(state: &mut StudioState, direction: ScrollDirection, amount: usi
                     _ => {}
                 }
             }
-            PanelId::Left => {}
+            PanelId::Right => {
+                // Diff view scroll
+                match direction {
+                    ScrollDirection::Up => {
+                        state.modes.changelog.diff_view.scroll_up(amount);
+                    }
+                    ScrollDirection::Down => {
+                        state.modes.changelog.diff_view.scroll_down(amount);
+                    }
+                    _ => {}
+                }
+            }
         },
         Mode::ReleaseNotes => match state.focused_panel {
-            PanelId::Center | PanelId::Right => {
+            PanelId::Left => {
+                // Commits list navigation
+                match direction {
+                    ScrollDirection::Up => {
+                        if state.modes.release_notes.selected_commit > 0 {
+                            state.modes.release_notes.selected_commit = state
+                                .modes
+                                .release_notes
+                                .selected_commit
+                                .saturating_sub(amount);
+                            if state.modes.release_notes.selected_commit
+                                < state.modes.release_notes.commit_scroll
+                            {
+                                state.modes.release_notes.commit_scroll =
+                                    state.modes.release_notes.selected_commit;
+                            }
+                        }
+                    }
+                    ScrollDirection::Down => {
+                        let max_idx = state.modes.release_notes.commits.len().saturating_sub(1);
+                        state.modes.release_notes.selected_commit =
+                            (state.modes.release_notes.selected_commit + amount).min(max_idx);
+                    }
+                    _ => {}
+                }
+            }
+            PanelId::Center => {
+                // Release notes content scroll
                 let max_scroll = state
                     .modes
                     .release_notes
@@ -1188,7 +1255,18 @@ fn apply_scroll(state: &mut StudioState, direction: ScrollDirection, amount: usi
                     _ => {}
                 }
             }
-            PanelId::Left => {}
+            PanelId::Right => {
+                // Diff view scroll
+                match direction {
+                    ScrollDirection::Up => {
+                        state.modes.release_notes.diff_view.scroll_up(amount);
+                    }
+                    ScrollDirection::Down => {
+                        state.modes.release_notes.diff_view.scroll_down(amount);
+                    }
+                    _ => {}
+                }
+            }
         },
     }
     state.mark_dirty();

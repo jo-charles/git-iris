@@ -63,13 +63,13 @@ fn handle_files_key(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffect> {
             state.mark_dirty();
             vec![]
         }
-        KeyCode::Char('g') => {
+        KeyCode::Char('g') | KeyCode::Home => {
             state.modes.commit.file_tree.select_first();
             sync_file_selection(state);
             state.mark_dirty();
             vec![]
         }
-        KeyCode::Char('G') => {
+        KeyCode::Char('G') | KeyCode::End => {
             state.modes.commit.file_tree.select_last();
             sync_file_selection(state);
             state.mark_dirty();

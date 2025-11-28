@@ -67,14 +67,14 @@ fn handle_file_tree_key(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffec
             state.mark_dirty();
             vec![]
         }
-        KeyCode::Char('g') => {
+        KeyCode::Char('g') | KeyCode::Home => {
             // Go to first
             state.modes.explore.file_tree.select_first();
             load_selected_file(state);
             state.mark_dirty();
             vec![]
         }
-        KeyCode::Char('G') => {
+        KeyCode::Char('G') | KeyCode::End => {
             // Go to last
             state.modes.explore.file_tree.select_last();
             load_selected_file(state);
@@ -177,7 +177,7 @@ fn handle_code_view_key(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffec
             state.mark_dirty();
             vec![]
         }
-        KeyCode::Char('g') => {
+        KeyCode::Char('g') | KeyCode::Home => {
             // Go to first line
             state.modes.explore.code_view.goto_first();
             state.modes.explore.current_line = 1;
@@ -187,7 +187,7 @@ fn handle_code_view_key(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffec
             state.mark_dirty();
             vec![]
         }
-        KeyCode::Char('G') => {
+        KeyCode::Char('G') | KeyCode::End => {
             // Go to last line
             state
                 .modes

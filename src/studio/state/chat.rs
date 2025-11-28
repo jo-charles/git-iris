@@ -71,6 +71,8 @@ pub struct ChatState {
     pub current_tool: Option<String>,
     /// History of tools called during this response (bounded)
     pub tool_history: VecDeque<String>,
+    /// Error message to display (cleared on next user input)
+    pub error: Option<String>,
 }
 
 impl Default for ChatState {
@@ -84,6 +86,7 @@ impl Default for ChatState {
             auto_scroll: true,
             current_tool: None,
             tool_history: VecDeque::new(),
+            error: None,
         }
     }
 }
@@ -127,7 +130,21 @@ impl ChatState {
         self.messages.push_back(ChatMessage::user(content));
         self.trim_messages();
         self.input.clear();
+        self.error = None; // Clear any existing error on new input
         self.auto_scroll = true; // Re-enable auto-scroll on new messages
+    }
+
+    /// Set an error message to display
+    pub fn set_error(&mut self, error: impl Into<String>) {
+        self.error = Some(error.into());
+        self.is_responding = false;
+        self.streaming_response = None;
+        self.current_tool = None;
+    }
+
+    /// Clear any existing error
+    pub fn clear_error(&mut self) {
+        self.error = None;
     }
 
     /// Add or update Iris response and auto-scroll to bottom
@@ -186,6 +203,7 @@ impl ChatState {
         self.streaming_response = None;
         self.current_tool = None;
         self.tool_history.clear();
+        self.error = None;
         self.auto_scroll = true;
     }
 }

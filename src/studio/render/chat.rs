@@ -155,8 +155,33 @@ pub fn render_messages(
         }
     }
 
+    // Show error message if present
+    if let Some(ref error) = chat_state.error {
+        if !chat_state.messages.is_empty() {
+            lines.push(Line::from(""));
+            lines.push(Line::from(Span::styled(
+                "─".repeat(content_width.min(40)),
+                Style::default().fg(theme::TEXT_DIM),
+            )));
+        }
+        lines.push(Line::from(""));
+        lines.push(Line::from(vec![
+            Span::styled(
+                "  ⚠ Error: ",
+                Style::default()
+                    .fg(theme::ERROR_RED)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                error.clone(),
+                Style::default().fg(theme::ERROR_RED),
+            ),
+        ]));
+        lines.push(Line::from(""));
+    }
+
     // Empty state with helpful message
-    if chat_state.messages.is_empty() && !chat_state.is_responding {
+    if chat_state.messages.is_empty() && !chat_state.is_responding && chat_state.error.is_none() {
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
             "✨ Ask Iris anything about your changes",

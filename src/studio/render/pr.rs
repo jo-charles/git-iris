@@ -13,6 +13,21 @@ use crate::studio::components::render_diff_view;
 use crate::studio::state::{PanelId, StudioState};
 use crate::studio::theme;
 
+/// Create a panel title with scroll position indicator
+fn scrollable_title(base_title: &str, scroll: usize, total_lines: usize, visible: usize) -> String {
+    if total_lines <= visible {
+        format!(" {} ", base_title)
+    } else {
+        let max_scroll = total_lines.saturating_sub(visible);
+        let percent = if max_scroll == 0 {
+            100
+        } else {
+            ((scroll.min(max_scroll)) * 100) / max_scroll
+        };
+        format!(" {} ({}/{}) {}% ", base_title, scroll + 1, total_lines, percent)
+    }
+}
+
 /// Render a panel in PR mode
 pub fn render_pr_panel(state: &mut StudioState, frame: &mut Frame, area: Rect, panel_id: PanelId) {
     let is_focused = panel_id == state.focused_panel;
@@ -73,17 +88,8 @@ pub fn render_pr_panel(state: &mut StudioState, frame: &mut Frame, area: Rect, p
             }
         }
         PanelId::Center => {
-            // Render PR description (center panel - main content)
-            let block = Block::default()
-                .title(" PR Description [y:copy] ")
-                .borders(Borders::ALL)
-                .border_style(if is_focused {
-                    theme::focused_border()
-                } else {
-                    theme::unfocused_border()
-                });
-            let inner = block.inner(area);
-            frame.render_widget(block, area);
+            // Calculate visible height for scroll indicator
+            let visible_height = area.height.saturating_sub(2) as usize;
 
             // Prefer streaming content if available, then final content
             let content_to_display = state.modes.pr.streaming_content.as_ref().or(
@@ -93,6 +99,26 @@ pub fn render_pr_panel(state: &mut StudioState, frame: &mut Frame, area: Rect, p
                     Some(&state.modes.pr.pr_content)
                 },
             );
+
+            let total_lines = content_to_display.map_or(0, |c| c.lines().count());
+            let title = scrollable_title(
+                "PR Description [y:copy]",
+                state.modes.pr.pr_scroll,
+                total_lines,
+                visible_height,
+            );
+
+            // Render PR description (center panel - main content)
+            let block = Block::default()
+                .title(title)
+                .borders(Borders::ALL)
+                .border_style(if is_focused {
+                    theme::focused_border()
+                } else {
+                    theme::unfocused_border()
+                });
+            let inner = block.inner(area);
+            frame.render_widget(block, area);
 
             if let Some(content) = content_to_display {
                 // Render content with scroll

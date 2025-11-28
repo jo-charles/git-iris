@@ -95,12 +95,12 @@ fn handle_diff_key(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffect> {
             state.mark_dirty();
             vec![]
         }
-        KeyCode::PageUp => {
+        KeyCode::PageUp | KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             state.modes.pr.diff_view.scroll_up(20);
             state.mark_dirty();
             vec![]
         }
-        KeyCode::PageDown => {
+        KeyCode::PageDown | KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             state.modes.pr.diff_view.scroll_down(20);
             state.mark_dirty();
             vec![]
@@ -112,6 +112,28 @@ fn handle_diff_key(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffect> {
         }
         KeyCode::End | KeyCode::Char('G') => {
             state.modes.pr.diff_view.scroll_to_bottom();
+            state.mark_dirty();
+            vec![]
+        }
+        // Hunk navigation
+        KeyCode::Char(']') => {
+            state.modes.pr.diff_view.next_hunk();
+            state.mark_dirty();
+            vec![]
+        }
+        KeyCode::Char('[') => {
+            state.modes.pr.diff_view.prev_hunk();
+            state.mark_dirty();
+            vec![]
+        }
+        // File navigation within diff
+        KeyCode::Char('n') => {
+            state.modes.pr.diff_view.next_file();
+            state.mark_dirty();
+            vec![]
+        }
+        KeyCode::Char('p') => {
+            state.modes.pr.diff_view.prev_file();
             state.mark_dirty();
             vec![]
         }
