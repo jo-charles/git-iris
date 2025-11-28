@@ -196,7 +196,7 @@ pub fn reduce(
             // Add user message to history
             history.add_chat_message_with_context(
                 ChatRole::User,
-                message.clone(),
+                &message,
                 state.active_mode,
                 get_current_content(state),
             );
@@ -323,7 +323,7 @@ pub fn reduce(
 
                 AgentResult::ChatResponse(response) => {
                     // Add Iris response to history
-                    history.add_chat_message(ChatRole::Iris, response.clone());
+                    history.add_chat_message(ChatRole::Iris, &response);
 
                     // Update chat state
                     if let Some(Modal::Chat(ref mut chat)) = state.modal {
@@ -426,12 +426,12 @@ pub fn reduce(
                         chat.streaming_response = None;
                         // Move final current_tool to history before clearing
                         if let Some(tool) = chat.current_tool.take() {
-                            chat.tool_history.push(tool);
+                            chat.add_tool_to_history(tool);
                         }
                     }
                     state.chat_state.streaming_response = None;
                     if let Some(tool) = state.chat_state.current_tool.take() {
-                        state.chat_state.tool_history.push(tool);
+                        state.chat_state.add_tool_to_history(tool);
                     }
                 }
                 TaskType::SemanticBlame => {

@@ -710,14 +710,14 @@ impl StudioApp {
                     // Tool status updates - move current tool to history, set new current
                     let tool_desc = format!("{} - {}", tool_name, message);
                     if let Some(Modal::Chat(chat)) = &mut self.state.modal {
-                        // Move previous tool to history
+                        // Move previous tool to history (bounded)
                         if let Some(prev) = chat.current_tool.take() {
-                            chat.tool_history.push(prev);
+                            chat.add_tool_to_history(prev);
                         }
                         chat.current_tool = Some(tool_desc.clone());
                     }
                     if let Some(prev) = self.state.chat_state.current_tool.take() {
-                        self.state.chat_state.tool_history.push(prev);
+                        self.state.chat_state.add_tool_to_history(prev);
                     }
                     self.state.chat_state.current_tool = Some(tool_desc);
                     self.state.mark_dirty();
@@ -795,9 +795,9 @@ impl StudioApp {
         let tx_updates = self.iris_result_tx.clone();
         let mode = context.mode;
 
-        // Extract conversation history from chat modal
+        // Extract conversation history from chat modal (convert VecDeque → Vec)
         let chat_history: Vec<ChatMessage> = if let Some(Modal::Chat(chat)) = &self.state.modal {
-            chat.messages.clone()
+            chat.messages.iter().cloned().collect()
         } else {
             Vec::new()
         };

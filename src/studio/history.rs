@@ -18,6 +18,26 @@ use uuid::Uuid;
 use crate::types::GeneratedMessage;
 
 use super::events::{ContentType, EventSource, TaskType, TimestampedEvent};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Capacity Limits
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Max chat messages in history
+const MAX_CHAT_MESSAGES: usize = 500;
+
+/// Max content versions per (mode, `content_type`) key
+const MAX_CONTENT_VERSIONS: usize = 50;
+
+/// UTF-8 safe string truncation (no panic on multi-byte boundaries)
+fn truncate_preview(s: &str, max_chars: usize) -> String {
+    if s.chars().count() <= max_chars {
+        s.to_string()
+    } else {
+        format!("{}...", s.chars().take(max_chars).collect::<String>())
+    }
+}
+
 use super::state::Mode;
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -202,6 +222,7 @@ impl History {
             .entry(key.clone())
             .or_default()
             .push(version);
+        self.trim_content_versions(&key);
 
         // Record in event log
         let entry = HistoryEntry {
@@ -220,18 +241,35 @@ impl History {
         self.push_entry(entry);
     }
 
+    /// Trim chat messages to stay within bounds (drops oldest)
+    fn trim_chat_messages(&mut self) {
+        while self.chat_messages.len() > MAX_CHAT_MESSAGES {
+            self.chat_messages.remove(0);
+        }
+    }
+
+    /// Trim content versions for a key to stay within bounds (drops oldest)
+    fn trim_content_versions(&mut self, key: &ContentKey) {
+        if let Some(versions) = self.content_versions.get_mut(key) {
+            while versions.len() > MAX_CONTENT_VERSIONS {
+                versions.remove(0);
+            }
+        }
+    }
+
     /// Add a chat message
-    pub fn add_chat_message(&mut self, role: ChatRole, content: String) {
+    pub fn add_chat_message(&mut self, role: ChatRole, content: &str) {
         self.touch();
         let message = ChatMessage {
             id: self.next_id(),
             timestamp: Instant::now(),
             role,
-            content: content.clone(),
+            content: content.to_string(),
             mode_context: None,
         };
 
         self.chat_messages.push(message);
+        self.trim_chat_messages();
 
         // Also record in event log
         let entry = HistoryEntry {
@@ -243,11 +281,7 @@ impl History {
             },
             change: HistoryChange::ChatMessage {
                 role,
-                preview: if content.len() > 100 {
-                    format!("{}...", &content[..100])
-                } else {
-                    content
-                },
+                preview: truncate_preview(content, 100),
             },
         };
 
@@ -258,7 +292,7 @@ impl History {
     pub fn add_chat_message_with_context(
         &mut self,
         role: ChatRole,
-        content: String,
+        content: &str,
         mode: Mode,
         related_content: Option<String>,
     ) {
@@ -267,7 +301,7 @@ impl History {
             id: self.next_id(),
             timestamp: Instant::now(),
             role,
-            content: content.clone(),
+            content: content.to_string(),
             mode_context: Some(ModeContext {
                 mode,
                 related_content,
@@ -275,6 +309,7 @@ impl History {
         };
 
         self.chat_messages.push(message);
+        self.trim_chat_messages();
 
         // Also record in event log
         let entry = HistoryEntry {
@@ -286,11 +321,7 @@ impl History {
             },
             change: HistoryChange::ChatMessage {
                 role,
-                preview: if content.len() > 100 {
-                    format!("{}...", &content[..100])
-                } else {
-                    content
-                },
+                preview: truncate_preview(content, 100),
             },
         };
 
@@ -597,8 +628,8 @@ mod tests {
     fn test_add_chat_message() {
         let mut history = History::new();
 
-        history.add_chat_message(ChatRole::User, "Hello, Iris!".to_string());
-        history.add_chat_message(ChatRole::Iris, "Hello! How can I help?".to_string());
+        history.add_chat_message(ChatRole::User, "Hello, Iris!");
+        history.add_chat_message(ChatRole::Iris, "Hello! How can I help?");
 
         assert_eq!(history.chat_messages().len(), 2);
         assert_eq!(history.chat_messages()[0].role, ChatRole::User);
@@ -652,7 +683,7 @@ mod tests {
         history.max_events = 10;
 
         for i in 0..20 {
-            history.add_chat_message(ChatRole::User, format!("Message {}", i));
+            history.add_chat_message(ChatRole::User, &format!("Message {}", i));
         }
 
         // Events should be trimmed, but chat messages aren't (different storage)

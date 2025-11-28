@@ -5,9 +5,7 @@
 use crate::config::Config;
 use crate::git::GitRepo;
 use crate::types::{GeneratedMessage, format_commit_message};
-use lru::LruCache;
-use std::collections::{HashMap, VecDeque};
-use std::num::NonZeroUsize;
+use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -269,11 +267,17 @@ impl ChatMessage {
     }
 }
 
+/// Maximum chat messages retained (older messages are dropped)
+const MAX_CHAT_MESSAGES: usize = 500;
+
+/// Maximum tool history entries per response
+const MAX_TOOL_HISTORY: usize = 20;
+
 /// State for the chat interface
 #[derive(Debug, Clone)]
 pub struct ChatState {
-    /// Conversation history
-    pub messages: Vec<ChatMessage>,
+    /// Conversation history (bounded, oldest messages dropped when full)
+    pub messages: VecDeque<ChatMessage>,
     /// Current input text
     pub input: String,
     /// Scroll offset for message display
@@ -286,21 +290,21 @@ pub struct ChatState {
     pub auto_scroll: bool,
     /// Current tool being executed (shown with spinner)
     pub current_tool: Option<String>,
-    /// History of tools called during this response
-    pub tool_history: Vec<String>,
+    /// History of tools called during this response (bounded)
+    pub tool_history: VecDeque<String>,
 }
 
 impl Default for ChatState {
     fn default() -> Self {
         Self {
-            messages: Vec::new(),
+            messages: VecDeque::new(),
             input: String::new(),
             scroll_offset: 0,
             is_responding: false,
             streaming_response: None,
             auto_scroll: true,
             current_tool: None,
-            tool_history: Vec::new(),
+            tool_history: VecDeque::new(),
         }
     }
 }
@@ -316,11 +320,7 @@ impl ChatState {
 
         // Add an initial Iris message with context
         let context_msg = if let Some(content) = current_content {
-            let preview = if content.len() > 200 {
-                format!("{}...", &content[..200])
-            } else {
-                content.to_string()
-            };
+            let preview = truncate_preview(content, 200);
             format!(
                 "I'm ready to help with your {}. Here's what we have so far:\n\n```\n{}\n```\n\nWhat would you like to change?",
                 mode_name, preview
@@ -332,20 +332,29 @@ impl ChatState {
             )
         };
 
-        state.messages.push(ChatMessage::iris(context_msg));
+        state.messages.push_back(ChatMessage::iris(context_msg));
         state
+    }
+
+    /// Trim messages to stay within bounds (drops oldest messages)
+    fn trim_messages(&mut self) {
+        while self.messages.len() > MAX_CHAT_MESSAGES {
+            self.messages.pop_front();
+        }
     }
 
     /// Add a user message and auto-scroll to bottom
     pub fn add_user_message(&mut self, content: &str) {
-        self.messages.push(ChatMessage::user(content));
+        self.messages.push_back(ChatMessage::user(content));
+        self.trim_messages();
         self.input.clear();
         self.auto_scroll = true; // Re-enable auto-scroll on new messages
     }
 
     /// Add or update Iris response and auto-scroll to bottom
     pub fn add_iris_response(&mut self, content: &str) {
-        self.messages.push(ChatMessage::iris(content));
+        self.messages.push_back(ChatMessage::iris(content));
+        self.trim_messages();
         self.is_responding = false;
         self.streaming_response = None;
         self.current_tool = None;
@@ -379,6 +388,14 @@ impl ChatState {
             total_lines += 2 + streaming.lines().count().max(1);
         }
         total_lines.saturating_sub(10) // Assume ~10 visible lines
+    }
+
+    /// Add tool to history (bounded, drops oldest when full)
+    pub fn add_tool_to_history(&mut self, tool: String) {
+        self.tool_history.push_back(tool);
+        while self.tool_history.len() > MAX_TOOL_HISTORY {
+            self.tool_history.pop_front();
+        }
     }
 
     /// Clear the chat history
@@ -1124,14 +1141,6 @@ pub struct ModeStates {
 // Main Studio State
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/// Cache location key for semantic blame
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
-pub struct Location {
-    pub file: PathBuf,
-    pub start_line: usize,
-    pub end_line: usize,
-}
-
 /// Main application state for Iris Studio
 pub struct StudioState {
     /// Git repository reference
@@ -1151,12 +1160,6 @@ pub struct StudioState {
 
     /// Mode-specific states
     pub modes: ModeStates,
-
-    /// Semantic blame cache
-    pub semantic_cache: LruCache<Location, String>,
-
-    /// Diff cache (file path -> diff content)
-    pub diff_cache: HashMap<PathBuf, String>,
 
     /// Active modal
     pub modal: Option<Modal>,
@@ -1187,8 +1190,6 @@ impl StudioState {
             active_mode: Mode::Explore,
             focused_panel: PanelId::Left,
             modes: ModeStates::default(),
-            semantic_cache: LruCache::new(NonZeroUsize::new(100).expect("non-zero")),
-            diff_cache: HashMap::new(),
             modal: None,
             chat_state: ChatState::new(),
             notifications: VecDeque::new(),
