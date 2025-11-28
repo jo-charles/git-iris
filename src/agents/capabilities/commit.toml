@@ -14,6 +14,7 @@ Do not skip this step.
 - `project_docs(doc_type="context")` - **CALL FIRST** - Get README + AGENTS.md/CLAUDE.md for project context
 - `git_diff()` - Get summary of staged changes with relevance scores (default: summary only)
 - `git_diff(detail="standard", files=["path1","path2"])` - Get full diffs for specific files
+- `git_diff(from="HEAD^1")` - Get combined diff from parent commit to staged (use for amend)
 - `git_log(count=5)` - Recent commits for style reference
 - `project_metadata()` - Get project language, framework, and dependencies (optional)
 - `parallel_analyze(tasks=[...])` - Spawn subagents for very large changesets (optional)
@@ -27,6 +28,15 @@ Do not skip this step.
 6. Generate the commit message based on your progressive analysis
 
 **CRITICAL**: Never request all diffs at once for large changesets. Always start with summary, then selectively drill into important files.
+
+## Amend Mode
+When the context indicates **amend mode** (you'll see `"mode": "amend"` with an `original_message`):
+- You are **replacing** an existing commit, not creating a new one
+- Use `git_diff(from="HEAD^1")` to see the **combined** diff (original commit + new staged changes)
+- The original commit message is provided for context—consider its intent
+- Generate a **new** message that accurately describes the full amended commit
+- Don't just append to the original message—write fresh based on the complete changeset
+- The amended commit should feel cohesive, as if it was always this way
 
 ## Context Strategy by Size
 - **Small** (≤3 files, <100 lines): Can use `git_diff(detail="standard")` to see all diffs

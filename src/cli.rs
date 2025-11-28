@@ -120,6 +120,10 @@ pub enum Commands {
         /// Skip the verification step (pre/post commit hooks)
         #[arg(long, help = "Skip verification steps (pre/post commit hooks)")]
         no_verify: bool,
+
+        /// Amend the previous commit instead of creating a new one
+        #[arg(long, help = "Amend the previous commit with staged changes")]
+        amend: bool,
     },
 
     /// Review staged changes and provide feedback
@@ -479,6 +483,7 @@ struct GenConfig {
     use_gitmoji: bool,
     print_only: bool,
     verify: bool,
+    amend: bool,
 }
 
 /// Handle the `Gen` command with agent framework and Studio integration
@@ -507,6 +512,13 @@ async fn handle_gen_with_agent(
         ui::print_info("Run 'git-iris list-presets' to see available presets for commits.");
     }
 
+    // Amend mode requires --print or --auto-commit (Studio amend support coming later)
+    if config.amend && !config.print_only && !config.auto_commit {
+        ui::print_warning("--amend requires --print or --auto-commit for now.");
+        ui::print_info("Example: git-iris gen --amend --auto-commit");
+        return Ok(());
+    }
+
     let mut cfg = Config::load()?;
     common.apply_to_config(&mut cfg)?;
 
@@ -533,7 +545,9 @@ async fn handle_gen_with_agent(
 
     // For --print or --auto-commit, we need to generate the message first
     if config.print_only || config.auto_commit {
-        if git_info.staged_files.is_empty() {
+        // For amend mode, we allow empty staged changes (amending message only)
+        // For regular commits, we require staged changes
+        if git_info.staged_files.is_empty() && !config.amend {
             ui::print_warning(
                 "No staged changes. Please stage your changes before generating a commit message.",
             );
@@ -548,10 +562,23 @@ async fn handle_gen_with_agent(
         }
 
         // Create spinner for agent mode
-        let spinner = ui::create_spinner("Generating commit message...");
+        let spinner_msg = if config.amend {
+            "Generating amended commit message..."
+        } else {
+            "Generating commit message..."
+        };
+        let spinner = ui::create_spinner(spinner_msg);
 
         // Use IrisAgentService for commit message generation
-        let context = TaskContext::for_gen();
+        // For amend, we pass the original message as context
+        let context = if config.amend {
+            let original_message = commit_service
+                .get_head_commit_message()
+                .unwrap_or_default();
+            TaskContext::for_amend(original_message)
+        } else {
+            TaskContext::for_gen()
+        };
         let response = agent_service.execute_task("commit", context).await?;
 
         // Extract commit message from response
@@ -567,7 +594,7 @@ async fn handle_gen_with_agent(
             return Ok(());
         }
 
-        // Auto-commit mode
+        // Auto-commit/amend mode
         if commit_service.is_remote() {
             ui::print_error(
                 "Cannot automatically commit to a remote repository. Use --print instead.",
@@ -577,14 +604,21 @@ async fn handle_gen_with_agent(
             ));
         }
 
-        match commit_service.perform_commit(&format_commit_message(&generated_message)) {
+        let commit_result = if config.amend {
+            commit_service.perform_amend(&format_commit_message(&generated_message))
+        } else {
+            commit_service.perform_commit(&format_commit_message(&generated_message))
+        };
+
+        match commit_result {
             Ok(result) => {
                 let output =
                     format_commit_result(&result, &format_commit_message(&generated_message));
                 println!("{output}");
             }
             Err(e) => {
-                eprintln!("Failed to commit: {e}");
+                let action = if config.amend { "amend" } else { "commit" };
+                eprintln!("Failed to {action}: {e}");
                 return Err(e);
             }
         }
@@ -618,12 +652,13 @@ async fn handle_gen(
     repository_url: Option<String>,
 ) -> anyhow::Result<()> {
     log_debug!(
-        "Handling 'gen' command with common: {:?}, auto_commit: {}, use_gitmoji: {}, print: {}, verify: {}",
+        "Handling 'gen' command with common: {:?}, auto_commit: {}, use_gitmoji: {}, print: {}, verify: {}, amend: {}",
         common,
         config.auto_commit,
         config.use_gitmoji,
         config.print_only,
-        config.verify
+        config.verify,
+        config.amend
     );
 
     ui::print_version(crate_version!());
@@ -878,6 +913,7 @@ pub async fn handle_command(
             no_gitmoji,
             print,
             no_verify,
+            amend,
         } => {
             handle_gen(
                 common,
@@ -886,6 +922,7 @@ pub async fn handle_command(
                     use_gitmoji: !no_gitmoji,
                     print_only: print,
                     verify: !no_verify,
+                    amend,
                 },
                 repository_url,
             )

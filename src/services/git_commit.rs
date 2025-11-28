@@ -124,6 +124,68 @@ impl GitCommitService {
         }
     }
 
+    /// Amend the previous commit with staged changes and a new message
+    ///
+    /// This method:
+    /// 1. Validates the repository is not remote
+    /// 2. Processes the message (applies gitmoji if enabled)
+    /// 3. Runs pre-commit hook (if verify is enabled)
+    /// 4. Amends the commit (replaces HEAD)
+    /// 5. Runs post-commit hook (if verify is enabled)
+    ///
+    /// # Arguments
+    /// * `message` - The new commit message
+    ///
+    /// # Returns
+    /// The result of the amend operation
+    pub fn perform_amend(&self, message: &str) -> Result<CommitResult> {
+        if self.is_remote() {
+            return Err(anyhow::anyhow!(
+                "Cannot amend a commit in a remote repository"
+            ));
+        }
+
+        let processed_message = process_commit_message(message.to_string(), self.use_gitmoji);
+        log_debug!("Performing amend with message: {}", processed_message);
+
+        if !self.verify {
+            log_debug!("Skipping pre-commit hook (verify=false)");
+            return self.repo.amend_commit(&processed_message);
+        }
+
+        // Execute pre-commit hook
+        log_debug!("Executing pre-commit hook");
+        if let Err(e) = self.repo.execute_hook("pre-commit") {
+            log_debug!("Pre-commit hook failed: {}", e);
+            return Err(e);
+        }
+        log_debug!("Pre-commit hook executed successfully");
+
+        // Perform the amend
+        match self.repo.amend_commit(&processed_message) {
+            Ok(result) => {
+                // Execute post-commit hook (failure doesn't fail the amend)
+                log_debug!("Executing post-commit hook");
+                if let Err(e) = self.repo.execute_hook("post-commit") {
+                    log_debug!("Post-commit hook failed: {}", e);
+                }
+                log_debug!("Amend performed successfully");
+                Ok(result)
+            }
+            Err(e) => {
+                log_debug!("Amend failed: {}", e);
+                Err(e)
+            }
+        }
+    }
+
+    /// Get the message of the HEAD commit
+    ///
+    /// Useful for amend operations to provide original context
+    pub fn get_head_commit_message(&self) -> Result<String> {
+        self.repo.get_head_commit_message()
+    }
+
     /// Get a reference to the underlying repository
     pub fn repo(&self) -> &GitRepo {
         &self.repo

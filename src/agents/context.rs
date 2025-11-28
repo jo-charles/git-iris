@@ -33,6 +33,13 @@ pub enum TaskContext {
         to: String,
     },
 
+    /// Amend the previous commit with staged changes
+    /// The agent sees the combined diff from HEAD^1 to staged state
+    Amend {
+        /// The original commit message being amended
+        original_message: String,
+    },
+
     /// Let the agent discover context via tools (default for gen command)
     #[default]
     Discover,
@@ -45,6 +52,12 @@ impl TaskContext {
         Self::Staged {
             include_unstaged: false,
         }
+    }
+
+    /// Create context for amending the previous commit.
+    /// The agent will see the combined diff from HEAD^1 to staged state.
+    pub fn for_amend(original_message: String) -> Self {
+        Self::Amend { original_message }
     }
 
     /// Create context for the review command with full parameter validation.
@@ -140,6 +153,9 @@ impl TaskContext {
             Self::Range { from, to } => {
                 format!("git_diff(from=\"{from}\", to=\"{to}\")")
             }
+            Self::Amend { .. } => {
+                "git_diff(from=\"HEAD^1\") for combined amend diff (original commit + new staged changes)".to_string()
+            }
             Self::Discover => "git_diff() to discover current changes".to_string(),
         }
     }
@@ -158,6 +174,19 @@ impl TaskContext {
             }
         )
     }
+
+    /// Check if this is an amend operation
+    pub fn is_amend(&self) -> bool {
+        matches!(self, Self::Amend { .. })
+    }
+
+    /// Get the original commit message if this is an amend context
+    pub fn original_message(&self) -> Option<&str> {
+        match self {
+            Self::Amend { original_message } => Some(original_message),
+            _ => None,
+        }
+    }
 }
 
 impl std::fmt::Display for TaskContext {
@@ -172,6 +201,7 @@ impl std::fmt::Display for TaskContext {
             }
             Self::Commit { commit_id } => write!(f, "commit {commit_id}"),
             Self::Range { from, to } => write!(f, "changes from {from} to {to}"),
+            Self::Amend { .. } => write!(f, "amending previous commit"),
             Self::Discover => write!(f, "auto-discovered changes"),
         }
     }
@@ -308,5 +338,23 @@ mod tests {
         };
         assert!(range.diff_hint().contains("main"));
         assert!(range.diff_hint().contains("dev"));
+
+        let amend = TaskContext::for_amend("Fix bug".to_string());
+        assert!(amend.diff_hint().contains("HEAD^1"));
+    }
+
+    #[test]
+    fn test_amend_context() {
+        let ctx = TaskContext::for_amend("Initial commit message".to_string());
+        assert!(ctx.is_amend());
+        assert_eq!(ctx.original_message(), Some("Initial commit message"));
+        assert!(!ctx.is_range());
+        assert!(!ctx.includes_unstaged());
+    }
+
+    #[test]
+    fn test_amend_display() {
+        let ctx = TaskContext::for_amend("Fix bug".to_string());
+        assert_eq!(format!("{ctx}"), "amending previous commit");
     }
 }
