@@ -240,6 +240,91 @@ struct ScoredFile<'a> {
     reasons: Vec<&'static str>,
 }
 
+/// Build the diff output string from scored files
+fn format_diff_output(
+    scored_files: &[ScoredFile],
+    total_files: usize,
+    is_filtered: bool,
+    include_diffs: bool,
+) -> String {
+    let mut output = String::new();
+    let showing = scored_files.len();
+
+    // Calculate stats
+    let additions: usize = scored_files
+        .iter()
+        .map(|sf| sf.file.diff.lines().filter(|l| l.starts_with('+')).count())
+        .sum();
+    let deletions: usize = scored_files
+        .iter()
+        .map(|sf| sf.file.diff.lines().filter(|l| l.starts_with('-')).count())
+        .sum();
+    let total_lines = additions + deletions;
+
+    // Categorize size
+    let (size, guidance) = if is_filtered {
+        ("Filtered", "Showing requested files only.")
+    } else if total_files <= 3 && total_lines < 100 {
+        ("Small", "Focus on all files equally.")
+    } else if total_files <= 10 && total_lines < 500 {
+        ("Medium", "Prioritize files with >60% relevance.")
+    } else {
+        (
+            "Large",
+            "Use files=['path1','path2'] with detail='standard' to analyze specific files.",
+        )
+    };
+
+    // Header
+    let files_info = if is_filtered {
+        format!("{showing} of {total_files} files")
+    } else {
+        format!("{total_files} files")
+    };
+    output.push_str(&format!(
+        "=== CHANGES SUMMARY ===\n{files_info} | +{additions} -{deletions} | Size: {size} ({total_lines} lines)\nGuidance: {guidance}\n\n"
+    ));
+
+    // File list
+    output.push_str("Files by importance:\n");
+    for sf in scored_files {
+        let reasons = if sf.reasons.is_empty() {
+            String::new()
+        } else {
+            format!(" ({})", sf.reasons.join(", "))
+        };
+        output.push_str(&format!(
+            "  [{:.0}%] {:?} {}{reasons}\n",
+            sf.score * 100.0,
+            sf.file.change_type,
+            sf.file.path
+        ));
+    }
+    output.push('\n');
+
+    // Diffs or hint
+    if include_diffs {
+        output.push_str("=== DIFFS ===\n");
+        for sf in scored_files {
+            output.push_str(&format!(
+                "--- {} [{:.0}% relevance]\n",
+                sf.file.path,
+                sf.score * 100.0
+            ));
+            output.push_str(&sf.file.diff);
+            output.push('\n');
+        }
+    } else if is_filtered {
+        output.push_str("(Use detail='standard' to see full diffs for these files)\n");
+    } else {
+        output.push_str(
+            "(Use detail='standard' with files=['file1','file2'] to see specific diffs)\n",
+        );
+    }
+
+    output
+}
+
 // Git status tool
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GitStatus;
@@ -295,10 +380,10 @@ pub struct GitDiff;
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum DetailLevel {
-    /// Summary only: file list with stats and relevance scores, no diffs
-    Summary,
-    /// Standard: includes diffs (default)
+    /// Summary only: file list with stats and relevance scores, no diffs (default)
     #[default]
+    Summary,
+    /// Standard: includes full diffs (use with `files` filter for large changesets)
     Standard,
 }
 
@@ -310,9 +395,12 @@ pub struct GitDiffArgs {
     /// Target commit/branch (use with from)
     #[serde(default)]
     pub to: Option<String>,
-    /// Detail level: "summary" for overview only, "standard" (default) for full diffs
+    /// Detail level: "summary" (default) for overview, "standard" for full diffs
     #[serde(default)]
     pub detail: DetailLevel,
+    /// Filter to specific files (use with detail="standard" for targeted analysis)
+    #[serde(default)]
+    pub files: Option<Vec<String>>,
 }
 
 impl Tool for GitDiff {
@@ -324,7 +412,7 @@ impl Tool for GitDiff {
     async fn definition(&self, _: String) -> ToolDefinition {
         ToolDefinition {
             name: "git_diff".to_string(),
-            description: "Get Git diff for file changes. Use detail='summary' for quick overview (recommended first), then 'standard' for full diffs. Use with no args for staged changes.".to_string(),
+            description: "Get Git diff for file changes. Returns summary by default (file list with relevance scores). Use detail='standard' with files=['path1','path2'] to get full diffs for specific files. Progressive approach: call once for summary, then again with files filter for important ones.".to_string(),
             parameters: parameters_schema::<GitDiffArgs>(),
         }
     }
@@ -384,71 +472,23 @@ impl Tool for GitDiff {
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
 
-        // Build output with summary header
-        let mut output = String::new();
+        // Track total before filtering
         let total_files = scored_files.len();
-        let total_additions: usize = files
-            .iter()
-            .map(|f| f.diff.lines().filter(|l| l.starts_with('+')).count())
-            .sum();
-        let total_deletions: usize = files
-            .iter()
-            .map(|f| f.diff.lines().filter(|l| l.starts_with('-')).count())
-            .sum();
-        let total_lines = total_additions + total_deletions;
 
-        // Categorize changeset size for agent guidance
-        let (size_category, guidance) = if total_files <= 3 && total_lines < 100 {
-            ("Small", "Focus on all files equally.")
-        } else if total_files <= 10 && total_lines < 500 {
-            ("Medium", "Prioritize files with >60% relevance.")
-        } else {
-            (
-                "Large",
-                "Focus on top 5-7 highest-relevance files. Summarize the rest.",
-            )
-        };
-
-        output.push_str(&format!(
-            "=== CHANGES SUMMARY ===\nFiles: {} | +{} -{} | Size: {} ({} lines)\nGuidance: {}\n\n",
-            total_files, total_additions, total_deletions, size_category, total_lines, guidance
-        ));
-
-        // List files with relevance scores (helps agent prioritize)
-        output.push_str("Files by importance:\n");
-        for sf in &scored_files {
-            let reasons_str = if sf.reasons.is_empty() {
-                String::new()
-            } else {
-                format!(" ({})", sf.reasons.join(", "))
-            };
-            output.push_str(&format!(
-                "  [{:.0}%] {:?} {}{}\n",
-                sf.score * 100.0,
-                sf.file.change_type,
-                sf.file.path,
-                reasons_str
-            ));
-        }
-        output.push('\n');
-
-        // Only include full diffs for Standard detail level
-        if matches!(args.detail, DetailLevel::Standard) {
-            output.push_str("=== DIFFS ===\n");
-            for sf in &scored_files {
-                output.push_str(&format!(
-                    "--- {} [{:.0}% relevance]\n",
-                    sf.file.path,
-                    sf.score * 100.0
-                ));
-                output.push_str(&sf.file.diff);
-                output.push('\n');
-            }
-        } else {
-            output.push_str("(Use detail='standard' to see full diffs)\n");
+        // Filter to specific files if requested
+        let is_filtered = args.files.is_some();
+        if let Some(ref filter) = args.files {
+            scored_files.retain(|sf| filter.iter().any(|f| sf.file.path.contains(f)));
         }
 
-        Ok(output)
+        // Build output
+        let include_diffs = matches!(args.detail, DetailLevel::Standard);
+        Ok(format_diff_output(
+            &scored_files,
+            total_files,
+            is_filtered,
+            include_diffs,
+        ))
     }
 }
 

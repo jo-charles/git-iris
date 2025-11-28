@@ -244,8 +244,8 @@ impl IrisAgentService {
         // Create the agent
         let mut agent = self.create_agent()?;
 
-        // Build task prompt with context information
-        let task_prompt = Self::build_task_prompt(capability, &context);
+        // Build task prompt with context information (no custom instructions)
+        let task_prompt = Self::build_task_prompt(capability, &context, None);
 
         // Execute the task
         agent.execute_task(capability, &task_prompt).await
@@ -272,12 +272,14 @@ impl IrisAgentService {
     /// * `context` - Structured context describing what to analyze
     /// * `preset` - Optional preset name override (e.g., "conventional", "cosmic")
     /// * `use_gitmoji` - Optional gitmoji setting override
+    /// * `instructions` - Optional custom instructions from the user
     pub async fn execute_task_with_style(
         &self,
         capability: &str,
         context: TaskContext,
         preset: Option<&str>,
         use_gitmoji: Option<bool>,
+        instructions: Option<&str>,
     ) -> Result<StructuredResponse> {
         // Clone config and apply style overrides
         let mut config = self.config.clone();
@@ -296,42 +298,52 @@ impl IrisAgentService {
         agent.set_config(config);
         agent.set_fast_model(self.fast_model.clone());
 
-        // Build task prompt with context information
-        let task_prompt = Self::build_task_prompt(capability, &context);
+        // Build task prompt with context information and optional instructions
+        let task_prompt = Self::build_task_prompt(capability, &context, instructions);
 
         // Execute the task
         agent.execute_task(capability, &task_prompt).await
     }
 
-    /// Build a task prompt incorporating the context information
-    fn build_task_prompt(capability: &str, context: &TaskContext) -> String {
+    /// Build a task prompt incorporating the context information and optional instructions
+    fn build_task_prompt(
+        capability: &str,
+        context: &TaskContext,
+        instructions: Option<&str>,
+    ) -> String {
         let context_json = context.to_prompt_context();
         let diff_hint = context.diff_hint();
 
+        // Build instruction suffix if provided
+        let instruction_suffix = instructions
+            .filter(|i| !i.trim().is_empty())
+            .map(|i| format!("\n\n## Custom Instructions\n{}", i))
+            .unwrap_or_default();
+
         match capability {
             "commit" => format!(
-                "Generate a commit message for the following context:\n{}\n\nUse: {}",
-                context_json, diff_hint
+                "Generate a commit message for the following context:\n{}\n\nUse: {}{}",
+                context_json, diff_hint, instruction_suffix
             ),
             "review" => format!(
-                "Review the code changes for the following context:\n{}\n\nUse: {}",
-                context_json, diff_hint
+                "Review the code changes for the following context:\n{}\n\nUse: {}{}",
+                context_json, diff_hint, instruction_suffix
             ),
             "pr" => format!(
-                "Generate a pull request description for:\n{}\n\nUse: {}",
-                context_json, diff_hint
+                "Generate a pull request description for:\n{}\n\nUse: {}{}",
+                context_json, diff_hint, instruction_suffix
             ),
             "changelog" => format!(
-                "Generate a changelog for:\n{}\n\nUse: {}",
-                context_json, diff_hint
+                "Generate a changelog for:\n{}\n\nUse: {}{}",
+                context_json, diff_hint, instruction_suffix
             ),
             "release_notes" => format!(
-                "Generate release notes for:\n{}\n\nUse: {}",
-                context_json, diff_hint
+                "Generate release notes for:\n{}\n\nUse: {}{}",
+                context_json, diff_hint, instruction_suffix
             ),
             _ => format!(
-                "Execute task with context:\n{}\n\nHint: {}",
-                context_json, diff_hint
+                "Execute task with context:\n{}\n\nHint: {}{}",
+                context_json, diff_hint, instruction_suffix
             ),
         }
     }
@@ -412,7 +424,7 @@ impl IrisAgentService {
         F: FnMut(&str, &str) + Send,
     {
         let mut agent = self.create_agent()?;
-        let task_prompt = Self::build_task_prompt(capability, &context);
+        let task_prompt = Self::build_task_prompt(capability, &context, None);
         agent
             .execute_task_streaming(capability, &task_prompt, on_chunk)
             .await

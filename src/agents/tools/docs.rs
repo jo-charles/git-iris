@@ -140,12 +140,14 @@ impl Tool for ProjectDocs {
 
                         output.push_str(&format!("=== {} ===\n", filename));
 
-                        // Truncate if too long
-                        if content.len() > max_chars {
-                            output.push_str(&content[..max_chars]);
+                        // Truncate if too long (use char boundary-safe truncation)
+                        let char_count = content.chars().count();
+                        if char_count > max_chars {
+                            let truncated: String = content.chars().take(max_chars).collect();
+                            output.push_str(&truncated);
                             output.push_str(&format!(
                                 "\n\n[... truncated, {} more chars ...]\n",
-                                content.len() - max_chars
+                                char_count - max_chars
                             ));
                         } else {
                             output.push_str(&content);

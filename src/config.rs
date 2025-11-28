@@ -99,7 +99,11 @@ impl Config {
             config.merge_with_project_config(project_config);
         }
 
-        log_debug!("Configuration loaded: {:?}", config);
+        log_debug!(
+            "Configuration loaded (provider: {}, gitmoji: {})",
+            config.default_provider,
+            config.use_gitmoji
+        );
         Ok(config)
     }
 

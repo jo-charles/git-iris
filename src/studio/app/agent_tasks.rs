@@ -538,7 +538,7 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
     /// Spawn a task to generate a commit message
     pub(super) fn spawn_commit_generation(
         &self,
-        _instructions: Option<String>,
+        instructions: Option<String>,
         preset: String,
         use_gitmoji: bool,
     ) {
@@ -567,7 +567,13 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
             };
 
             match agent
-                .execute_task_with_style("commit", context, preset_opt, Some(use_gitmoji))
+                .execute_task_with_style(
+                    "commit",
+                    context,
+                    preset_opt,
+                    Some(use_gitmoji),
+                    instructions.as_deref(),
+                )
                 .await
             {
                 Ok(response) => {
@@ -598,15 +604,16 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
     // Semantic Blame
     // ═══════════════════════════════════════════════════════════════════════════════
 
-    /// Gather blame information from git and spawn the semantic blame agent
+    /// Gather blame information from git and spawn the semantic blame agent.
+    /// All blocking I/O (file read, git blame) runs in a background task to avoid
+    /// blocking the UI event loop.
     pub(super) fn gather_blame_and_spawn(
         &self,
         file: &std::path::Path,
         start_line: usize,
         end_line: usize,
     ) {
-        use std::fs;
-        use std::process::Command;
+        use crate::agents::StructuredResponse;
 
         let Some(repo) = &self.state.repo else {
             let tx = self.iris_result_tx.clone();
@@ -617,87 +624,142 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
             return;
         };
 
-        // Read the file content for the specified range
-        let code_content = match fs::read_to_string(file) {
-            Ok(content) => {
+        let Some(agent) = self.agent_service.clone() else {
+            let tx = self.iris_result_tx.clone();
+            let _ = tx.send(IrisTaskResult::Error {
+                task_type: TaskType::SemanticBlame,
+                error: "Agent service not available".to_string(),
+            });
+            return;
+        };
+
+        // Clone values needed in the async task
+        let tx = self.iris_result_tx.clone();
+        let file = file.to_path_buf();
+        let repo_path = repo.repo_path().clone();
+
+        tokio::spawn(async move {
+            // Run blocking I/O in spawn_blocking to avoid blocking the tokio runtime
+            let blame_result = tokio::task::spawn_blocking(move || {
+                use std::fs;
+                use std::process::Command;
+
+                // Read file content
+                let content = fs::read_to_string(&file)?;
                 let lines: Vec<&str> = content.lines().collect();
+
                 if start_line == 0 || start_line > lines.len() {
-                    let tx = self.iris_result_tx.clone();
+                    return Err(anyhow::anyhow!("Invalid line range"));
+                }
+
+                let end = end_line.min(lines.len());
+                let code_content = lines[(start_line - 1)..end].join("\n");
+
+                // Run git blame
+                let output = Command::new("git")
+                    .args([
+                        "-C",
+                        &repo_path.to_string_lossy(),
+                        "blame",
+                        "-L",
+                        &format!("{},{}", start_line, end_line),
+                        "--porcelain",
+                        &file.to_string_lossy(),
+                    ])
+                    .output()?;
+
+                if !output.status.success() {
+                    let err = String::from_utf8_lossy(&output.stderr);
+                    return Err(anyhow::anyhow!("Git blame failed: {}", err));
+                }
+
+                let blame_output = String::from_utf8_lossy(&output.stdout);
+                let (commit_hash, author, commit_date, commit_message) =
+                    parse_blame_porcelain(&blame_output);
+
+                Ok(BlameInfo {
+                    file,
+                    start_line,
+                    end_line,
+                    commit_hash,
+                    author,
+                    commit_date,
+                    commit_message,
+                    code_content,
+                })
+            })
+            .await;
+
+            // Handle spawn_blocking result
+            let blame_info = match blame_result {
+                Ok(Ok(info)) => info,
+                Ok(Err(e)) => {
                     let _ = tx.send(IrisTaskResult::Error {
                         task_type: TaskType::SemanticBlame,
-                        error: "Invalid line range".to_string(),
+                        error: e.to_string(),
                     });
                     return;
                 }
-                let end = end_line.min(lines.len());
-                lines[(start_line - 1)..end].join("\n")
-            }
-            Err(e) => {
-                let tx = self.iris_result_tx.clone();
-                let _ = tx.send(IrisTaskResult::Error {
-                    task_type: TaskType::SemanticBlame,
-                    error: format!("Could not read file: {}", e),
-                });
-                return;
-            }
-        };
+                Err(e) => {
+                    let _ = tx.send(IrisTaskResult::Error {
+                        task_type: TaskType::SemanticBlame,
+                        error: format!("Task panicked: {}", e),
+                    });
+                    return;
+                }
+            };
 
-        // Get repo path
-        let repo_path = repo.repo_path();
+            // Build context for agent
+            let context_text = format!(
+                "File: {}\nLines: {}-{}\nCommit: {} by {} on {}\nMessage: {}\n\nCode:\n{}",
+                blame_info.file.display(),
+                blame_info.start_line,
+                blame_info.end_line,
+                blame_info.commit_hash,
+                blame_info.author,
+                blame_info.commit_date,
+                blame_info.commit_message,
+                blame_info.code_content
+            );
 
-        // Run git blame with porcelain format to get commit info
-        let output = Command::new("git")
-            .args([
-                "-C",
-                &repo_path.to_string_lossy(),
-                "blame",
-                "-L",
-                &format!("{},{}", start_line, end_line),
-                "--porcelain",
-                &file.to_string_lossy(),
-            ])
-            .output();
-
-        let (commit_hash, author, commit_date, commit_message) = match output {
-            Ok(output) if output.status.success() => {
-                let blame_output = String::from_utf8_lossy(&output.stdout);
-                parse_blame_porcelain(&blame_output)
+            // Execute semantic_blame capability
+            match agent
+                .execute_task_with_prompt("semantic_blame", &context_text)
+                .await
+            {
+                Ok(response) => match response {
+                    StructuredResponse::SemanticBlame(explanation) => {
+                        let result = SemanticBlameResult {
+                            file: blame_info.file,
+                            start_line: blame_info.start_line,
+                            end_line: blame_info.end_line,
+                            commit_hash: blame_info.commit_hash,
+                            author: blame_info.author,
+                            commit_date: blame_info.commit_date,
+                            commit_message: blame_info.commit_message,
+                            explanation,
+                        };
+                        let _ = tx.send(IrisTaskResult::SemanticBlame(result));
+                    }
+                    _ => {
+                        let _ = tx.send(IrisTaskResult::Error {
+                            task_type: TaskType::SemanticBlame,
+                            error: "Unexpected response type from agent".to_string(),
+                        });
+                    }
+                },
+                Err(e) => {
+                    let _ = tx.send(IrisTaskResult::Error {
+                        task_type: TaskType::SemanticBlame,
+                        error: format!("Semantic blame error: {}", e),
+                    });
+                }
             }
-            Ok(output) => {
-                let err = String::from_utf8_lossy(&output.stderr);
-                let tx = self.iris_result_tx.clone();
-                let _ = tx.send(IrisTaskResult::Error {
-                    task_type: TaskType::SemanticBlame,
-                    error: format!("Git blame failed: {}", err),
-                });
-                return;
-            }
-            Err(e) => {
-                let tx = self.iris_result_tx.clone();
-                let _ = tx.send(IrisTaskResult::Error {
-                    task_type: TaskType::SemanticBlame,
-                    error: format!("Could not run git: {}", e),
-                });
-                return;
-            }
-        };
-
-        let blame_info = BlameInfo {
-            file: file.to_path_buf(),
-            start_line,
-            end_line,
-            commit_hash,
-            author,
-            commit_date,
-            commit_message,
-            code_content,
-        };
-
-        // Now spawn the semantic blame agent
-        self.spawn_semantic_blame(blame_info);
+        });
     }
 
-    /// Spawn the semantic blame agent to explain why the code exists
+    /// Spawn the semantic blame agent to explain why the code exists.
+    /// Used when blame info is already collected (e.g., from `AgentTask::SemanticBlame`).
     pub(super) fn spawn_semantic_blame(&self, blame_info: BlameInfo) {
         use crate::agents::StructuredResponse;
 

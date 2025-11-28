@@ -327,6 +327,8 @@ pub struct IrisAgent {
     config: Option<crate::config::Config>,
     /// Optional sender for content updates (used in Studio chat mode)
     content_update_sender: Option<crate::agents::tools::ContentUpdateSender>,
+    /// Persistent workspace for notes and task tracking (shared across agent invocations)
+    workspace: Workspace,
 }
 
 impl IrisAgent {
@@ -341,6 +343,7 @@ impl IrisAgent {
             preamble: None,
             config: None,
             content_update_sender: None,
+            workspace: Workspace::new(),
         })
     }
 
@@ -433,8 +436,8 @@ Guidelines:
         // Attach core tools (shared with subagents) + GitRepoInfo (main agent only)
         let agent_builder = crate::attach_core_tools!(agent_builder)
             .tool(DebugTool::new(GitRepoInfo))
-            // Workspace for Iris's notes and task management
-            .tool(DebugTool::new(Workspace::new()))
+            // Workspace for Iris's notes and task management (clone to share Arc-backed state)
+            .tool(DebugTool::new(self.workspace.clone()))
             // Parallel analysis for distributing work across multiple subagents
             .tool(DebugTool::new(ParallelAnalyze::new(
                 &self.provider,

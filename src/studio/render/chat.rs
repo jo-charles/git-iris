@@ -223,7 +223,7 @@ pub fn format_markdown(content: &str, max_width: usize, base_style: Style) -> Ve
     let mut code_lang = String::new();
     let mut list_depth: usize = 0;
     let mut ordered_list_num: Option<u64> = None;
-    let mut _in_link = false;
+    let mut current_link_url: Option<String> = None;
     let mut in_table = false;
     let mut table_row: Vec<String> = Vec::new();
 
@@ -312,12 +312,24 @@ pub fn format_markdown(content: &str, max_width: usize, base_style: Style) -> Ve
                         Style::default().fg(theme::text_dim_color()),
                     ));
                 }
-                Tag::Link { .. } | Tag::Image { .. } => {
+                Tag::Link { dest_url, .. } => {
                     // Add space before link if needed
                     if needs_space_before(&current_spans) {
                         current_spans.push(Span::styled(" ", base_style));
                     }
-                    _in_link = true;
+                    // Capture URL to display after link text
+                    current_link_url = Some(dest_url.to_string());
+                    style_stack.push(
+                        Style::default()
+                            .fg(theme::accent_secondary())
+                            .add_modifier(Modifier::UNDERLINED),
+                    );
+                }
+                Tag::Image { .. } => {
+                    // Add space before image if needed
+                    if needs_space_before(&current_spans) {
+                        current_spans.push(Span::styled(" ", base_style));
+                    }
                     style_stack.push(
                         Style::default()
                             .fg(theme::accent_secondary())
@@ -366,10 +378,22 @@ pub fn format_markdown(content: &str, max_width: usize, base_style: Style) -> Ve
                 TagEnd::BlockQuote(_) => {
                     flush_line(&mut lines, &mut current_spans, list_depth);
                 }
-                TagEnd::Link | TagEnd::Image => {
+                TagEnd::Link => {
                     style_stack.pop();
-                    _in_link = false;
-                    // Add space after link
+                    // Show the URL after the link text (dimmed, in parentheses)
+                    if let Some(url) = current_link_url.take() {
+                        // Only show URL if it's different from the link text and not too long
+                        if !url.is_empty() {
+                            current_spans.push(Span::styled(
+                                format!(" ({})", url),
+                                Style::default().fg(theme::text_dim_color()),
+                            ));
+                        }
+                    }
+                    current_spans.push(Span::styled(" ", base_style));
+                }
+                TagEnd::Image => {
+                    style_stack.pop();
                     current_spans.push(Span::styled(" ", base_style));
                 }
                 TagEnd::Table => {

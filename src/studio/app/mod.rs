@@ -4,7 +4,7 @@
 
 mod agent_tasks;
 
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use crossterm::event::{
     self, DisableMouseCapture, EnableMouseCapture, Event, KeyEventKind, MouseButton, MouseEventKind,
 };
@@ -1700,10 +1700,13 @@ impl StudioApp {
             IrisStatus::Error(msg) => Span::styled(format!("Error: {}", msg), theme::error()),
         };
 
-        // Calculate spacing
+        // Calculate spacing (use saturating_sub to avoid overflow on narrow terminals)
         let left_len: usize = spans.iter().map(|s| s.content.len()).sum();
         let right_len = iris_status.content.len();
-        let padding = area.width as usize - left_len - right_len - 2;
+        let padding = (area.width as usize)
+            .saturating_sub(left_len)
+            .saturating_sub(right_len)
+            .saturating_sub(2);
         let padding_str = " ".repeat(padding.max(1));
 
         spans.push(Span::raw(padding_str));
@@ -1815,9 +1818,6 @@ pub fn run_studio(
             println!("{message}");
             Ok(())
         }
-        ExitResult::Error(error) => {
-            eprintln!("Error: {error}");
-            Ok(())
-        }
+        ExitResult::Error(error) => Err(anyhow!("{}", error)),
     }
 }

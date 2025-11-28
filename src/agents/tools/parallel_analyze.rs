@@ -15,9 +15,13 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::Mutex;
 
 use crate::agents::debug as agent_debug;
+
+/// Timeout for individual subagent tasks (2 minutes)
+const SUBAGENT_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// Arguments for parallel analysis
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -210,20 +214,35 @@ impl Tool for ParallelAnalyze {
             ),
         );
 
-        // Collect results using Arc<Mutex> for thread-safe access
-        let results: Arc<Mutex<Vec<SubagentResult>>> = Arc::new(Mutex::new(Vec::new()));
+        // Pre-allocate results vector to preserve task ordering
+        let results: Arc<Mutex<Vec<Option<SubagentResult>>>> =
+            Arc::new(Mutex::new(vec![None; num_tasks]));
 
-        // Spawn all tasks as parallel tokio tasks
+        // Spawn all tasks as parallel tokio tasks, tracking index for ordering
         let mut handles = Vec::new();
-        for task in tasks {
+        for (index, task) in tasks.into_iter().enumerate() {
             let runner = self.runner.clone();
             let results = Arc::clone(&results);
 
             let handle = tokio::spawn(async move {
-                let result = runner.run_task(&task).await;
+                // Wrap task execution in timeout to prevent hanging
+                let result =
+                    match tokio::time::timeout(SUBAGENT_TIMEOUT, runner.run_task(&task)).await {
+                        Ok(result) => result,
+                        Err(_) => SubagentResult {
+                            task: task.clone(),
+                            result: String::new(),
+                            success: false,
+                            error: Some(format!(
+                                "Task timed out after {} seconds",
+                                SUBAGENT_TIMEOUT.as_secs()
+                            )),
+                        },
+                    };
 
+                // Store result at original index to preserve ordering
                 let mut guard = results.lock().await;
-                guard.push(result);
+                guard[index] = Some(result);
             });
 
             handles.push(handle);
@@ -238,9 +257,22 @@ impl Tool for ParallelAnalyze {
 
         #[allow(clippy::cast_possible_truncation, clippy::as_conversions)]
         let execution_time_ms = start.elapsed().as_millis().min(u128::from(u64::MAX)) as u64;
-        let final_results = Arc::try_unwrap(results)
+
+        // Extract results, preserving original task order
+        let final_results: Vec<SubagentResult> = Arc::try_unwrap(results)
             .map_err(|_| ParallelAnalyzeError("Failed to unwrap results".to_string()))?
-            .into_inner();
+            .into_inner()
+            .into_iter()
+            .enumerate()
+            .map(|(i, opt)| {
+                opt.unwrap_or_else(|| SubagentResult {
+                    task: format!("Task {}", i),
+                    result: String::new(),
+                    success: false,
+                    error: Some("Task did not complete".to_string()),
+                })
+            })
+            .collect();
 
         let successful = final_results.iter().filter(|r| r.success).count();
         let failed = final_results.iter().filter(|r| !r.success).count();
