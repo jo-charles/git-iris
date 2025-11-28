@@ -14,11 +14,11 @@ The configuration file is organized into these main sections:
 
 ### Global Settings
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `use_gitmoji` | Boolean | `false` | Enable Gitmoji in commit messages |
-| `custom_instructions` | String | `""` | Custom instructions included in all LLM prompts |
-| `instruction_preset` | String | `"default"` | Default preset for AI instructions |
+| Option                | Type    | Default     | Description                                     |
+| --------------------- | ------- | ----------- | ----------------------------------------------- |
+| `use_gitmoji`         | Boolean | `false`     | Enable Gitmoji in commit messages               |
+| `custom_instructions` | String  | `""`        | Custom instructions included in all LLM prompts |
+| `instruction_preset`  | String  | `"default"` | Default preset for AI instructions              |
 
 **Examples:**
 
@@ -33,8 +33,8 @@ instruction_preset = "conventional"
 
 ### Default Provider
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
+| Option             | Type   | Default    | Description                     |
+| ------------------ | ------ | ---------- | ------------------------------- |
 | `default_provider` | String | `"openai"` | The default LLM provider to use |
 
 **Example:**
@@ -47,23 +47,23 @@ default_provider = "anthropic"
 
 Each provider has its own subtable under `[providers]` with these fields:
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `api_key` | String | Yes | The provider's API key |
-| `model` | String | No | Primary model for complex analysis tasks |
-| `fast_model` | String | No | Fast model for simple tasks (status updates, parsing) |
-| `additional_params` | Table | No | Additional provider-specific parameters |
-| `custom_token_limit` | Integer | No | Custom token limit override |
+| Field                | Type    | Required | Description                                           |
+| -------------------- | ------- | -------- | ----------------------------------------------------- |
+| `api_key`            | String  | Yes      | The provider's API key                                |
+| `model`              | String  | No       | Primary model for complex analysis tasks              |
+| `fast_model`         | String  | No       | Fast model for simple tasks (status updates, parsing) |
+| `additional_params`  | Table   | No       | Additional provider-specific parameters               |
+| `custom_token_limit` | Integer | No       | Custom token limit override                           |
 
 ## 🤖 Supported Providers
 
 Git-Iris supports three LLM providers:
 
-| Provider | Default Model | Fast Model | Context Window | API Key Env |
-|----------|---------------|------------|----------------|-------------|
-| **openai** | gpt-5.1 | gpt-5.1-mini | 128,000 | `OPENAI_API_KEY` |
-| **anthropic** | claude-sonnet-4-5-20250929 | claude-haiku-4-5-20251001 | 200,000 | `ANTHROPIC_API_KEY` |
-| **google** | gemini-3-pro-preview | gemini-2.5-flash | 1,000,000 | `GOOGLE_API_KEY` |
+| Provider      | Default Model              | Fast Model                | Context Window | API Key Env         |
+| ------------- | -------------------------- | ------------------------- | -------------- | ------------------- |
+| **openai**    | gpt-5.1                    | gpt-5.1-mini              | 128,000        | `OPENAI_API_KEY`    |
+| **anthropic** | claude-sonnet-4-5-20250929 | claude-haiku-4-5-20251001 | 200,000        | `ANTHROPIC_API_KEY` |
+| **google**    | gemini-3-pro-preview       | gemini-2.5-flash          | 1,000,000      | `GOOGLE_API_KEY`    |
 
 > **Note:** The `claude` provider name is still supported as a legacy alias for `anthropic`.
 
@@ -157,13 +157,13 @@ git-iris project-config --print
 
 You can also configure Git-Iris using environment variables:
 
-| Variable | Description |
-|----------|-------------|
-| `OPENAI_API_KEY` | OpenAI API key |
-| `ANTHROPIC_API_KEY` | Anthropic API key |
-| `GOOGLE_API_KEY` | Google API key |
-| `GITIRIS_PROVIDER` | Default provider (for Docker/CI) |
-| `GITIRIS_API_KEY` | API key (for Docker/CI) |
+| Variable            | Description                      |
+| ------------------- | -------------------------------- |
+| `OPENAI_API_KEY`    | OpenAI API key                   |
+| `ANTHROPIC_API_KEY` | Anthropic API key                |
+| `GOOGLE_API_KEY`    | Google API key                   |
+| `GITIRIS_PROVIDER`  | Default provider (for Docker/CI) |
+| `GITIRIS_API_KEY`   | API key (for Docker/CI)          |
 
 **Example (Docker/CI):**
 
@@ -179,6 +179,7 @@ docker run --rm -v "$(pwd):/git-repo" \
 Git-Iris includes built-in instruction presets for different styles:
 
 **General Presets:**
+
 - `default` — Standard professional style
 - `conventional` — Conventional Commits specification
 - `detailed` — More context and explanation
@@ -186,6 +187,7 @@ Git-Iris includes built-in instruction presets for different styles:
 - `cosmic` — Mystical, space-themed language ✨
 
 **Review-Specific Presets:**
+
 - `security` — Focus on security vulnerabilities
 - `performance` — Analyze performance optimizations
 - `architecture` — Evaluate design patterns
@@ -221,13 +223,13 @@ git-iris config --provider openai --token-limit 4000
 
 ## 🐛 Troubleshooting
 
-| Issue | Solution |
-|-------|----------|
-| **Authentication failed** | Verify API key is correct and has required permissions |
-| **Model not found** | Check you're using a supported model for your provider |
-| **Token limit exceeded** | Reduce `custom_token_limit` or use a smaller changeset |
-| **Slow responses** | Try a faster model with `--fast-model` |
-| **Debug issues** | Enable logging with `-l` or use `--debug` for agent details |
+| Issue                     | Solution                                                    |
+| ------------------------- | ----------------------------------------------------------- |
+| **Authentication failed** | Verify API key is correct and has required permissions      |
+| **Model not found**       | Check you're using a supported model for your provider      |
+| **Token limit exceeded**  | Reduce `custom_token_limit` or use a smaller changeset      |
+| **Slow responses**        | Try a faster model with `--fast-model`                      |
+| **Debug issues**          | Enable logging with `-l` or use `--debug` for agent details |
 
 **Enable debug logging:**
 

@@ -117,16 +117,19 @@ Studio is built on a **pure reducer pattern** for predictable state management:
 ### Key Components
 
 **Events (`events.rs`):**
+
 - `StudioEvent` enum captures all possible state transitions
 - Events are dispatched from handlers and async tasks
 - Clear, traceable data flow
 
 **Reducer (`reducer.rs`):**
+
 - Pure function: `(state, event) → (state, effects)`
 - No I/O inside reducer—side effects returned as data
 - Enables testing, replay, debugging
 
 **Side Effects:**
+
 - `SpawnAgent { task }` — Start async agent execution
 - `LoadData { data_type, from_ref, to_ref }` — Load git data
 - `UpdateContent { content, update_type }` — Update displayed content
@@ -134,14 +137,14 @@ Studio is built on a **pure reducer pattern** for predictable state management:
 
 ### Studio Modes
 
-| Mode | Description | State Struct |
-|------|-------------|--------------|
-| **Explore** | Navigate codebase with AI insights | `ExploreMode` |
-| **Commit** | Generate/edit commit messages | `CommitMode` |
-| **Review** | AI-powered code reviews | `ReviewMode` |
-| **PR** | Pull request descriptions | `PRMode` |
-| **Changelog** | Structured changelog generation | `ChangelogMode` |
-| **Release Notes** | Release documentation | `ReleaseNotesMode` |
+| Mode              | Description                        | State Struct       |
+| ----------------- | ---------------------------------- | ------------------ |
+| **Explore**       | Navigate codebase with AI insights | `ExploreMode`      |
+| **Commit**        | Generate/edit commit messages      | `CommitMode`       |
+| **Review**        | AI-powered code reviews            | `ReviewMode`       |
+| **PR**            | Pull request descriptions          | `PRMode`           |
+| **Changelog**     | Structured changelog generation    | `ChangelogMode`    |
+| **Release Notes** | Release documentation              | `ReleaseNotesMode` |
 
 ### Chat Integration
 
@@ -159,6 +162,7 @@ pub struct ChatState {
 ```
 
 Iris can update content directly through tools:
+
 - `update_commit` — Modify commit message
 - `update_pr` — Modify PR description
 - `update_review` — Modify review content
@@ -169,41 +173,41 @@ Iris can update content directly through tools:
 
 Each capability is defined in `src/agents/capabilities/*.toml`:
 
-| Capability | Output Type | Description |
-|------------|-------------|-------------|
-| `commit` | `GeneratedMessage` | Commit messages with emoji/title/body |
-| `review` | `MarkdownReview` | Multi-dimensional code analysis |
-| `pr` | `MarkdownPullRequest` | Pull request descriptions |
-| `changelog` | `MarkdownChangelog` | Keep a Changelog format |
-| `release_notes` | `MarkdownReleaseNotes` | Release documentation |
-| `chat` | Varies | Interactive conversation |
+| Capability      | Output Type            | Description                           |
+| --------------- | ---------------------- | ------------------------------------- |
+| `commit`        | `GeneratedMessage`     | Commit messages with emoji/title/body |
+| `review`        | `MarkdownReview`       | Multi-dimensional code analysis       |
+| `pr`            | `MarkdownPullRequest`  | Pull request descriptions             |
+| `changelog`     | `MarkdownChangelog`    | Keep a Changelog format               |
+| `release_notes` | `MarkdownReleaseNotes` | Release documentation                 |
+| `chat`          | Varies                 | Interactive conversation              |
 
 ### Tools Available to Iris
 
-| Tool | Purpose |
-|------|---------|
-| `git_diff(detail, from, to)` | Get changes with relevance scores |
-| `git_log(count)` | Recent commit history for style reference |
-| `git_status()` | Repository status |
-| `git_changed_files()` | List of changed files |
-| `file_analyzer()` | Deep file analysis (content, metadata) |
-| `code_search()` | Search for patterns, functions, classes |
-| `workspace()` | Iris's notes and task tracking |
-| `project_docs(doc_type)` | Read README, AGENTS.md, CLAUDE.md |
-| `parallel_analyze()` | Concurrent subagent processing |
-| `update_commit()` | Chat: update commit message |
-| `update_pr()` | Chat: update PR description |
-| `update_review()` | Chat: update review |
+| Tool                         | Purpose                                   |
+| ---------------------------- | ----------------------------------------- |
+| `git_diff(detail, from, to)` | Get changes with relevance scores         |
+| `git_log(count)`             | Recent commit history for style reference |
+| `git_status()`               | Repository status                         |
+| `git_changed_files()`        | List of changed files                     |
+| `file_analyzer()`            | Deep file analysis (content, metadata)    |
+| `code_search()`              | Search for patterns, functions, classes   |
+| `workspace()`                | Iris's notes and task tracking            |
+| `project_docs(doc_type)`     | Read README, AGENTS.md, CLAUDE.md         |
+| `parallel_analyze()`         | Concurrent subagent processing            |
+| `update_commit()`            | Chat: update commit message               |
+| `update_pr()`                | Chat: update PR description               |
+| `update_review()`            | Chat: update review                       |
 
 ### Context Strategy
 
 Iris adapts her approach based on changeset size:
 
-| Scenario | Strategy |
-|----------|----------|
-| Small (<10 files, <100 lines each) | Full context for all files |
-| Medium (10-20 files) | Relevance scoring to prioritize |
-| Large (20+ files) | Parallel subagent analysis |
+| Scenario                           | Strategy                        |
+| ---------------------------------- | ------------------------------- |
+| Small (<10 files, <100 lines each) | Full context for all files      |
+| Medium (10-20 files)               | Relevance scoring to prioritize |
+| Large (20+ files)                  | Parallel subagent analysis      |
 
 ### Adding a New Capability
 
@@ -227,13 +231,13 @@ Instructions for Iris...
 
 Iris produces structured responses (all in `src/types/`):
 
-| Type | Format | Description |
-|------|--------|-------------|
-| `GeneratedMessage` | JSON | `{ emoji, title, message }` |
-| `MarkdownPullRequest` | Markdown | `{ content: String }` |
-| `MarkdownReview` | Markdown | `{ content: String }` |
-| `MarkdownChangelog` | Markdown | `{ content: String }` |
-| `MarkdownReleaseNotes` | Markdown | `{ content: String }` |
+| Type                   | Format   | Description                 |
+| ---------------------- | -------- | --------------------------- |
+| `GeneratedMessage`     | JSON     | `{ emoji, title, message }` |
+| `MarkdownPullRequest`  | Markdown | `{ content: String }`       |
+| `MarkdownReview`       | Markdown | `{ content: String }`       |
+| `MarkdownChangelog`    | Markdown | `{ content: String }`       |
+| `MarkdownReleaseNotes` | Markdown | `{ content: String }`       |
 
 The `Markdown*` types use a simple wrapper, letting the LLM drive format while capability TOMLs provide guidelines.
 
@@ -243,23 +247,23 @@ Git-Iris follows the **SilkCircuit Neon** color palette for a cohesive, electric
 
 ### Color Palette
 
-| Color | Hex | RGB | Usage |
-|-------|-----|-----|-------|
-| Electric Purple | `#e135ff` | `(225, 53, 255)` | Active modes, markers, emphasis |
-| Neon Cyan | `#80ffea` | `(128, 255, 234)` | Paths, interactions, focus |
-| Coral | `#ff6ac1` | `(255, 106, 193)` | Hashes, numbers, constants |
-| Electric Yellow | `#f1fa8c` | `(241, 250, 140)` | Warnings, timestamps |
-| Success Green | `#50fa7b` | `(80, 250, 123)` | Success, confirmations |
-| Error Red | `#ff6363` | `(255, 99, 99)` | Errors, danger |
+| Color           | Hex       | RGB               | Usage                           |
+| --------------- | --------- | ----------------- | ------------------------------- |
+| Electric Purple | `#e135ff` | `(225, 53, 255)`  | Active modes, markers, emphasis |
+| Neon Cyan       | `#80ffea` | `(128, 255, 234)` | Paths, interactions, focus      |
+| Coral           | `#ff6ac1` | `(255, 106, 193)` | Hashes, numbers, constants      |
+| Electric Yellow | `#f1fa8c` | `(241, 250, 140)` | Warnings, timestamps            |
+| Success Green   | `#50fa7b` | `(80, 250, 123)`  | Success, confirmations          |
+| Error Red       | `#ff6363` | `(255, 99, 99)`   | Errors, danger                  |
 
 ### Backgrounds
 
-| Surface | Hex | Usage |
-|---------|-----|-------|
-| Base | `#121218` | Main background |
-| Panel | `#181820` | Individual panels |
-| Highlight | `#2d283c` | Selections |
-| Code | `#1e1e28` | Code blocks |
+| Surface   | Hex       | Usage             |
+| --------- | --------- | ----------------- |
+| Base      | `#121218` | Main background   |
+| Panel     | `#181820` | Individual panels |
+| Highlight | `#2d283c` | Selections        |
+| Code      | `#1e1e28` | Code blocks       |
 
 ### Implementation
 
@@ -325,11 +329,11 @@ git-iris config --provider anthropic --model claude-sonnet-4-5-20250929
 
 ### Provider Details
 
-| Provider | Default Model | Fast Model | Context |
-|----------|---------------|------------|---------|
-| openai | gpt-5.1 | gpt-5.1-mini | 128K |
-| anthropic | claude-sonnet-4-5-20250929 | claude-haiku-4-5-20251001 | 200K |
-| google | gemini-3-pro-preview | gemini-2.5-flash | 1M |
+| Provider  | Default Model              | Fast Model                | Context |
+| --------- | -------------------------- | ------------------------- | ------- |
+| openai    | gpt-5.1                    | gpt-5.1-mini              | 128K    |
+| anthropic | claude-sonnet-4-5-20250929 | claude-haiku-4-5-20251001 | 200K    |
+| google    | gemini-3-pro-preview       | gemini-2.5-flash          | 1M      |
 
 ## Key Design Decisions
 

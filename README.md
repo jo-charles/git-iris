@@ -36,14 +36,14 @@ This agent-first architecture means Iris adapts to your project. She crafts mean
 
 **Studio** is a stunning, context-aware terminal interface that brings all of Git-Iris's capabilities together in one beautiful experience. Built with the **SilkCircuit Neon** design language, it adapts to your workflow with six specialized modes:
 
-| Mode | Description | Shortcut |
-|------|-------------|----------|
-| 🔭 **Explore** | Navigate and understand your codebase with AI-powered semantic insights | `Shift+E` |
-| 💫 **Commit** | Generate and refine commit messages for your staged changes | `Shift+C` |
-| 🔬 **Review** | Get comprehensive AI-powered code reviews with severity ratings | `Shift+R` |
-| 📜 **PR** | Generate complete pull request descriptions | `Shift+P` |
-| 🗂️ **Changelog** | Create structured changelogs in Keep a Changelog format | `Shift+L` |
-| 🎊 **Release Notes** | Generate detailed release documentation | `Shift+N` |
+| Mode                 | Description                                                                 | Shortcut  |
+| -------------------- | --------------------------------------------------------------------------- | --------- |
+| 🔭 **Explore**       | Navigate your codebase with AI-powered semantic insights and blame analysis | `Shift+E` |
+| 💫 **Commit**        | Generate and refine commit messages for your staged changes                 | `Shift+C` |
+| 🔬 **Review**        | Get comprehensive AI-powered code reviews with severity ratings             | `Shift+R` |
+| 📜 **PR**            | Generate complete pull request descriptions                                 | `Shift+P` |
+| 🗂️ **Changelog**     | Create structured changelogs in Keep a Changelog format                     | `Shift+L` |
+| 🎊 **Release Notes** | Generate detailed release documentation                                     | `Shift+N` |
 
 **💬 Chat with Iris** — Press `/` in any mode to open an interactive conversation with Iris. Ask her to refine your commit message, explain changes, or improve the generated content. She can update content directly through intelligent tool calls!
 
@@ -53,6 +53,8 @@ This agent-first architecture means Iris adapts to your project. She crafts mean
 - **Adaptive Analysis**: For large changesets, Iris spawns subagents to analyze different parts concurrently, then synthesizes findings
 - **Intelligent Focus**: Relevance scoring helps Iris prioritize what matters, ignoring noise in large diffs
 - **Iterative Exploration**: Iris can dig deeper into specific files, search for patterns, and examine commit history when needed
+- **Real-Time Streaming**: Watch Iris think in real-time with buttery-smooth token streaming as she analyzes your code
+- **Token Usage Tracking**: See exactly how many tokens each operation consumes
 
 ### 🪄 Core Capabilities
 
@@ -70,6 +72,9 @@ This agent-first architecture means Iris adapts to your project. She crafts mean
 - **✨ Gitmoji Integration**: Expressive emojis for your Git documentation
 - **🐳 Docker Support**: Run in CI/CD pipelines without installation
 - **🔮 Debug Mode**: Gorgeous color-coded output showing agent execution details
+- **🖱️ Full Mouse Support**: Click, scroll, and navigate with your mouse in Studio
+- **📋 Clipboard Integration**: Copy any generated content with `y` and get visual feedback
+- **🔍 File Search Modal**: Quickly find and jump to any file in your repository
 
 ## 📦 Installation
 
@@ -258,44 +263,67 @@ git-iris studio --mode commit    # Start in a specific mode
 
 **Global Controls:**
 
-| Key | Action |
-|-----|--------|
-| `Tab` / `Shift+Tab` | Navigate between panels |
-| `/` | Open chat with Iris |
-| `?` | Show help overlay |
-| `Shift+S` | Open settings modal |
-| `Esc` | Close modal / Cancel |
-| `q` | Quit Studio |
+| Key                 | Action                            |
+| ------------------- | --------------------------------- |
+| `Tab` / `Shift+Tab` | Navigate between panels           |
+| `/`                 | Open chat with Iris               |
+| `?`                 | Show help overlay                 |
+| `Shift+S`           | Open settings modal               |
+| `Ctrl+F`            | Open file search modal            |
+| `y`                 | Copy current content to clipboard |
+| `Esc`               | Close modal / Cancel              |
+| `q`                 | Quit Studio                       |
 
 **Mode Switching:**
 
-| Key | Mode |
-|-----|------|
-| `Shift+E` | 🔭 Explore Mode |
-| `Shift+C` | 💫 Commit Mode |
-| `Shift+R` | 🔬 Review Mode |
-| `Shift+P` | 📜 PR Mode |
-| `Shift+L` | 🗂️ Changelog Mode |
+| Key       | Mode                  |
+| --------- | --------------------- |
+| `Shift+E` | 🔭 Explore Mode       |
+| `Shift+C` | 💫 Commit Mode        |
+| `Shift+R` | 🔬 Review Mode        |
+| `Shift+P` | 📜 PR Mode            |
+| `Shift+L` | 🗂️ Changelog Mode     |
 | `Shift+N` | 🎊 Release Notes Mode |
+
+**Explore Mode Controls:**
+
+| Key                    | Action                                                    |
+| ---------------------- | --------------------------------------------------------- |
+| `Enter`                | Open file / Expand directory                              |
+| `w`                    | **Semantic Blame** — Ask Iris "Why does this code exist?" |
+| `j` / `k` or `↓` / `↑` | Navigate files                                            |
+| `h` / `l` or `←` / `→` | Collapse / Expand directories                             |
 
 **Commit Mode Controls:**
 
-| Key | Action |
-|-----|--------|
-| `g` | Generate commit message |
-| `c` | Commit changes |
-| `s` | Toggle stage/unstage file |
-| `j` / `k` or `↓` / `↑` | Navigate files |
-| `[` / `]` | Cycle through generated messages |
-| `e` | Edit current message |
+| Key                    | Action                           |
+| ---------------------- | -------------------------------- |
+| `g`                    | Generate commit message          |
+| `c`                    | Commit changes                   |
+| `s`                    | Toggle stage/unstage file        |
+| `p`                    | Open preset selector             |
+| `m`                    | Open emoji selector              |
+| `j` / `k` or `↓` / `↑` | Navigate files                   |
+| `[` / `]`              | Cycle through generated messages |
+| `e`                    | Edit current message             |
 
 **Reference Selection (Review, PR, Changelog, Release Notes):**
 
-| Key | Action |
-|-----|--------|
+| Key | Action                  |
+| --- | ----------------------- |
 | `f` | Select "from" reference |
-| `t` | Select "to" reference |
-| `g` | Generate content |
+| `t` | Select "to" reference   |
+| `g` | Generate content        |
+
+### 🔭 Explore Mode & Semantic Blame
+
+Explore mode lets you navigate your codebase with AI-powered insights. The standout feature is **Semantic Blame**:
+
+1. Navigate to any file and position your cursor on a line of code
+2. Press `w` to ask Iris "Why does this code exist?"
+3. Iris analyzes the git blame history and explains the code's purpose—not just _what_ changed, but _why_
+
+This transforms git blame from a dry history lookup into genuine understanding of your codebase's evolution.
 
 ### 💬 Chatting with Iris
 
@@ -306,7 +334,30 @@ Press `/` in any mode to open the chat panel. Iris can:
 - **Update directly**: Iris can modify the generated content through tool calls
 - **Answer questions**: Ask about the codebase, the changes, or Git in general
 
+**Real-Time Streaming**: Watch Iris's responses appear token-by-token with live tool activity tracking. See which tools she's using as she analyzes your code.
+
 The chat supports full markdown rendering with syntax highlighting!
+
+### 🖱️ Mouse Support
+
+Studio has full mouse support:
+
+- **Click** on panels to focus them
+- **Click** on files in the file tree to select them
+- **Scroll** within any panel to navigate content
+- **Click** buttons and interactive elements
+
+### 🔧 In-App Modals
+
+Studio provides several powerful modals for quick access:
+
+| Modal                  | Shortcut          | Description                                                            |
+| ---------------------- | ----------------- | ---------------------------------------------------------------------- |
+| **Settings**           | `Shift+S`         | Configure provider, model, gitmoji, and presets without leaving Studio |
+| **File Search**        | `Ctrl+F`          | Fuzzy-find any file in your repository and jump directly to it         |
+| **Preset Selector**    | `p` (Commit mode) | Choose from style presets like Conventional, Detailed, or Cosmic       |
+| **Emoji Selector**     | `m` (Commit mode) | Browse and select gitmoji for your commit message                      |
+| **Reference Selector** | `f` / `t`         | Pick git references (branches, tags, commits) for comparisons          |
 
 ### 🎨 SilkCircuit Neon Design
 
@@ -376,6 +427,7 @@ Options:
 - `--provider`: Specify an LLM provider
 - `--preset`: Use a specific instruction preset
 - `-p`, `--print`: Print the generated review to stdout and exit
+- `--raw`: Output raw markdown without console formatting (for piping to files)
 - `--include-unstaged`: Include unstaged changes in the review
 - `--commit`: Review a specific commit by ID (hash, branch, or reference)
 - `--from`: Starting branch for comparison (defaults to 'main')
@@ -449,6 +501,7 @@ Options:
 - `-i`, `--instructions`: Custom instructions for PR description generation
 - `--preset`: Select an instruction preset for PR description generation
 - `-p`, `--print`: Print the generated PR description to stdout and exit
+- `--raw`: Output raw markdown without console formatting
 
 **Examples:**
 
@@ -531,6 +584,7 @@ Options:
 - `--preset`: Select an instruction preset for changelog generation
 - `--detail-level`: Set the detail level (minimal, standard, detailed)
 - `--gitmoji`: Enable or disable Gitmoji in the changelog
+- `--raw`: Output raw markdown without console formatting
 - `--update`: Update the changelog file with the new changes
 - `--file`: Path to the changelog file (defaults to CHANGELOG.md)
 - `--version-name`: Explicit version name to use in the changelog instead of getting it from Git
@@ -563,6 +617,7 @@ Options:
 - `--preset`: Select an instruction preset for release notes generation
 - `--detail-level`: Set the detail level (minimal, standard, detailed)
 - `--gitmoji`: Enable or disable Gitmoji in the release notes
+- `--raw`: Output raw markdown without console formatting
 - `--version-name`: Explicit version name to use in the release notes instead of getting it from Git
 
 Example:
