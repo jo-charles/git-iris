@@ -11,7 +11,7 @@ pub fn create_modal(state: &StudioState, modal_type: ModalType) -> Modal {
     match modal_type {
         ModalType::Help => Modal::Help,
         ModalType::Chat => Modal::Chat,
-        ModalType::Settings => Modal::Settings(SettingsState::from_config(&state.config)),
+        ModalType::Settings => Modal::Settings(Box::new(SettingsState::from_config(&state.config))),
         ModalType::PresetSelector => {
             let presets = state.get_commit_presets();
             Modal::PresetSelector {

@@ -59,8 +59,8 @@ fn modal_size(modal: &Modal, area: Rect) -> (u16, u16) {
         }
         // Emoji selector grid
         Modal::EmojiSelector { .. } => (55.min(max_width), 26.min(max_height)),
-        // Settings modal
-        Modal::Settings(_) => (60.min(max_width), 20.min(max_height)),
+        // Settings modal - full width for fields, compact preview strip
+        Modal::Settings(_) => (70.min(max_width), 24.min(max_height)),
     }
 }
 

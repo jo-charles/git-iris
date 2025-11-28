@@ -317,12 +317,31 @@ pub enum Modal {
         scroll: usize,
     },
     /// Settings configuration modal
-    Settings(SettingsState),
+    Settings(Box<SettingsState>),
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Settings State
 // ═══════════════════════════════════════════════════════════════════════════════
+
+/// Settings section for grouped display
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SettingsSection {
+    Provider,
+    Appearance,
+    Behavior,
+}
+
+impl SettingsSection {
+    /// Get the display name for this section
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            SettingsSection::Provider => "Provider",
+            SettingsSection::Appearance => "Appearance",
+            SettingsSection::Behavior => "Behavior",
+        }
+    }
+}
 
 /// Field being edited in settings
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -330,8 +349,10 @@ pub enum SettingsField {
     Provider,
     Model,
     ApiKey,
+    Theme,
     UseGitmoji,
     InstructionPreset,
+    CustomInstructions,
 }
 
 impl SettingsField {
@@ -341,8 +362,10 @@ impl SettingsField {
             SettingsField::Provider,
             SettingsField::Model,
             SettingsField::ApiKey,
+            SettingsField::Theme,
             SettingsField::UseGitmoji,
             SettingsField::InstructionPreset,
+            SettingsField::CustomInstructions,
         ]
     }
 
@@ -352,10 +375,36 @@ impl SettingsField {
             SettingsField::Provider => "Provider",
             SettingsField::Model => "Model",
             SettingsField::ApiKey => "API Key",
-            SettingsField::UseGitmoji => "Use Gitmoji",
+            SettingsField::Theme => "Theme",
+            SettingsField::UseGitmoji => "Gitmoji",
             SettingsField::InstructionPreset => "Preset",
+            SettingsField::CustomInstructions => "Instructions",
         }
     }
+
+    /// Get which section this field belongs to
+    pub fn section(&self) -> SettingsSection {
+        match self {
+            SettingsField::Provider | SettingsField::Model | SettingsField::ApiKey => {
+                SettingsSection::Provider
+            }
+            SettingsField::Theme => SettingsSection::Appearance,
+            SettingsField::UseGitmoji
+            | SettingsField::InstructionPreset
+            | SettingsField::CustomInstructions => SettingsSection::Behavior,
+        }
+    }
+}
+
+/// Theme info for settings display
+#[derive(Debug, Clone)]
+pub struct ThemeOptionInfo {
+    /// Theme identifier (e.g., `silkcircuit-neon`)
+    pub id: String,
+    /// Display name (e.g., `SilkCircuit Neon`)
+    pub display_name: String,
+    /// Variant indicator (dark/light)
+    pub variant: String,
 }
 
 /// State for the settings modal
@@ -375,12 +424,18 @@ pub struct SettingsState {
     pub api_key_display: String,
     /// Actual API key (for saving)
     pub api_key_actual: Option<String>,
+    /// Current theme identifier
+    pub theme: String,
     /// Use gitmoji
     pub use_gitmoji: bool,
     /// Instruction preset
     pub instruction_preset: String,
+    /// Custom instructions for all operations
+    pub custom_instructions: String,
     /// Available providers
     pub available_providers: Vec<String>,
+    /// Available themes
+    pub available_themes: Vec<ThemeOptionInfo>,
     /// Available presets
     pub available_presets: Vec<String>,
     /// Whether config was modified
@@ -394,6 +449,7 @@ impl SettingsState {
     pub fn from_config(config: &Config) -> Self {
         use crate::instruction_presets::get_instruction_preset_library;
         use crate::providers::Provider;
+        use crate::theme;
 
         let provider = config.default_provider.clone();
         let provider_config = config.get_provider_config(&provider);
@@ -406,6 +462,26 @@ impl SettingsState {
 
         let available_providers: Vec<String> =
             Provider::ALL.iter().map(|p| p.name().to_string()).collect();
+
+        // Get available themes
+        let available_themes: Vec<ThemeOptionInfo> = theme::list_available_themes()
+            .into_iter()
+            .map(|info| ThemeOptionInfo {
+                id: info.name,
+                display_name: info.display_name,
+                variant: match info.variant {
+                    theme::ThemeVariant::Dark => "dark".to_string(),
+                    theme::ThemeVariant::Light => "light".to_string(),
+                },
+            })
+            .collect();
+
+        // Get current theme name
+        let current_theme = theme::current();
+        let theme_id = available_themes
+            .iter()
+            .find(|t| t.display_name == current_theme.meta.name)
+            .map_or_else(|| "silkcircuit-neon".to_string(), |t| t.id.clone());
 
         let preset_library = get_instruction_preset_library();
         let available_presets: Vec<String> = preset_library
@@ -422,9 +498,12 @@ impl SettingsState {
             model,
             api_key_display,
             api_key_actual: None, // Only set when user enters a new key
+            theme: theme_id,
             use_gitmoji: config.use_gitmoji,
             instruction_preset: config.instruction_preset.clone(),
+            custom_instructions: config.instructions.clone(),
             available_providers,
+            available_themes,
             available_presets,
             modified: false,
             error: None,
@@ -471,6 +550,11 @@ impl SettingsState {
             SettingsField::Provider => self.provider.clone(),
             SettingsField::Model => self.model.clone(),
             SettingsField::ApiKey => self.api_key_display.clone(),
+            SettingsField::Theme => self
+                .available_themes
+                .iter()
+                .find(|t| t.id == self.theme)
+                .map_or_else(|| self.theme.clone(), |t| t.display_name.clone()),
             SettingsField::UseGitmoji => {
                 if self.use_gitmoji {
                     "yes".to_string()
@@ -479,11 +563,39 @@ impl SettingsState {
                 }
             }
             SettingsField::InstructionPreset => self.instruction_preset.clone(),
+            SettingsField::CustomInstructions => {
+                if self.custom_instructions.is_empty() {
+                    "(none)".to_string()
+                } else {
+                    // Truncate for display if too long
+                    let preview = self.custom_instructions.lines().next().unwrap_or("");
+                    if preview.len() > 30 || self.custom_instructions.lines().count() > 1 {
+                        format!("{}...", &preview.chars().take(30).collect::<String>())
+                    } else {
+                        preview.to_string()
+                    }
+                }
+            }
         }
     }
 
-    /// Cycle through options for the current field
+    /// Get the current theme info
+    pub fn current_theme_info(&self) -> Option<&ThemeOptionInfo> {
+        self.available_themes.iter().find(|t| t.id == self.theme)
+    }
+
+    /// Cycle through options for the current field (forward direction)
     pub fn cycle_current_field(&mut self) {
+        self.cycle_field_direction(true);
+    }
+
+    /// Cycle through options for the current field (backward direction)
+    pub fn cycle_current_field_back(&mut self) {
+        self.cycle_field_direction(false);
+    }
+
+    /// Cycle through options for the current field in given direction
+    fn cycle_field_direction(&mut self, forward: bool) {
         let field = self.current_field();
         match field {
             SettingsField::Provider => {
@@ -492,9 +604,34 @@ impl SettingsState {
                     .iter()
                     .position(|p| p == &self.provider)
                 {
-                    let next = (idx + 1) % self.available_providers.len();
+                    let next = if forward {
+                        (idx + 1) % self.available_providers.len()
+                    } else if idx == 0 {
+                        self.available_providers.len() - 1
+                    } else {
+                        idx - 1
+                    };
                     self.provider = self.available_providers[next].clone();
                     self.modified = true;
+                }
+            }
+            SettingsField::Theme => {
+                if let Some(idx) = self
+                    .available_themes
+                    .iter()
+                    .position(|t| t.id == self.theme)
+                {
+                    let next = if forward {
+                        (idx + 1) % self.available_themes.len()
+                    } else if idx == 0 {
+                        self.available_themes.len() - 1
+                    } else {
+                        idx - 1
+                    };
+                    self.theme = self.available_themes[next].id.clone();
+                    self.modified = true;
+                    // Apply theme immediately for live preview
+                    let _ = crate::theme::load_theme_by_name(&self.theme);
                 }
             }
             SettingsField::UseGitmoji => {
@@ -507,7 +644,13 @@ impl SettingsState {
                     .iter()
                     .position(|p| p == &self.instruction_preset)
                 {
-                    let next = (idx + 1) % self.available_presets.len();
+                    let next = if forward {
+                        (idx + 1) % self.available_presets.len()
+                    } else if idx == 0 {
+                        self.available_presets.len() - 1
+                    } else {
+                        idx - 1
+                    };
                     self.instruction_preset = self.available_presets[next].clone();
                     self.modified = true;
                 }
@@ -526,6 +669,10 @@ impl SettingsState {
             }
             SettingsField::ApiKey => {
                 self.input_buffer.clear(); // Start fresh for API key
+                self.editing = true;
+            }
+            SettingsField::CustomInstructions => {
+                self.input_buffer = self.custom_instructions.clone();
                 self.editing = true;
             }
             _ => {
@@ -563,6 +710,11 @@ impl SettingsState {
                     self.api_key_actual = Some(key);
                     self.modified = true;
                 }
+            }
+            SettingsField::CustomInstructions => {
+                // Allow empty (clears instructions)
+                self.custom_instructions = self.input_buffer.clone();
+                self.modified = true;
             }
             _ => {}
         }

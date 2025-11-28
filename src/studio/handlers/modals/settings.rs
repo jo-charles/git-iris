@@ -3,7 +3,7 @@
 use crossterm::event::{KeyCode, KeyEvent};
 
 use crate::studio::events::SideEffect;
-use crate::studio::state::{Modal, SettingsField, StudioState};
+use crate::studio::state::{Modal, StudioState};
 
 /// Handle key events in settings modal
 pub fn handle(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffect> {
@@ -89,44 +89,7 @@ fn handle_navigation_mode(state: &mut StudioState, key: KeyEvent) -> Vec<SideEff
         KeyCode::Left | KeyCode::Char('h') => {
             // Cycle backwards for cyclable fields
             if let Some(Modal::Settings(settings)) = &mut state.modal {
-                let field = settings.current_field();
-                match field {
-                    SettingsField::Provider => {
-                        if let Some(idx) = settings
-                            .available_providers
-                            .iter()
-                            .position(|p| p == &settings.provider)
-                        {
-                            let prev = if idx == 0 {
-                                settings.available_providers.len() - 1
-                            } else {
-                                idx - 1
-                            };
-                            settings.provider = settings.available_providers[prev].clone();
-                            settings.modified = true;
-                        }
-                    }
-                    SettingsField::UseGitmoji => {
-                        settings.use_gitmoji = !settings.use_gitmoji;
-                        settings.modified = true;
-                    }
-                    SettingsField::InstructionPreset => {
-                        if let Some(idx) = settings
-                            .available_presets
-                            .iter()
-                            .position(|p| p == &settings.instruction_preset)
-                        {
-                            let prev = if idx == 0 {
-                                settings.available_presets.len() - 1
-                            } else {
-                                idx - 1
-                            };
-                            settings.instruction_preset = settings.available_presets[prev].clone();
-                            settings.modified = true;
-                        }
-                    }
-                    _ => {}
-                }
+                settings.cycle_current_field_back();
             }
             state.mark_dirty();
             vec![]

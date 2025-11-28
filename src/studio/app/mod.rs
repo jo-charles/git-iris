@@ -1634,6 +1634,10 @@ impl StudioApp {
         config
             .instruction_preset
             .clone_from(&settings.instruction_preset);
+        config
+            .instructions
+            .clone_from(&settings.custom_instructions);
+        config.theme.clone_from(&settings.theme);
 
         // Update provider config
         if let Some(provider_config) = config.providers.get_mut(&settings.provider) {

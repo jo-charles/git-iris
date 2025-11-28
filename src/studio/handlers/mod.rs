@@ -98,7 +98,9 @@ fn handle_global_key(state: &mut StudioState, key: KeyEvent) -> Option<Vec<SideE
 
         // Settings
         KeyCode::Char('S') if key.modifiers.contains(KeyModifiers::SHIFT) => {
-            state.modal = Some(Modal::Settings(SettingsState::from_config(&state.config)));
+            state.modal = Some(Modal::Settings(Box::new(SettingsState::from_config(
+                &state.config,
+            ))));
             Some(vec![])
         }
 
