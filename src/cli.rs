@@ -409,6 +409,7 @@ pub async fn main() -> anyhow::Result<()> {
 
     if cli.log {
         crate::logger::enable_logging();
+        crate::logger::set_log_to_stdout(true);
         let log_file = cli.log_file.as_deref().unwrap_or(LOG_FILE);
         crate::logger::set_log_file(log_file)?;
         log_debug!("Debug logging enabled");

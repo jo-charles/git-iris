@@ -143,16 +143,21 @@ pub fn init() -> Result<(), Box<dyn std::error::Error>> {
 
         if verbose_from_env {
             set_verbose_logging(true);
+            set_log_to_stdout(true);
         }
 
-        // Enable logging by default
+        // Enable logging to file only by default (stdout requires explicit --log flag)
         enable_logging();
-        set_log_to_stdout(true);
 
         // Set up tracing subscriber with unified writer (for Rig logs)
+        // Default: only warnings/errors. Debug requires RUST_LOG or --log flag
         let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-            // Default filter: show git_iris and iris debug, rig info, and warnings from others
-            "git_iris=debug,iris=debug,rig=info,warn".into()
+            if verbose_from_env {
+                "git_iris=debug,iris=debug,rig=info,warn".into()
+            } else {
+                // Silent by default - no debug spam
+                "warn".into()
+            }
         });
 
         let fmt_layer = fmt::Layer::new()
