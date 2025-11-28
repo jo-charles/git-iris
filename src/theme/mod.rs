@@ -216,8 +216,8 @@ pub fn load_theme(path: &Path) -> Result<(), ThemeError> {
 /// Returns an error if the theme is not found or cannot be loaded.
 pub fn load_theme_by_name(name: &str) -> Result<(), ThemeError> {
     // Check builtins first
-    if name == "silkcircuit-neon" || name == "default" {
-        set_theme(Theme::builtin_neon());
+    if let Some(theme) = builtins::load_by_name(name) {
+        set_theme(theme);
         return Ok(());
     }
 
@@ -237,13 +237,20 @@ pub fn load_theme_by_name(name: &str) -> Result<(), ThemeError> {
 /// List all available themes.
 #[must_use]
 pub fn list_available_themes() -> Vec<ThemeInfo> {
-    let mut themes = vec![ThemeInfo {
-        name: "silkcircuit-neon".to_string(),
-        display_name: "SilkCircuit Neon".to_string(),
-        variant: ThemeVariant::Dark,
-        builtin: true,
-        path: None,
-    }];
+    // Start with all builtin themes
+    let mut themes: Vec<ThemeInfo> = builtins::builtin_names()
+        .iter()
+        .map(|(name, display_name)| {
+            let theme = builtins::load_by_name(name).expect("builtin theme should load");
+            ThemeInfo {
+                name: (*name).to_string(),
+                display_name: (*display_name).to_string(),
+                variant: theme.meta.variant,
+                builtin: true,
+                path: None,
+            }
+        })
+        .collect();
 
     // Scan discovery paths for additional themes
     for dir in discovery_paths() {
@@ -347,14 +354,25 @@ mod tests {
 
     #[test]
     fn test_load_theme_by_name_builtin() {
-        // Should load the builtin theme
+        // Should load all builtin themes
         assert!(load_theme_by_name("silkcircuit-neon").is_ok());
+        assert_eq!(current().meta.name, "SilkCircuit Neon");
 
-        let theme = current();
-        assert_eq!(theme.meta.name, "SilkCircuit Neon");
+        assert!(load_theme_by_name("silkcircuit-soft").is_ok());
+        assert_eq!(current().meta.name, "SilkCircuit Soft");
+
+        assert!(load_theme_by_name("silkcircuit-glow").is_ok());
+        assert_eq!(current().meta.name, "SilkCircuit Glow");
+
+        assert!(load_theme_by_name("silkcircuit-vibrant").is_ok());
+        assert_eq!(current().meta.name, "SilkCircuit Vibrant");
+
+        assert!(load_theme_by_name("silkcircuit-dawn").is_ok());
+        assert_eq!(current().meta.name, "SilkCircuit Dawn");
 
         // Also test "default" alias
         assert!(load_theme_by_name("default").is_ok());
+        assert_eq!(current().meta.name, "SilkCircuit Neon");
     }
 
     #[test]
@@ -365,21 +383,26 @@ mod tests {
     }
 
     #[test]
-    fn test_list_available_themes_includes_builtin() {
+    fn test_list_available_themes_includes_builtins() {
         let themes = list_available_themes();
 
-        // Should have at least the builtin theme
-        assert!(!themes.is_empty());
+        // Should have all 5 builtin themes
+        let builtins: Vec<_> = themes.iter().filter(|t| t.builtin).collect();
+        assert_eq!(builtins.len(), 5);
 
-        // Find the builtin
-        let builtin = themes.iter().find(|t| t.builtin);
-        assert!(builtin.is_some());
+        // Check that we have all variants
+        assert!(builtins.iter().any(|t| t.name == "silkcircuit-neon"));
+        assert!(builtins.iter().any(|t| t.name == "silkcircuit-soft"));
+        assert!(builtins.iter().any(|t| t.name == "silkcircuit-glow"));
+        assert!(builtins.iter().any(|t| t.name == "silkcircuit-vibrant"));
+        assert!(builtins.iter().any(|t| t.name == "silkcircuit-dawn"));
 
-        let builtin = builtin.unwrap();
-        assert_eq!(builtin.name, "silkcircuit-neon");
-        assert_eq!(builtin.display_name, "SilkCircuit Neon");
-        assert_eq!(builtin.variant, ThemeVariant::Dark);
-        assert!(builtin.path.is_none());
+        // Check that dawn is the light variant
+        let dawn = builtins
+            .iter()
+            .find(|t| t.name == "silkcircuit-dawn")
+            .unwrap();
+        assert_eq!(dawn.variant, ThemeVariant::Light);
     }
 
     #[test]

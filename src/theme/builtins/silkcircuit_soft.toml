@@ -1,49 +1,49 @@
-# SilkCircuit Neon — Electric meets elegant
-# The default theme for Git-Iris
+# SilkCircuit Soft — Muted elegance
+# A softer, more relaxed variant with desaturated colors
 
 [meta]
-name = "SilkCircuit Neon"
+name = "SilkCircuit Soft"
 author = "hyperb1iss"
 variant = "dark"
 version = "1.0"
-description = "Electric purple and neon cyan with a dark base"
+description = "Muted purples and soft cyans with a warmer dark base"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Palette — Raw color primitives
 # ═══════════════════════════════════════════════════════════════════════════════
 
 [palette]
-# Core brand colors
-purple_500 = "#e135ff"
-cyan_400 = "#80ffea"
-coral_400 = "#ff6ac1"
-yellow_400 = "#f1fa8c"
-green_400 = "#50fa7b"
-red_400 = "#ff6363"
+# Core brand colors (softer)
+purple_500 = "#e892ff"
+cyan_400 = "#99ffee"
+coral_400 = "#ff99dd"
+yellow_400 = "#ffe699"
+green_400 = "#66ff99"
+red_400 = "#ff6677"
 
 # Extended palette
-purple_400 = "#bd93f9"
-purple_600 = "#8c1eba"
-cyan_500 = "#3cb4a0"
-magenta_400 = "#ff55ff"
-purple_300 = "#b482ff"
-pink_400 = "#ff00ff"
-pink_300 = "#ff99ff"
+purple_400 = "#b199ff"
+purple_600 = "#9366cc"
+cyan_500 = "#66ccbb"
+magenta_400 = "#ff99ff"
+purple_300 = "#c4b3ff"
+pink_400 = "#ff99ff"
+pink_300 = "#ffbbff"
 
-# Backgrounds
-gray_950 = "#121218"
-gray_900 = "#181820"
-gray_850 = "#1e1e28"
-gray_800 = "#37324b"
-gray_750 = "#37324b"
-gray_700 = "#3c2d55"
-gray_600 = "#3c3c50"
+# Backgrounds (warmer)
+gray_950 = "#1a1626"
+gray_900 = "#201c2a"
+gray_850 = "#2a2636"
+gray_800 = "#44475a"
+gray_750 = "#3e3456"
+gray_700 = "#4a3d5f"
+gray_600 = "#524766"
 
 # Text colors
 gray_50 = "#f8f8f2"
-gray_200 = "#bcbcca"
-gray_400 = "#82879f"
-gray_500 = "#6e7daf"
+gray_200 = "#d4d0e0"
+gray_400 = "#9e96b2"
+gray_500 = "#b199ff"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Tokens — Semantic color assignments
@@ -181,17 +181,17 @@ timestamp = { fg = "warning" }
 # ═══════════════════════════════════════════════════════════════════════════════
 
 [gradients]
-# Primary brand gradient: Electric Purple -> Neon Cyan
+# Primary brand gradient: Soft Purple -> Soft Cyan
 primary = ["purple_500", "cyan_400"]
 
-# Warm accent gradient: Coral -> Electric Yellow
+# Warm accent gradient: Soft Coral -> Soft Yellow
 warm = ["coral_400", "yellow_400"]
 
-# Success gradient: Green -> Cyan
+# Success gradient: Soft Green -> Soft Cyan
 success_gradient = ["green_400", "cyan_400"]
 
-# Error gradient: Red -> Coral
+# Error gradient: Soft Red -> Soft Coral
 error_gradient = ["red_400", "coral_400"]
 
-# Aurora gradient (5-stop): Purple -> Pink -> Cyan
-aurora = ["purple_500", "#f31bff", "#ff00ff", "#bf80f4", "cyan_400"]
+# Aurora gradient (5-stop): Soft Purple -> Pink -> Cyan
+aurora = ["purple_500", "#ff99cc", "#ff99ff", "#cc99ff", "cyan_400"]

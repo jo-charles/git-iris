@@ -1,62 +1,62 @@
-# SilkCircuit Neon — Electric meets elegant
-# The default theme for Git-Iris
+# SilkCircuit Dawn — Light theme elegance
+# A light variant with purple accents on a soft lavender-white background
 
 [meta]
-name = "SilkCircuit Neon"
+name = "SilkCircuit Dawn"
 author = "hyperb1iss"
-variant = "dark"
+variant = "light"
 version = "1.0"
-description = "Electric purple and neon cyan with a dark base"
+description = "Light theme with purple accents on lavender-white backgrounds"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Palette — Raw color primitives
 # ═══════════════════════════════════════════════════════════════════════════════
 
 [palette]
-# Core brand colors
-purple_500 = "#e135ff"
-cyan_400 = "#80ffea"
-coral_400 = "#ff6ac1"
-yellow_400 = "#f1fa8c"
-green_400 = "#50fa7b"
-red_400 = "#ff6363"
+# Core brand colors (darker for light theme)
+purple_500 = "#7e2bd5"
+cyan_400 = "#007f8e"
+coral_400 = "#b40077"
+yellow_400 = "#a88600"
+green_400 = "#1f8752"
+red_400 = "#c1272d"
 
 # Extended palette
-purple_400 = "#bd93f9"
-purple_600 = "#8c1eba"
-cyan_500 = "#3cb4a0"
-magenta_400 = "#ff55ff"
-purple_300 = "#b482ff"
-pink_400 = "#ff00ff"
-pink_300 = "#ff99ff"
+purple_400 = "#9e4df3"
+purple_600 = "#5c1a9e"
+cyan_500 = "#00666e"
+magenta_400 = "#c04a8f"
+purple_300 = "#b87aee"
+pink_400 = "#d3549a"
+pink_300 = "#e07bb5"
 
-# Backgrounds
-gray_950 = "#121218"
-gray_900 = "#181820"
-gray_850 = "#1e1e28"
-gray_800 = "#37324b"
-gray_750 = "#37324b"
-gray_700 = "#3c2d55"
-gray_600 = "#3c3c50"
+# Backgrounds (light lavender)
+gray_950 = "#faf8ff"
+gray_900 = "#f1ecff"
+gray_850 = "#efeaff"
+gray_800 = "#e1daf7"
+gray_750 = "#d9d2f2"
+gray_700 = "#d0c8eb"
+gray_600 = "#c5bce0"
 
-# Text colors
-gray_50 = "#f8f8f2"
-gray_200 = "#bcbcca"
-gray_400 = "#82879f"
-gray_500 = "#6e7daf"
+# Text colors (darker for light backgrounds)
+gray_50 = "#2b2540"
+gray_200 = "#3d3558"
+gray_400 = "#5a4d78"
+gray_500 = "#8b6ab8"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Tokens — Semantic color assignments
 # ═══════════════════════════════════════════════════════════════════════════════
 
 [tokens]
-# Text hierarchy
+# Text hierarchy (darker text on light)
 "text.primary" = "gray_50"
 "text.secondary" = "gray_200"
 "text.muted" = "gray_400"
 "text.dim" = "gray_500"
 
-# Backgrounds
+# Backgrounds (light)
 "bg.base" = "gray_950"
 "bg.panel" = "gray_900"
 "bg.code" = "gray_850"
@@ -75,12 +75,12 @@ gray_500 = "#6e7daf"
 success = "green_400"
 error = "red_400"
 warning = "yellow_400"
-info = "cyan_400"
+info = "#2952cc"
 
 # Git status
 "git.staged" = "green_400"
-"git.modified" = "yellow_400"
-"git.untracked" = "gray_500"
+"git.modified" = "cyan_400"
+"git.untracked" = "yellow_400"
 "git.deleted" = "red_400"
 
 # Diff
@@ -90,15 +90,15 @@ info = "cyan_400"
 "diff.context" = "gray_500"
 
 # UI elements
-"border.focused" = "cyan_400"
-"border.unfocused" = "gray_400"
+"border.focused" = "purple_500"
+"border.unfocused" = "gray_500"
 
 # Code elements
 "code.hash" = "coral_400"
 "code.path" = "cyan_400"
 "code.keyword" = "purple_500"
 "code.function" = "cyan_400"
-"code.string" = "pink_300"
+"code.string" = "pink_400"
 "code.number" = "coral_400"
 "code.comment" = "gray_500"
 "code.type" = "yellow_400"
@@ -153,7 +153,7 @@ dimmed = { fg = "text.dim" }
 muted = { fg = "text.muted" }
 
 # Inline code
-inline_code = { fg = "success", bg = "bg.code" }
+inline_code = { fg = "purple_500", bg = "bg.code" }
 
 # Mode tabs
 mode_active = { fg = "mode.active", bold = true }
@@ -181,17 +181,17 @@ timestamp = { fg = "warning" }
 # ═══════════════════════════════════════════════════════════════════════════════
 
 [gradients]
-# Primary brand gradient: Electric Purple -> Neon Cyan
+# Primary brand gradient: Deep Purple -> Teal
 primary = ["purple_500", "cyan_400"]
 
-# Warm accent gradient: Coral -> Electric Yellow
+# Warm accent gradient: Magenta -> Amber
 warm = ["coral_400", "yellow_400"]
 
-# Success gradient: Green -> Cyan
+# Success gradient: Forest Green -> Teal
 success_gradient = ["green_400", "cyan_400"]
 
-# Error gradient: Red -> Coral
+# Error gradient: Dark Red -> Magenta
 error_gradient = ["red_400", "coral_400"]
 
-# Aurora gradient (5-stop): Purple -> Pink -> Cyan
-aurora = ["purple_500", "#f31bff", "#ff00ff", "#bf80f4", "cyan_400"]
+# Aurora gradient (5-stop): Dawn spectrum
+aurora = ["purple_500", "#9e4df3", "#c04a8f", "#007f8e", "cyan_400"]

@@ -1,49 +1,49 @@
-# SilkCircuit Neon — Electric meets elegant
-# The default theme for Git-Iris
+# SilkCircuit Vibrant — High energy saturation
+# Rich purples and vibrant cyans with intense saturation
 
 [meta]
-name = "SilkCircuit Neon"
+name = "SilkCircuit Vibrant"
 author = "hyperb1iss"
 variant = "dark"
 version = "1.0"
-description = "Electric purple and neon cyan with a dark base"
+description = "High saturation colors with rich purple tones"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Palette — Raw color primitives
 # ═══════════════════════════════════════════════════════════════════════════════
 
 [palette]
-# Core brand colors
-purple_500 = "#e135ff"
-cyan_400 = "#80ffea"
-coral_400 = "#ff6ac1"
-yellow_400 = "#f1fa8c"
-green_400 = "#50fa7b"
-red_400 = "#ff6363"
+# Core brand colors (vibrant)
+purple_500 = "#ff00ff"
+cyan_400 = "#00ffcc"
+coral_400 = "#ff00cc"
+yellow_400 = "#ffcc00"
+green_400 = "#00ff66"
+red_400 = "#ff3366"
 
 # Extended palette
-purple_400 = "#bd93f9"
-purple_600 = "#8c1eba"
-cyan_500 = "#3cb4a0"
-magenta_400 = "#ff55ff"
-purple_300 = "#b482ff"
-pink_400 = "#ff00ff"
-pink_300 = "#ff99ff"
+purple_400 = "#b366ff"
+purple_600 = "#aa00dd"
+cyan_500 = "#00ccaa"
+magenta_400 = "#ff33ff"
+purple_300 = "#cc99ff"
+pink_400 = "#ff66cc"
+pink_300 = "#ff99dd"
 
-# Backgrounds
-gray_950 = "#121218"
-gray_900 = "#181820"
-gray_850 = "#1e1e28"
-gray_800 = "#37324b"
-gray_750 = "#37324b"
-gray_700 = "#3c2d55"
-gray_600 = "#3c3c50"
+# Backgrounds (deep purple-blacks)
+gray_950 = "#0f0c1a"
+gray_900 = "#140f22"
+gray_850 = "#1a142a"
+gray_800 = "#3a2e5a"
+gray_750 = "#2a2040"
+gray_700 = "#35284a"
+gray_600 = "#403355"
 
 # Text colors
 gray_50 = "#f8f8f2"
-gray_200 = "#bcbcca"
-gray_400 = "#82879f"
-gray_500 = "#6e7daf"
+gray_200 = "#e0dce8"
+gray_400 = "#9e8eb8"
+gray_500 = "#b366ff"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Tokens — Semantic color assignments
@@ -79,8 +79,8 @@ info = "cyan_400"
 
 # Git status
 "git.staged" = "green_400"
-"git.modified" = "yellow_400"
-"git.untracked" = "gray_500"
+"git.modified" = "cyan_400"
+"git.untracked" = "yellow_400"
 "git.deleted" = "red_400"
 
 # Diff
@@ -90,7 +90,7 @@ info = "cyan_400"
 "diff.context" = "gray_500"
 
 # UI elements
-"border.focused" = "cyan_400"
+"border.focused" = "purple_500"
 "border.unfocused" = "gray_400"
 
 # Code elements
@@ -181,17 +181,17 @@ timestamp = { fg = "warning" }
 # ═══════════════════════════════════════════════════════════════════════════════
 
 [gradients]
-# Primary brand gradient: Electric Purple -> Neon Cyan
+# Primary brand gradient: Hot Magenta -> Vibrant Teal
 primary = ["purple_500", "cyan_400"]
 
-# Warm accent gradient: Coral -> Electric Yellow
+# Warm accent gradient: Hot Pink -> Gold
 warm = ["coral_400", "yellow_400"]
 
-# Success gradient: Green -> Cyan
+# Success gradient: Vibrant Green -> Teal
 success_gradient = ["green_400", "cyan_400"]
 
-# Error gradient: Red -> Coral
+# Error gradient: Vibrant Red -> Hot Pink
 error_gradient = ["red_400", "coral_400"]
 
-# Aurora gradient (5-stop): Purple -> Pink -> Cyan
-aurora = ["purple_500", "#f31bff", "#ff00ff", "#bf80f4", "cyan_400"]
+# Aurora gradient (5-stop): Vibrant spectrum
+aurora = ["purple_500", "#ff00aa", "#ff00ff", "#aa33ff", "cyan_400"]
