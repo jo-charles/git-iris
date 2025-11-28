@@ -1,5 +1,11 @@
 # Git-Iris Developer Guide
 
+> **Note:** This is a quick-reference guide for AI assistants. For comprehensive documentation, see:
+> - **[Architecture Documentation](/docs/architecture/)** — System design, patterns, and data flow
+> - **[Theme System Documentation](/docs/themes/)** — SilkCircuit design language and theming
+> - **[Studio Internals](/docs/studio-internals/)** — Deep dive into TUI implementation
+> - **[Extension Guide](/docs/extending/)** — Creating new capabilities, tools, and modes
+
 ## Architecture Overview
 
 Git-Iris uses an agent-first architecture powered by **Iris**, an LLM-driven agent built on the [Rig framework](https://docs.rs/rig-core). Iris dynamically explores codebases using tool calls rather than dumping all context upfront.
@@ -309,6 +315,58 @@ RUST_LOG=debug cargo run -- gen  # Verbose logging
 # Format
 cargo fmt
 ```
+
+## Testing Conventions
+
+**Tests go in separate files, not inline with source code.**
+
+### Directory Structure
+
+```
+src/
+├── module/
+│   ├── mod.rs           # Module code (NO #[cfg(test)] mod tests inline)
+│   ├── submodule.rs     # Submodule code
+│   └── tests/           # Test directory
+│       ├── mod.rs       # Declares test modules
+│       ├── module_tests.rs
+│       └── submodule_tests.rs
+```
+
+### Pattern
+
+1. Create a `tests/` subdirectory within the module
+2. Add `#[cfg(test)] mod tests;` at the bottom of `mod.rs`
+3. Create `tests/mod.rs` to declare test submodules
+4. Write tests in separate files (e.g., `tests/feature_tests.rs`)
+
+### Example
+
+```rust
+// src/theme/mod.rs (at the end)
+#[cfg(test)]
+mod tests;
+
+// src/theme/tests/mod.rs
+mod theme_tests;
+mod builtins_tests;
+
+// src/theme/tests/theme_tests.rs
+use crate::theme::{current, set_theme, Theme};
+
+#[test]
+fn test_current_returns_theme() {
+    let theme = current();
+    assert_eq!(theme.meta.name, "SilkCircuit Neon");
+}
+```
+
+### Why?
+
+- Keeps source files focused on implementation
+- Makes tests easier to find and navigate
+- Reduces file size and cognitive load
+- Follows the pattern established in `src/studio/tests/`
 
 ## Provider Configuration
 

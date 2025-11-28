@@ -1,6 +1,8 @@
 # 🔧 Git-Iris Configuration Guide
 
-Git-Iris uses a TOML configuration file located at `~/.config/git-iris/config.toml`. This document outlines all available configuration options and their usage.
+> **📚 For comprehensive configuration guides, examples, and advanced topics, see the [full documentation](/docs/configuration/).**
+
+Git-Iris uses a TOML configuration file located at `~/.config/git-iris/config.toml`. This document provides a quick reference for all available configuration options.
 
 ## 📁 Configuration Structure
 
@@ -239,3 +241,14 @@ git-iris gen --debug  # Gorgeous color-coded agent execution
 ```
 
 For further assistance, please refer to the [Git-Iris documentation](https://github.com/hyperb1iss/git-iris/wiki) or [open an issue](https://github.com/hyperb1iss/git-iris/issues).
+
+---
+
+## 📖 Full Configuration Documentation
+
+For comprehensive configuration guides, advanced topics, and examples:
+
+- **[Configuration Overview](/docs/configuration/)** — Complete configuration guide
+- **[Provider Setup](/docs/configuration/providers.md)** — Detailed provider configuration
+- **[Instruction Presets](/docs/configuration/presets.md)** — Custom instruction presets
+- **[Project Configuration](/docs/configuration/project.md)** — Project-specific settings

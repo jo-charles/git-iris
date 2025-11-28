@@ -12,7 +12,7 @@
 
 ✨ _An intelligent agent that understands your code and crafts perfect Git artifacts_ ✨
 
-[Installation](#-installation) • [Studio TUI](#-iris-studio) • [Commands](#-usage) • [Configuration](#%EF%B8%8F-configuration) • [Contributing](#-contributing) • [License](#-license)
+📖 [Documentation](docs/) • [Installation](#-installation) • [Studio TUI](#-iris-studio) • [Commands](#-usage) • [Configuration](#%EF%B8%8F-configuration) • [Contributing](#-contributing) • [License](#-license)
 
 </div>
 
@@ -809,7 +809,7 @@ Distributed under the Apache 2.0 License. See `LICENSE` for more information.
 
 <div align="center">
 
-📚 [Documentation](https://github.com/hyperb1iss/git-iris/wiki) • 🐛 [Report Bug](https://github.com/hyperb1iss/git-iris/issues) • 💡 [Request Feature](https://github.com/hyperb1iss/git-iris/issues)
+📚 [Documentation](docs/) • 🐛 [Report Bug](https://github.com/hyperb1iss/git-iris/issues) • 💡 [Request Feature](https://github.com/hyperb1iss/git-iris/issues)
 
 </div>
 
