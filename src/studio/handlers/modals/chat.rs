@@ -9,12 +9,15 @@ use super::super::spawn_chat_task;
 
 /// Handle key events in chat modal
 pub fn handle(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffect> {
-    // Get current state for Enter handling
-    let (current_input, is_responding, mode) = if let Some(Modal::Chat(chat)) = &state.modal {
-        (chat.input.clone(), chat.is_responding, state.active_mode)
-    } else {
+    // Verify chat modal is open
+    if !matches!(state.modal, Some(Modal::Chat)) {
         return vec![];
-    };
+    }
+
+    // Get state needed before potential mutation
+    let current_input = state.chat_state.input.clone();
+    let is_responding = state.chat_state.is_responding;
+    let mode = state.active_mode;
 
     match key.code {
         KeyCode::Esc => {
@@ -24,62 +27,47 @@ pub fn handle(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffect> {
         KeyCode::Enter => {
             // Send message if not empty and not already responding
             if !current_input.is_empty() && !is_responding {
-                let message = current_input;
-                if let Some(Modal::Chat(chat)) = &mut state.modal {
-                    chat.add_user_message(&message);
-                    chat.is_responding = true;
-                }
+                state.chat_state.add_user_message(&current_input);
+                state.chat_state.is_responding = true;
                 state.mark_dirty();
-                vec![spawn_chat_task(message, mode)]
+                vec![spawn_chat_task(current_input, mode)]
             } else {
                 vec![]
             }
         }
         KeyCode::Char(c) => {
-            if let Some(Modal::Chat(chat)) = &mut state.modal {
-                chat.input.push(c);
-            }
+            state.chat_state.input.push(c);
             state.mark_dirty();
             vec![]
         }
         KeyCode::Backspace => {
-            if let Some(Modal::Chat(chat)) = &mut state.modal {
-                chat.input.pop();
-            }
+            state.chat_state.input.pop();
             state.mark_dirty();
             vec![]
         }
         KeyCode::Up => {
             // Scroll up in chat history
-            if let Some(Modal::Chat(chat)) = &mut state.modal {
-                chat.scroll_up(1);
-            }
+            state.chat_state.scroll_up(1);
             state.mark_dirty();
             vec![]
         }
         KeyCode::Down => {
             // Scroll down in chat history
-            if let Some(Modal::Chat(chat)) = &mut state.modal {
-                let max_scroll = chat.estimated_max_scroll();
-                chat.scroll_down(1, max_scroll);
-            }
+            let max_scroll = state.chat_state.estimated_max_scroll();
+            state.chat_state.scroll_down(1, max_scroll);
             state.mark_dirty();
             vec![]
         }
         KeyCode::PageUp => {
             // Scroll up faster
-            if let Some(Modal::Chat(chat)) = &mut state.modal {
-                chat.scroll_up(10);
-            }
+            state.chat_state.scroll_up(10);
             state.mark_dirty();
             vec![]
         }
         KeyCode::PageDown => {
             // Scroll down faster
-            if let Some(Modal::Chat(chat)) = &mut state.modal {
-                let max_scroll = chat.estimated_max_scroll();
-                chat.scroll_down(10, max_scroll);
-            }
+            let max_scroll = state.chat_state.estimated_max_scroll();
+            state.chat_state.scroll_down(10, max_scroll);
             state.mark_dirty();
             vec![]
         }

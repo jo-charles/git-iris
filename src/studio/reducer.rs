@@ -202,10 +202,6 @@ pub fn reduce(
             );
 
             // Update chat state
-            if let Some(Modal::Chat(ref mut chat)) = state.modal {
-                chat.add_user_message(&message);
-                chat.is_responding = true;
-            }
             state.chat_state.add_user_message(&message);
             state.chat_state.is_responding = true;
 
@@ -326,9 +322,6 @@ pub fn reduce(
                     history.add_chat_message(ChatRole::Iris, &response);
 
                     // Update chat state
-                    if let Some(Modal::Chat(ref mut chat)) = state.modal {
-                        chat.add_iris_response(&response);
-                    }
                     state.chat_state.add_iris_response(&response);
                 }
 
@@ -354,9 +347,6 @@ pub fn reduce(
                 TaskType::Changelog => state.modes.changelog.generating = false,
                 TaskType::ReleaseNotes => state.modes.release_notes.generating = false,
                 TaskType::Chat => {
-                    if let Some(Modal::Chat(ref mut chat)) = state.modal {
-                        chat.is_responding = false;
-                    }
                     state.chat_state.is_responding = false;
                 }
                 TaskType::SemanticBlame => {
@@ -391,9 +381,6 @@ pub fn reduce(
                 }
                 TaskType::Chat => {
                     // For chat, append to the current response
-                    if let Some(Modal::Chat(ref mut chat)) = state.modal {
-                        chat.streaming_response = Some(aggregated.clone());
-                    }
                     state.chat_state.streaming_response = Some(aggregated);
                 }
                 TaskType::SemanticBlame => {
@@ -422,14 +409,8 @@ pub fn reduce(
                     state.modes.release_notes.streaming_content = None;
                 }
                 TaskType::Chat => {
-                    if let Some(Modal::Chat(ref mut chat)) = state.modal {
-                        chat.streaming_response = None;
-                        // Move final current_tool to history before clearing
-                        if let Some(tool) = chat.current_tool.take() {
-                            chat.add_tool_to_history(tool);
-                        }
-                    }
                     state.chat_state.streaming_response = None;
+                    // Move final current_tool to history before clearing
                     if let Some(tool) = state.chat_state.current_tool.take() {
                         state.chat_state.add_tool_to_history(tool);
                     }
@@ -611,10 +592,6 @@ pub fn reduce(
         }
 
         StudioEvent::CloseModal => {
-            // Sync chat state before closing
-            if let Some(Modal::Chat(chat)) = &state.modal {
-                state.chat_state = chat.clone();
-            }
             state.modal = None;
             state.mark_dirty();
         }
@@ -868,10 +845,7 @@ fn get_diff_summary(state: &StudioState) -> Option<String> {
 fn create_modal(state: &StudioState, modal_type: ModalType) -> Modal {
     match modal_type {
         ModalType::Help => Modal::Help,
-        ModalType::Chat => {
-            // Use persistent chat state
-            Modal::Chat(state.chat_state.clone())
-        }
+        ModalType::Chat => Modal::Chat,
         ModalType::Settings => Modal::Settings(SettingsState::from_config(&state.config)),
         ModalType::PresetSelector => {
             let presets = state.get_commit_presets();
@@ -1236,18 +1210,15 @@ fn reduce_mouse_event(
     let effects = Vec::new();
 
     // Check if chat modal is open - scroll it instead of the main view
-    if let Some(Modal::Chat(ref mut chat)) = state.modal {
+    if matches!(state.modal, Some(Modal::Chat)) {
         match mouse.kind {
             MouseEventKind::ScrollUp => {
-                chat.scroll_up(3);
+                state.chat_state.scroll_up(3);
                 state.mark_dirty();
             }
             MouseEventKind::ScrollDown => {
-                // For scroll_down we need max_scroll, but we don't have render info here.
-                // Just increment and let render clamp it.
-                chat.scroll_offset = chat.scroll_offset.saturating_add(3);
-                // Don't auto-scroll since user is manually scrolling
-                chat.auto_scroll = false;
+                let max_scroll = state.chat_state.estimated_max_scroll();
+                state.chat_state.scroll_down(3, max_scroll);
                 state.mark_dirty();
             }
             MouseEventKind::Down(_) => {

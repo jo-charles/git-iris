@@ -27,7 +27,7 @@ pub fn handle_modal_key(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffec
         Some(Modal::Search { .. }) => search::handle(state, key),
         Some(Modal::Confirm { .. }) => confirm::handle(state, key),
         Some(Modal::Instructions { .. }) => instructions::handle(state, key),
-        Some(Modal::Chat(_)) => chat::handle(state, key),
+        Some(Modal::Chat) => chat::handle(state, key),
         Some(Modal::RefSelector { .. }) => ref_selector::handle(state, key),
         Some(Modal::PresetSelector { .. }) => preset_selector::handle(state, key),
         Some(Modal::EmojiSelector { .. }) => emoji_selector::handle(state, key),

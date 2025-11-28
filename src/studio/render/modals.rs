@@ -21,7 +21,7 @@ pub fn render_modal(state: &StudioState, frame: &mut Frame, last_render: Instant
 
     // Center modal in screen - chat takes most of the screen
     let (modal_width, modal_height) = match modal {
-        Modal::Chat(_) => (
+        Modal::Chat => (
             (area.width * 4 / 5)
                 .max(100)
                 .min(area.width.saturating_sub(4)),
@@ -56,7 +56,7 @@ pub fn render_modal(state: &StudioState, frame: &mut Frame, last_render: Instant
             render_search(frame, modal_area, query, results, *selected);
         }
         Modal::Confirm { message, .. } => render_confirm(frame, modal_area, message),
-        Modal::Chat(chat_state) => render_chat(frame, modal_area, chat_state, last_render),
+        Modal::Chat => render_chat(frame, modal_area, &state.chat_state, last_render),
         Modal::RefSelector {
             input,
             refs,

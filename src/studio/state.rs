@@ -465,8 +465,8 @@ pub enum Modal {
     Confirm { message: String, action: String },
     /// Instructions input for commit message generation
     Instructions { input: String },
-    /// Chat interface with Iris
-    Chat(ChatState),
+    /// Chat interface with Iris (state lives in `StudioState.chat_state`)
+    Chat,
     /// Base branch/ref selector for PR/changelog modes
     RefSelector {
         /// Current input/filter
@@ -1316,8 +1316,8 @@ impl StudioState {
             self.chat_state = ChatState::with_context("git workflow", context.as_deref());
         }
 
-        // Use the persistent chat state (cloned into modal)
-        self.modal = Some(Modal::Chat(self.chat_state.clone()));
+        // Open chat modal (state lives in self.chat_state)
+        self.modal = Some(Modal::Chat);
         self.dirty = true;
     }
 
@@ -1371,11 +1371,6 @@ impl StudioState {
 
     /// Close any open modal
     pub fn close_modal(&mut self) {
-        // Sync chat state back to persistent storage before closing
-        if let Some(Modal::Chat(chat)) = &self.modal {
-            self.chat_state = chat.clone();
-        }
-
         if self.modal.is_some() {
             self.modal = None;
             self.dirty = true;
@@ -1414,9 +1409,7 @@ impl StudioState {
         }
 
         // Also mark dirty if chat modal is responding (for spinner animation)
-        if let Some(Modal::Chat(chat)) = &self.modal
-            && chat.is_responding
-        {
+        if matches!(self.modal, Some(Modal::Chat)) && self.chat_state.is_responding {
             self.dirty = true;
         }
     }

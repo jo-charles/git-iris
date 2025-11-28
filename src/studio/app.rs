@@ -76,8 +76,8 @@ pub enum IrisTaskResult {
     StreamingComplete { task_type: TaskType },
     /// Semantic blame result
     SemanticBlame(SemanticBlameResult),
-    /// Error from the task
-    Error(String),
+    /// Error from the task (includes which task failed)
+    Error { task_type: TaskType, error: String },
 }
 
 /// Type of content update triggered by chat
@@ -648,8 +648,6 @@ impl StudioApp {
     /// Check for completed Iris task results
     /// Convert async Iris results to events and push to queue
     fn check_iris_results(&mut self) {
-        use super::state::Modal;
-
         while let Ok(result) = self.iris_result_rx.try_recv() {
             let event = match result {
                 IrisTaskResult::CommitMessages(messages) => StudioEvent::AgentComplete {
@@ -709,13 +707,6 @@ impl StudioApp {
                 IrisTaskResult::ToolStatus { tool_name, message } => {
                     // Tool status updates - move current tool to history, set new current
                     let tool_desc = format!("{} - {}", tool_name, message);
-                    if let Some(Modal::Chat(chat)) = &mut self.state.modal {
-                        // Move previous tool to history (bounded)
-                        if let Some(prev) = chat.current_tool.take() {
-                            chat.add_tool_to_history(prev);
-                        }
-                        chat.current_tool = Some(tool_desc.clone());
-                    }
                     if let Some(prev) = self.state.chat_state.current_tool.take() {
                         self.state.chat_state.add_tool_to_history(prev);
                     }
@@ -738,31 +729,8 @@ impl StudioApp {
                     StudioEvent::StreamingComplete { task_type }
                 }
 
-                IrisTaskResult::Error(err) => {
-                    // Determine which task failed based on what's currently generating
-                    let task_type = if self.state.modes.commit.generating {
-                        TaskType::Commit
-                    } else if self.state.modes.review.generating {
-                        TaskType::Review
-                    } else if self.state.modes.pr.generating {
-                        TaskType::PR
-                    } else if self.state.modes.changelog.generating {
-                        TaskType::Changelog
-                    } else if self.state.modes.release_notes.generating {
-                        TaskType::ReleaseNotes
-                    } else if matches!(&self.state.modal, Some(Modal::Chat(c)) if c.is_responding) {
-                        TaskType::Chat
-                    } else if self.state.modes.explore.blame_loading {
-                        TaskType::SemanticBlame
-                    } else {
-                        // Default to commit if we can't determine
-                        TaskType::Commit
-                    };
-
-                    StudioEvent::AgentError {
-                        task_type,
-                        error: err,
-                    }
+                IrisTaskResult::Error { task_type, error } => {
+                    StudioEvent::AgentError { task_type, error }
                 }
             };
 
@@ -774,7 +742,7 @@ impl StudioApp {
         use crate::agents::StructuredResponse;
         use crate::agents::status::IRIS_STATUS;
         use crate::agents::tools::{ContentUpdate, create_content_update_channel};
-        use crate::studio::state::{ChatMessage, ChatRole, Modal};
+        use crate::studio::state::{ChatMessage, ChatRole};
         use std::sync::Arc;
         use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -795,12 +763,9 @@ impl StudioApp {
         let tx_updates = self.iris_result_tx.clone();
         let mode = context.mode;
 
-        // Extract conversation history from chat modal (convert VecDeque → Vec)
-        let chat_history: Vec<ChatMessage> = if let Some(Modal::Chat(chat)) = &self.state.modal {
-            chat.messages.iter().cloned().collect()
-        } else {
-            Vec::new()
-        };
+        // Extract conversation history (convert VecDeque → Vec)
+        let chat_history: Vec<ChatMessage> =
+            self.state.chat_state.messages.iter().cloned().collect();
 
         // Use context content if provided, otherwise extract from state
         let current_content = context
@@ -1036,9 +1001,10 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
 
         let Some(agent) = self.agent_service.clone() else {
             let tx = self.iris_result_tx.clone();
-            let _ = tx.send(IrisTaskResult::Error(
-                "Agent service not available".to_string(),
-            ));
+            let _ = tx.send(IrisTaskResult::Error {
+                task_type: TaskType::Review,
+                error: "Agent service not available".to_string(),
+            });
             return;
         };
 
@@ -1050,7 +1016,10 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
             let context = match TaskContext::for_review(None, Some(from_ref), Some(to_ref), false) {
                 Ok(ctx) => ctx,
                 Err(e) => {
-                    let _ = tx.send(IrisTaskResult::Error(format!("Context error: {}", e)));
+                    let _ = tx.send(IrisTaskResult::Error {
+                        task_type: TaskType::Review,
+                        error: format!("Context error: {}", e),
+                    });
                     return;
                 }
             };
@@ -1086,7 +1055,10 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
                     let _ = tx.send(IrisTaskResult::ReviewContent(review_text));
                 }
                 Err(e) => {
-                    let _ = tx.send(IrisTaskResult::Error(format!("Review error: {}", e)));
+                    let _ = tx.send(IrisTaskResult::Error {
+                        task_type: TaskType::Review,
+                        error: format!("Review error: {}", e),
+                    });
                 }
             }
         });
@@ -1098,9 +1070,10 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
 
         let Some(agent) = self.agent_service.clone() else {
             let tx = self.iris_result_tx.clone();
-            let _ = tx.send(IrisTaskResult::Error(
-                "Agent service not available".to_string(),
-            ));
+            let _ = tx.send(IrisTaskResult::Error {
+                task_type: TaskType::PR,
+                error: "Agent service not available".to_string(),
+            });
             return;
         };
 
@@ -1137,7 +1110,10 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
                     let _ = tx.send(IrisTaskResult::PRContent(pr_text));
                 }
                 Err(e) => {
-                    let _ = tx.send(IrisTaskResult::Error(format!("PR error: {}", e)));
+                    let _ = tx.send(IrisTaskResult::Error {
+                        task_type: TaskType::PR,
+                        error: format!("PR error: {}", e),
+                    });
                 }
             }
         });
@@ -1149,9 +1125,10 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
 
         let Some(agent) = self.agent_service.clone() else {
             let tx = self.iris_result_tx.clone();
-            let _ = tx.send(IrisTaskResult::Error(
-                "Agent service not available".to_string(),
-            ));
+            let _ = tx.send(IrisTaskResult::Error {
+                task_type: TaskType::Changelog,
+                error: "Agent service not available".to_string(),
+            });
             return;
         };
 
@@ -1191,7 +1168,10 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
                     let _ = tx.send(IrisTaskResult::ChangelogContent(changelog_text));
                 }
                 Err(e) => {
-                    let _ = tx.send(IrisTaskResult::Error(format!("Changelog error: {}", e)));
+                    let _ = tx.send(IrisTaskResult::Error {
+                        task_type: TaskType::Changelog,
+                        error: format!("Changelog error: {}", e),
+                    });
                 }
             }
         });
@@ -1203,9 +1183,10 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
 
         let Some(agent) = self.agent_service.clone() else {
             let tx = self.iris_result_tx.clone();
-            let _ = tx.send(IrisTaskResult::Error(
-                "Agent service not available".to_string(),
-            ));
+            let _ = tx.send(IrisTaskResult::Error {
+                task_type: TaskType::ReleaseNotes,
+                error: "Agent service not available".to_string(),
+            });
             return;
         };
 
@@ -1245,7 +1226,10 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
                     let _ = tx.send(IrisTaskResult::ReleaseNotesContent(release_notes_text));
                 }
                 Err(e) => {
-                    let _ = tx.send(IrisTaskResult::Error(format!("Release notes error: {}", e)));
+                    let _ = tx.send(IrisTaskResult::Error {
+                        task_type: TaskType::ReleaseNotes,
+                        error: format!("Release notes error: {}", e),
+                    });
                 }
             }
         });
@@ -1567,9 +1551,10 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
 
         let Some(agent) = self.agent_service.clone() else {
             let tx = self.iris_result_tx.clone();
-            let _ = tx.send(IrisTaskResult::Error(
-                "Agent service not available".to_string(),
-            ));
+            let _ = tx.send(IrisTaskResult::Error {
+                task_type: TaskType::Commit,
+                error: "Agent service not available".to_string(),
+            });
             return;
         };
 
@@ -1597,14 +1582,18 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
                             let _ = tx.send(IrisTaskResult::CommitMessages(vec![msg]));
                         }
                         _ => {
-                            let _ = tx.send(IrisTaskResult::Error(
-                                "Unexpected response type from agent".to_string(),
-                            ));
+                            let _ = tx.send(IrisTaskResult::Error {
+                                task_type: TaskType::Commit,
+                                error: "Unexpected response type from agent".to_string(),
+                            });
                         }
                     }
                 }
                 Err(e) => {
-                    let _ = tx.send(IrisTaskResult::Error(format!("Agent error: {}", e)));
+                    let _ = tx.send(IrisTaskResult::Error {
+                        task_type: TaskType::Commit,
+                        error: format!("Agent error: {}", e),
+                    });
                 }
             }
         });
@@ -1617,9 +1606,10 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
 
         let Some(repo) = &self.state.repo else {
             let tx = self.iris_result_tx.clone();
-            let _ = tx.send(IrisTaskResult::Error(
-                "Repository not available".to_string(),
-            ));
+            let _ = tx.send(IrisTaskResult::Error {
+                task_type: TaskType::SemanticBlame,
+                error: "Repository not available".to_string(),
+            });
             return;
         };
 
@@ -1629,7 +1619,10 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
                 let lines: Vec<&str> = content.lines().collect();
                 if start_line == 0 || start_line > lines.len() {
                     let tx = self.iris_result_tx.clone();
-                    let _ = tx.send(IrisTaskResult::Error("Invalid line range".to_string()));
+                    let _ = tx.send(IrisTaskResult::Error {
+                        task_type: TaskType::SemanticBlame,
+                        error: "Invalid line range".to_string(),
+                    });
                     return;
                 }
                 let end = end_line.min(lines.len());
@@ -1637,7 +1630,10 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
             }
             Err(e) => {
                 let tx = self.iris_result_tx.clone();
-                let _ = tx.send(IrisTaskResult::Error(format!("Could not read file: {}", e)));
+                let _ = tx.send(IrisTaskResult::Error {
+                    task_type: TaskType::SemanticBlame,
+                    error: format!("Could not read file: {}", e),
+                });
                 return;
             }
         };
@@ -1666,12 +1662,18 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
             Ok(output) => {
                 let err = String::from_utf8_lossy(&output.stderr);
                 let tx = self.iris_result_tx.clone();
-                let _ = tx.send(IrisTaskResult::Error(format!("Git blame failed: {}", err)));
+                let _ = tx.send(IrisTaskResult::Error {
+                    task_type: TaskType::SemanticBlame,
+                    error: format!("Git blame failed: {}", err),
+                });
                 return;
             }
             Err(e) => {
                 let tx = self.iris_result_tx.clone();
-                let _ = tx.send(IrisTaskResult::Error(format!("Could not run git: {}", e)));
+                let _ = tx.send(IrisTaskResult::Error {
+                    task_type: TaskType::SemanticBlame,
+                    error: format!("Could not run git: {}", e),
+                });
                 return;
             }
         };
@@ -1697,9 +1699,10 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
 
         let Some(agent) = self.agent_service.clone() else {
             let tx = self.iris_result_tx.clone();
-            let _ = tx.send(IrisTaskResult::Error(
-                "Agent service not available".to_string(),
-            ));
+            let _ = tx.send(IrisTaskResult::Error {
+                task_type: TaskType::SemanticBlame,
+                error: "Agent service not available".to_string(),
+            });
             return;
         };
 
@@ -1739,16 +1742,17 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
                         let _ = tx.send(IrisTaskResult::SemanticBlame(result));
                     }
                     _ => {
-                        let _ = tx.send(IrisTaskResult::Error(
-                            "Unexpected response type from agent".to_string(),
-                        ));
+                        let _ = tx.send(IrisTaskResult::Error {
+                            task_type: TaskType::SemanticBlame,
+                            error: "Unexpected response type from agent".to_string(),
+                        });
                     }
                 },
                 Err(e) => {
-                    let _ = tx.send(IrisTaskResult::Error(format!(
-                        "Semantic blame error: {}",
-                        e
-                    )));
+                    let _ = tx.send(IrisTaskResult::Error {
+                        task_type: TaskType::SemanticBlame,
+                        error: format!("Semantic blame error: {}", e),
+                    });
                 }
             }
         });
