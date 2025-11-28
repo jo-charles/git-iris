@@ -246,6 +246,8 @@ pub fn list_available_themes() -> Vec<ThemeInfo> {
                 name: (*name).to_string(),
                 display_name: (*display_name).to_string(),
                 variant: theme.meta.variant,
+                author: theme.meta.author.clone().unwrap_or_default(),
+                description: theme.meta.description.clone().unwrap_or_default(),
                 builtin: true,
                 path: None,
             }
@@ -270,6 +272,8 @@ pub fn list_available_themes() -> Vec<ThemeInfo> {
                         name,
                         display_name: theme.meta.name,
                         variant: theme.meta.variant,
+                        author: theme.meta.author.unwrap_or_default(),
+                        description: theme.meta.description.unwrap_or_default(),
                         builtin: false,
                         path: Some(path),
                     });
@@ -290,6 +294,10 @@ pub struct ThemeInfo {
     pub display_name: String,
     /// Theme variant (dark/light).
     pub variant: ThemeVariant,
+    /// Theme author.
+    pub author: String,
+    /// Theme description.
+    pub description: String,
     /// Whether this is a builtin theme.
     pub builtin: bool,
     /// Path to theme file (None for builtins).
@@ -321,164 +329,4 @@ fn discovery_paths() -> Vec<std::path::PathBuf> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_current_returns_theme() {
-        // Reset to default first to handle parallel test execution
-        set_theme(Theme::builtin_neon());
-
-        let theme = current();
-        // Should be SilkCircuit Neon now
-        assert_eq!(theme.meta.name, "SilkCircuit Neon");
-        assert_eq!(theme.meta.variant, ThemeVariant::Dark);
-    }
-
-    #[test]
-    fn test_set_and_get_theme() {
-        // Create a custom theme
-        let mut custom = Theme::builtin_neon();
-        custom.meta.name = "Test Theme For Set".to_string();
-
-        // Set it
-        set_theme(custom);
-
-        // Verify it's active
-        let theme = current();
-        assert_eq!(theme.meta.name, "Test Theme For Set");
-
-        // Reset to default
-        set_theme(Theme::builtin_neon());
-    }
-
-    #[test]
-    fn test_load_theme_by_name_builtin() {
-        // Should load all builtin themes
-        assert!(load_theme_by_name("silkcircuit-neon").is_ok());
-        assert_eq!(current().meta.name, "SilkCircuit Neon");
-
-        assert!(load_theme_by_name("silkcircuit-soft").is_ok());
-        assert_eq!(current().meta.name, "SilkCircuit Soft");
-
-        assert!(load_theme_by_name("silkcircuit-glow").is_ok());
-        assert_eq!(current().meta.name, "SilkCircuit Glow");
-
-        assert!(load_theme_by_name("silkcircuit-vibrant").is_ok());
-        assert_eq!(current().meta.name, "SilkCircuit Vibrant");
-
-        assert!(load_theme_by_name("silkcircuit-dawn").is_ok());
-        assert_eq!(current().meta.name, "SilkCircuit Dawn");
-
-        // Also test "default" alias
-        assert!(load_theme_by_name("default").is_ok());
-        assert_eq!(current().meta.name, "SilkCircuit Neon");
-    }
-
-    #[test]
-    fn test_load_theme_by_name_not_found() {
-        let result = load_theme_by_name("nonexistent-theme");
-        assert!(result.is_err());
-        assert!(matches!(result, Err(ThemeError::ThemeNotFound { .. })));
-    }
-
-    #[test]
-    fn test_list_available_themes_includes_builtins() {
-        let themes = list_available_themes();
-
-        // Should have all 5 builtin themes
-        let builtins: Vec<_> = themes.iter().filter(|t| t.builtin).collect();
-        assert_eq!(builtins.len(), 5);
-
-        // Check that we have all variants
-        assert!(builtins.iter().any(|t| t.name == "silkcircuit-neon"));
-        assert!(builtins.iter().any(|t| t.name == "silkcircuit-soft"));
-        assert!(builtins.iter().any(|t| t.name == "silkcircuit-glow"));
-        assert!(builtins.iter().any(|t| t.name == "silkcircuit-vibrant"));
-        assert!(builtins.iter().any(|t| t.name == "silkcircuit-dawn"));
-
-        // Check that dawn is the light variant
-        let dawn = builtins
-            .iter()
-            .find(|t| t.name == "silkcircuit-dawn")
-            .unwrap();
-        assert_eq!(dawn.variant, ThemeVariant::Light);
-    }
-
-    #[test]
-    fn test_theme_color_access() {
-        let theme = current();
-
-        // Test existing tokens
-        let primary = theme.color("accent.primary");
-        assert_ne!(primary, ThemeColor::FALLBACK);
-
-        // Test fallback for missing tokens
-        let missing = theme.color("nonexistent.token");
-        assert_eq!(missing, ThemeColor::FALLBACK);
-    }
-
-    #[test]
-    fn test_theme_style_access() {
-        let theme = current();
-
-        // Test existing style
-        let keyword = theme.style("keyword");
-        assert!(keyword.fg.is_some());
-        assert!(keyword.bold);
-
-        // Test fallback for missing style
-        let missing = theme.style("nonexistent_style");
-        assert!(missing.fg.is_none());
-    }
-
-    #[test]
-    fn test_theme_gradient_access() {
-        let theme = current();
-
-        // Test existing gradient
-        let color = theme.gradient("primary", 0.5);
-        assert_ne!(color, ThemeColor::FALLBACK);
-
-        // Test fallback for missing gradient
-        let missing = theme.gradient("nonexistent", 0.5);
-        assert_eq!(missing, ThemeColor::FALLBACK);
-    }
-
-    #[test]
-    fn test_theme_has_methods() {
-        let theme = current();
-
-        // Test has_token
-        assert!(theme.has_token("accent.primary"));
-        assert!(!theme.has_token("nonexistent.token"));
-
-        // Test has_style
-        assert!(theme.has_style("keyword"));
-        assert!(!theme.has_style("nonexistent_style"));
-
-        // Test has_gradient
-        assert!(theme.has_gradient("primary"));
-        assert!(!theme.has_gradient("nonexistent"));
-    }
-
-    #[test]
-    fn test_theme_names_methods() {
-        let theme = current();
-
-        // Should have tokens
-        let tokens = theme.token_names();
-        assert!(!tokens.is_empty());
-        assert!(tokens.contains(&"accent.primary"));
-
-        // Should have styles
-        let styles = theme.style_names();
-        assert!(!styles.is_empty());
-        assert!(styles.contains(&"keyword"));
-
-        // Should have gradients
-        let gradients = theme.gradient_names();
-        assert!(!gradients.is_empty());
-        assert!(gradients.contains(&"primary"));
-    }
-}
+mod tests;

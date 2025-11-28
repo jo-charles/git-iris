@@ -3,7 +3,7 @@
 use crossterm::event::{KeyCode, KeyEvent};
 
 use crate::studio::events::SideEffect;
-use crate::studio::state::{Modal, StudioState};
+use crate::studio::state::{Modal, SettingsField, StudioState};
 
 /// Handle key events in settings modal
 pub fn handle(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffect> {
@@ -80,6 +80,26 @@ fn handle_navigation_mode(state: &mut StudioState, key: KeyEvent) -> Vec<SideEff
             vec![]
         }
         KeyCode::Enter | KeyCode::Char(' ') => {
+            // Check if Theme field - open theme selector modal instead
+            if let Some(Modal::Settings(settings)) = &state.modal
+                && settings.current_field() == SettingsField::Theme
+            {
+                // Get themes and current selection index
+                let themes = settings.available_themes.clone();
+                let selected = themes
+                    .iter()
+                    .position(|t| t.id == settings.theme)
+                    .unwrap_or(0);
+                // Open theme selector modal
+                state.modal = Some(Modal::ThemeSelector {
+                    input: String::new(),
+                    themes,
+                    selected,
+                    scroll: 0,
+                });
+                state.mark_dirty();
+                return vec![];
+            }
             if let Some(Modal::Settings(settings)) = &mut state.modal {
                 settings.start_editing();
             }

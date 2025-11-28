@@ -10,6 +10,7 @@ mod preset_selector;
 mod ref_selector;
 mod search;
 mod settings;
+mod theme_selector;
 
 use crossterm::event::KeyEvent;
 
@@ -32,6 +33,7 @@ pub fn handle_modal_key(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffec
         Some(Modal::PresetSelector { .. }) => preset_selector::handle(state, key),
         Some(Modal::EmojiSelector { .. }) => emoji_selector::handle(state, key),
         Some(Modal::Settings(_)) => settings::handle(state, key),
+        Some(Modal::ThemeSelector { .. }) => theme_selector::handle(state, key),
         None => vec![],
     }
 }

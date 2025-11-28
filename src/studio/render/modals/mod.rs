@@ -11,6 +11,7 @@ mod preset_selector;
 mod ref_selector;
 mod search;
 mod settings;
+mod theme_selector;
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -61,6 +62,11 @@ fn modal_size(modal: &Modal, area: Rect) -> (u16, u16) {
         Modal::EmojiSelector { .. } => (55.min(max_width), 26.min(max_height)),
         // Settings modal - full width for fields, compact preview strip
         Modal::Settings(_) => (70.min(max_width), 24.min(max_height)),
+        // Theme selector modal - spacious for preview and list
+        Modal::ThemeSelector { themes, .. } => {
+            let list_height = (themes.len() as u16 + 8).min(28);
+            (75.min(max_width), list_height.min(max_height))
+        }
     }
 }
 
@@ -112,5 +118,11 @@ pub fn render_modal(state: &StudioState, frame: &mut Frame, last_render: Instant
             scroll,
         } => emoji_selector::render(frame, modal_area, input, emojis, *selected, *scroll),
         Modal::Settings(settings_state) => settings::render(frame, modal_area, settings_state),
+        Modal::ThemeSelector {
+            input,
+            themes,
+            selected,
+            scroll,
+        } => theme_selector::render(frame, modal_area, input, themes, *selected, *scroll),
     }
 }

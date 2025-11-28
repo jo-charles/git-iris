@@ -318,6 +318,17 @@ pub enum Modal {
     },
     /// Settings configuration modal
     Settings(Box<SettingsState>),
+    /// Theme selector modal
+    ThemeSelector {
+        /// Current input/filter
+        input: String,
+        /// Available themes
+        themes: Vec<ThemeOptionInfo>,
+        /// Selected index
+        selected: usize,
+        /// Scroll offset for long lists
+        scroll: usize,
+    },
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -396,7 +407,7 @@ impl SettingsField {
     }
 }
 
-/// Theme info for settings display
+/// Theme info for settings and selector display
 #[derive(Debug, Clone)]
 pub struct ThemeOptionInfo {
     /// Theme identifier (e.g., `silkcircuit-neon`)
@@ -405,6 +416,10 @@ pub struct ThemeOptionInfo {
     pub display_name: String,
     /// Variant indicator (dark/light)
     pub variant: String,
+    /// Theme author
+    pub author: String,
+    /// Theme description
+    pub description: String,
 }
 
 /// State for the settings modal
@@ -463,8 +478,8 @@ impl SettingsState {
         let available_providers: Vec<String> =
             Provider::ALL.iter().map(|p| p.name().to_string()).collect();
 
-        // Get available themes
-        let available_themes: Vec<ThemeOptionInfo> = theme::list_available_themes()
+        // Get available themes (sorted: dark first, then light, alphabetically within each)
+        let mut available_themes: Vec<ThemeOptionInfo> = theme::list_available_themes()
             .into_iter()
             .map(|info| ThemeOptionInfo {
                 id: info.name,
@@ -473,8 +488,18 @@ impl SettingsState {
                     theme::ThemeVariant::Dark => "dark".to_string(),
                     theme::ThemeVariant::Light => "light".to_string(),
                 },
+                author: info.author,
+                description: info.description,
             })
             .collect();
+        available_themes.sort_by(|a, b| {
+            // Dark themes first, then sort alphabetically
+            match (a.variant.as_str(), b.variant.as_str()) {
+                ("dark", "light") => std::cmp::Ordering::Less,
+                ("light", "dark") => std::cmp::Ordering::Greater,
+                _ => a.display_name.cmp(&b.display_name),
+            }
+        });
 
         // Get current theme name
         let current_theme = theme::current();
