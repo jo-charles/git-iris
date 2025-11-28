@@ -13,6 +13,16 @@ use std::sync::Arc;
 
 use super::components::{CodeViewState, DiffViewState, FileTreeState, MessageEditorState};
 
+/// Safely truncate a string to `max_chars`, adding "..." if truncated.
+/// Handles UTF-8 correctly (no panic on multi-byte chars).
+fn truncate_preview(s: &str, max_chars: usize) -> String {
+    if s.chars().count() <= max_chars {
+        s.to_string()
+    } else {
+        format!("{}...", s.chars().take(max_chars).collect::<String>())
+    }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // Mode Enum
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -356,6 +366,19 @@ impl ChatState {
         if self.scroll_offset >= max_scroll {
             self.auto_scroll = true;
         }
+    }
+
+    /// Estimate max scroll based on message content (~3 lines per message + content lines)
+    pub fn estimated_max_scroll(&self) -> usize {
+        let mut total_lines = 0;
+        for msg in &self.messages {
+            total_lines += 2; // Role header + separator
+            total_lines += msg.content.lines().count().max(1);
+        }
+        if let Some(ref streaming) = self.streaming_response {
+            total_lines += 2 + streaming.lines().count().max(1);
+        }
+        total_lines.saturating_sub(10) // Assume ~10 visible lines
     }
 
     /// Clear the chat history
@@ -1316,44 +1339,25 @@ impl StudioState {
 
         // Code review
         if !self.modes.review.review_content.is_empty() {
-            let preview = if self.modes.review.review_content.len() > 300 {
-                format!("{}...", &self.modes.review.review_content[..300])
-            } else {
-                self.modes.review.review_content.clone()
-            };
+            let preview = truncate_preview(&self.modes.review.review_content, 300);
             sections.push(format!("Code Review:\n{}", preview));
         }
 
         // PR description
         if !self.modes.pr.pr_content.is_empty() {
-            let preview = if self.modes.pr.pr_content.len() > 300 {
-                format!("{}...", &self.modes.pr.pr_content[..300])
-            } else {
-                self.modes.pr.pr_content.clone()
-            };
+            let preview = truncate_preview(&self.modes.pr.pr_content, 300);
             sections.push(format!("PR Description:\n{}", preview));
         }
 
         // Changelog
         if !self.modes.changelog.changelog_content.is_empty() {
-            let preview = if self.modes.changelog.changelog_content.len() > 300 {
-                format!("{}...", &self.modes.changelog.changelog_content[..300])
-            } else {
-                self.modes.changelog.changelog_content.clone()
-            };
+            let preview = truncate_preview(&self.modes.changelog.changelog_content, 300);
             sections.push(format!("Changelog:\n{}", preview));
         }
 
         // Release notes
         if !self.modes.release_notes.release_notes_content.is_empty() {
-            let preview = if self.modes.release_notes.release_notes_content.len() > 300 {
-                format!(
-                    "{}...",
-                    &self.modes.release_notes.release_notes_content[..300]
-                )
-            } else {
-                self.modes.release_notes.release_notes_content.clone()
-            };
+            let preview = truncate_preview(&self.modes.release_notes.release_notes_content, 300);
             sections.push(format!("Release Notes:\n{}", preview));
         }
 

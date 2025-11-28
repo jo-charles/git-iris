@@ -1095,13 +1095,21 @@ fn apply_scroll(state: &mut StudioState, direction: ScrollDirection, amount: usi
             }
             PanelId::Right => {
                 // Review content scroll
+                let max_scroll = state
+                    .modes
+                    .review
+                    .review_content
+                    .lines()
+                    .count()
+                    .saturating_sub(1);
                 match direction {
                     ScrollDirection::Up => {
                         state.modes.review.review_scroll =
                             state.modes.review.review_scroll.saturating_sub(amount);
                     }
                     ScrollDirection::Down => {
-                        state.modes.review.review_scroll += amount;
+                        state.modes.review.review_scroll =
+                            (state.modes.review.review_scroll + amount).min(max_scroll);
                     }
                     _ => {}
                 }
@@ -1138,47 +1146,70 @@ fn apply_scroll(state: &mut StudioState, direction: ScrollDirection, amount: usi
             }
             PanelId::Right => {
                 // PR content scroll
+                let max_scroll = state.modes.pr.pr_content.lines().count().saturating_sub(1);
                 match direction {
                     ScrollDirection::Up => {
                         state.modes.pr.pr_scroll = state.modes.pr.pr_scroll.saturating_sub(amount);
                     }
                     ScrollDirection::Down => {
-                        state.modes.pr.pr_scroll += amount;
+                        state.modes.pr.pr_scroll =
+                            (state.modes.pr.pr_scroll + amount).min(max_scroll);
                     }
                     _ => {}
                 }
             }
         },
         Mode::Changelog => match state.focused_panel {
-            PanelId::Center | PanelId::Right => match direction {
-                ScrollDirection::Up => {
-                    state.modes.changelog.changelog_scroll = state
-                        .modes
-                        .changelog
-                        .changelog_scroll
-                        .saturating_sub(amount);
+            PanelId::Center | PanelId::Right => {
+                let max_scroll = state
+                    .modes
+                    .changelog
+                    .changelog_content
+                    .lines()
+                    .count()
+                    .saturating_sub(1);
+                match direction {
+                    ScrollDirection::Up => {
+                        state.modes.changelog.changelog_scroll = state
+                            .modes
+                            .changelog
+                            .changelog_scroll
+                            .saturating_sub(amount);
+                    }
+                    ScrollDirection::Down => {
+                        state.modes.changelog.changelog_scroll =
+                            (state.modes.changelog.changelog_scroll + amount).min(max_scroll);
+                    }
+                    _ => {}
                 }
-                ScrollDirection::Down => {
-                    state.modes.changelog.changelog_scroll += amount;
-                }
-                _ => {}
-            },
+            }
             PanelId::Left => {}
         },
         Mode::ReleaseNotes => match state.focused_panel {
-            PanelId::Center | PanelId::Right => match direction {
-                ScrollDirection::Up => {
-                    state.modes.release_notes.release_notes_scroll = state
-                        .modes
-                        .release_notes
-                        .release_notes_scroll
-                        .saturating_sub(amount);
+            PanelId::Center | PanelId::Right => {
+                let max_scroll = state
+                    .modes
+                    .release_notes
+                    .release_notes_content
+                    .lines()
+                    .count()
+                    .saturating_sub(1);
+                match direction {
+                    ScrollDirection::Up => {
+                        state.modes.release_notes.release_notes_scroll = state
+                            .modes
+                            .release_notes
+                            .release_notes_scroll
+                            .saturating_sub(amount);
+                    }
+                    ScrollDirection::Down => {
+                        state.modes.release_notes.release_notes_scroll =
+                            (state.modes.release_notes.release_notes_scroll + amount)
+                                .min(max_scroll);
+                    }
+                    _ => {}
                 }
-                ScrollDirection::Down => {
-                    state.modes.release_notes.release_notes_scroll += amount;
-                }
-                _ => {}
-            },
+            }
             PanelId::Left => {}
         },
     }

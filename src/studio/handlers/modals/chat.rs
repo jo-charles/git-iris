@@ -60,9 +60,8 @@ pub fn handle(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffect> {
         KeyCode::Down => {
             // Scroll down in chat history
             if let Some(Modal::Chat(chat)) = &mut state.modal {
-                // We don't know max_scroll here, so just increment and let render clamp
-                chat.scroll_offset = chat.scroll_offset.saturating_add(1);
-                // Don't re-enable auto_scroll here - let render handle it when at bottom
+                let max_scroll = chat.estimated_max_scroll();
+                chat.scroll_down(1, max_scroll);
             }
             state.mark_dirty();
             vec![]
@@ -78,7 +77,8 @@ pub fn handle(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffect> {
         KeyCode::PageDown => {
             // Scroll down faster
             if let Some(Modal::Chat(chat)) = &mut state.modal {
-                chat.scroll_offset = chat.scroll_offset.saturating_add(10);
+                let max_scroll = chat.estimated_max_scroll();
+                chat.scroll_down(10, max_scroll);
             }
             state.mark_dirty();
             vec![]

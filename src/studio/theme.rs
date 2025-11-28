@@ -54,8 +54,8 @@ pub const BG_DARK: Color = Color::Rgb(18, 18, 24);
 /// Panel background
 pub const BG_PANEL: Color = Color::Rgb(24, 24, 32);
 
-/// Highlighted/selected background - more visible with purple tint
-pub const BG_HIGHLIGHT: Color = Color::Rgb(45, 40, 60);
+/// Highlighted/selected background - purple tint, distinct from `BG_ACTIVE`
+pub const BG_HIGHLIGHT: Color = Color::Rgb(55, 50, 75);
 
 /// Elevated surface
 pub const BG_ELEVATED: Color = Color::Rgb(55, 50, 70);
@@ -73,11 +73,11 @@ pub const BG_CODE: Color = Color::Rgb(30, 30, 40);
 /// Primary text - soft white
 pub const TEXT_PRIMARY: Color = Color::Rgb(248, 248, 242);
 
-/// Secondary/dimmed text
-pub const TEXT_DIM: Color = Color::Rgb(98, 114, 164);
+/// Secondary/dimmed text - line numbers, metadata (~4.5:1 contrast)
+pub const TEXT_DIM: Color = Color::Rgb(110, 125, 175);
 
-/// Muted text for borders and less important elements
-pub const TEXT_MUTED: Color = Color::Rgb(68, 71, 90);
+/// Muted text for borders and less important elements (~5.5:1 contrast)
+pub const TEXT_MUTED: Color = Color::Rgb(130, 135, 160);
 
 /// Secondary text - slightly dimmed
 pub const TEXT_SECONDARY: Color = Color::Rgb(188, 188, 202);

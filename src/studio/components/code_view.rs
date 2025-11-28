@@ -11,6 +11,7 @@ use ratatui::widgets::{
 };
 use std::fs;
 use std::path::{Path, PathBuf};
+use unicode_width::UnicodeWidthStr;
 
 use super::syntax::SyntaxHighlighter;
 use crate::studio::theme;
@@ -307,16 +308,26 @@ fn render_code_line(
     // Add syntax-highlighted content
     if let Some(hl) = highlighter {
         let styled_spans = hl.highlight_line(content);
-        let mut char_count = 0;
+        let mut display_width = 0;
 
         for (style, text) in styled_spans {
-            if char_count >= available_width {
+            if display_width >= available_width {
                 break;
             }
 
-            let remaining = available_width - char_count;
-            let text_chars: String = text.chars().take(remaining).collect();
-            char_count += text_chars.chars().count();
+            let remaining = available_width - display_width;
+            // Truncate by display width, not char count
+            let mut truncated = String::new();
+            let mut width = 0;
+            for c in text.chars() {
+                let c_width = unicode_width::UnicodeWidthChar::width(c).unwrap_or(1);
+                if width + c_width > remaining {
+                    break;
+                }
+                truncated.push(c);
+                width += c_width;
+            }
+            display_width += width;
 
             // Apply selection/highlight overlay
             let final_style = if is_in_selection {
@@ -328,11 +339,11 @@ fn render_code_line(
                 style
             };
 
-            spans.push(Span::styled(text_chars, final_style));
+            spans.push(Span::styled(truncated, final_style));
         }
 
         // Add truncation indicator if needed
-        if content.chars().count() > available_width {
+        if content.width() > available_width {
             spans.push(Span::styled("...", Style::default().fg(theme::TEXT_MUTED)));
         }
     } else {
@@ -347,12 +358,20 @@ fn render_code_line(
             Style::default().fg(theme::TEXT_SECONDARY)
         };
 
-        let char_count = content.chars().count();
-        let display_content = if char_count > available_width {
-            let truncated: String = content
-                .chars()
-                .take(available_width.saturating_sub(3))
-                .collect();
+        let content_width = content.width();
+        let display_content = if content_width > available_width {
+            // Truncate by display width
+            let mut truncated = String::new();
+            let mut width = 0;
+            let max_width = available_width.saturating_sub(3);
+            for c in content.chars() {
+                let c_width = unicode_width::UnicodeWidthChar::width(c).unwrap_or(1);
+                if width + c_width > max_width {
+                    break;
+                }
+                truncated.push(c);
+                width += c_width;
+            }
             format!("{}...", truncated)
         } else {
             content.to_string()

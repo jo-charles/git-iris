@@ -510,8 +510,8 @@ fn insert_path(
     let name = components[0].as_os_str().to_string_lossy().to_string();
     let is_last = components.len() == 1;
 
-    // Build path up to this point
-    let current_path: PathBuf = components[..1].iter().collect();
+    // Build path up to this directory (take first depth+1 components from full_path)
+    let current_path: PathBuf = full_path.components().take(depth + 1).collect();
 
     // Find or create node
     let node_idx = nodes.iter().position(|n| n.name == name);
