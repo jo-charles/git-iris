@@ -119,8 +119,7 @@ fn render_settings_fields(frame: &mut Frame, area: Rect, state: &SettingsState) 
         let suffix = if *field == SettingsField::Theme {
             state
                 .current_theme_info()
-                .map(|info| if info.variant == "light" { " ☀" } else { "" })
-                .unwrap_or("")
+                .map_or("", |info| if info.variant == "light" { " ☀" } else { "" })
         } else {
             ""
         };
