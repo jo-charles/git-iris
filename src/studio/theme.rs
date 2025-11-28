@@ -1,14 +1,54 @@
 //! `SilkCircuit` Neon theme for Iris Studio
 //!
 //! Electric meets elegant - the visual identity for git-iris TUI.
+//!
+//! This module now wraps the centralized token-based theme system,
+//! providing backwards-compatible access to colors and styles.
 
 #![allow(dead_code)] // Theme constants/functions are scaffolded for future use
 
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Color, Style};
+use ratatui::text::Span;
+
+use crate::theme::adapters::ratatui::{gradient_line as theme_gradient_line, ToRatatuiColor, ToRatatuiStyle};
+use crate::theme;
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Core Palette
+// Core Palette (derived from theme tokens)
 // ═══════════════════════════════════════════════════════════════════════════════
+
+/// Get Electric Purple from theme
+fn electric_purple() -> Color {
+    theme::current().color("accent.primary").to_ratatui()
+}
+
+/// Get Neon Cyan from theme
+fn neon_cyan() -> Color {
+    theme::current().color("accent.secondary").to_ratatui()
+}
+
+/// Get Coral from theme
+fn coral() -> Color {
+    theme::current().color("accent.tertiary").to_ratatui()
+}
+
+/// Get Electric Yellow from theme
+fn electric_yellow() -> Color {
+    theme::current().color("warning").to_ratatui()
+}
+
+/// Get Success Green from theme
+fn success_green() -> Color {
+    theme::current().color("success").to_ratatui()
+}
+
+/// Get Error Red from theme
+fn error_red() -> Color {
+    theme::current().color("error").to_ratatui()
+}
+
+// Legacy constants - kept for backwards compatibility
+// TODO: Deprecate these in favor of theme::current().color()
 
 /// Electric Purple #e135ff - Keywords, markers, importance, active mode
 pub const ELECTRIC_PURPLE: Color = Color::Rgb(225, 53, 255);
@@ -45,8 +85,35 @@ pub const MAGENTA_ACCENT: Color = Color::Rgb(255, 85, 255);
 pub const SOFT_PURPLE: Color = Color::Rgb(180, 130, 255);
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Backgrounds
+// Backgrounds (derived from theme tokens)
 // ═══════════════════════════════════════════════════════════════════════════════
+
+/// Get background base from theme
+fn bg_base() -> Color {
+    theme::current().color("bg.base").to_ratatui()
+}
+
+/// Get panel background from theme
+fn bg_panel() -> Color {
+    theme::current().color("bg.panel").to_ratatui()
+}
+
+/// Get highlight background from theme
+fn bg_highlight() -> Color {
+    theme::current().color("bg.highlight").to_ratatui()
+}
+
+/// Get active background from theme
+fn bg_active() -> Color {
+    theme::current().color("bg.active").to_ratatui()
+}
+
+/// Get code background from theme
+fn bg_code() -> Color {
+    theme::current().color("bg.code").to_ratatui()
+}
+
+// Legacy background constants
 
 /// Dark background base
 pub const BG_DARK: Color = Color::Rgb(18, 18, 24);
@@ -67,8 +134,25 @@ pub const BG_ACTIVE: Color = Color::Rgb(60, 45, 85);
 pub const BG_CODE: Color = Color::Rgb(30, 30, 40);
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Text Colors
+// Text Colors (derived from theme tokens)
 // ═══════════════════════════════════════════════════════════════════════════════
+
+/// Get primary text from theme
+fn text_primary() -> Color {
+    theme::current().color("text.primary").to_ratatui()
+}
+
+/// Get dim text from theme
+fn text_dim() -> Color {
+    theme::current().color("text.dim").to_ratatui()
+}
+
+/// Get muted text from theme
+fn text_muted() -> Color {
+    theme::current().color("text.muted").to_ratatui()
+}
+
+// Legacy text constants
 
 /// Primary text - soft white
 pub const TEXT_PRIMARY: Color = Color::Rgb(248, 248, 242);
@@ -86,95 +170,92 @@ pub const TEXT_SECONDARY: Color = Color::Rgb(188, 188, 202);
 pub const SELECTION_BG: Color = Color::Rgb(60, 60, 80);
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Semantic Styles
+// Semantic Styles (using new theme system)
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /// Style for commit hashes
 pub fn commit_hash() -> Style {
-    Style::default().fg(CORAL)
+    theme::current().style("commit_hash").to_ratatui()
 }
 
 /// Style for file paths
 pub fn file_path() -> Style {
-    Style::default().fg(NEON_CYAN)
+    theme::current().style("file_path").to_ratatui()
 }
 
 /// Style for file paths with bold
 pub fn file_path_bold() -> Style {
-    Style::default().fg(NEON_CYAN).add_modifier(Modifier::BOLD)
+    theme::current().style("file_path_bold").to_ratatui()
 }
 
 /// Style for keywords and important markers
 pub fn keyword() -> Style {
-    Style::default().fg(ELECTRIC_PURPLE)
+    theme::current().style("keyword").to_ratatui()
 }
 
 /// Style for line numbers
 pub fn line_number() -> Style {
-    Style::default().fg(TEXT_DIM)
+    theme::current().style("line_number").to_ratatui()
 }
 
 /// Style for the current/cursor line
 pub fn cursor_line() -> Style {
-    Style::default().bg(BG_HIGHLIGHT)
+    theme::current().style("cursor_line").to_ratatui()
 }
 
 /// Style for selected items
 pub fn selected() -> Style {
-    Style::default().bg(BG_HIGHLIGHT).fg(NEON_CYAN)
+    theme::current().style("selected").to_ratatui()
 }
 
 /// Style for actively selected (focused panel, selected item)
 pub fn active_selected() -> Style {
-    Style::default()
-        .bg(BG_ACTIVE)
-        .fg(ELECTRIC_PURPLE)
-        .add_modifier(Modifier::BOLD)
+    theme::current().style("active_selected").to_ratatui()
 }
 
 /// Style for focused panel border
 pub fn focused_border() -> Style {
-    Style::default().fg(NEON_CYAN)
+    theme::current().style("focused_border").to_ratatui()
 }
 
 /// Style for unfocused panel border
 pub fn unfocused_border() -> Style {
-    Style::default().fg(TEXT_MUTED)
+    theme::current().style("unfocused_border").to_ratatui()
 }
 
 /// Style for success messages
 pub fn success() -> Style {
-    Style::default().fg(SUCCESS_GREEN)
+    theme::current().style("success_style").to_ratatui()
 }
 
 /// Style for error messages
 pub fn error() -> Style {
-    Style::default().fg(ERROR_RED)
+    theme::current().style("error_style").to_ratatui()
 }
 
 /// Style for warning messages
 pub fn warning() -> Style {
-    Style::default().fg(ELECTRIC_YELLOW)
+    theme::current().style("warning_style").to_ratatui()
 }
 
 /// Style for timestamps
 pub fn timestamp() -> Style {
-    Style::default().fg(ELECTRIC_YELLOW)
+    theme::current().style("timestamp").to_ratatui()
 }
 
 /// Style for author names
 pub fn author() -> Style {
-    Style::default().fg(TEXT_PRIMARY)
+    theme::current().style("author").to_ratatui()
 }
 
 /// Style for dimmed/secondary text
 pub fn dimmed() -> Style {
-    Style::default().fg(TEXT_DIM)
+    theme::current().style("dimmed").to_ratatui()
 }
 
 /// Style for inline code in chat/markdown
 pub fn inline_code() -> Style {
-    Style::default().fg(SUCCESS_GREEN).bg(BG_CODE)
+    theme::current().style("inline_code").to_ratatui()
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -183,19 +264,17 @@ pub fn inline_code() -> Style {
 
 /// Style for active mode tab
 pub fn mode_active() -> Style {
-    Style::default()
-        .fg(ELECTRIC_PURPLE)
-        .add_modifier(Modifier::BOLD)
+    theme::current().style("mode_active").to_ratatui()
 }
 
 /// Style for inactive mode tab
 pub fn mode_inactive() -> Style {
-    Style::default().fg(TEXT_DIM)
+    theme::current().style("mode_inactive").to_ratatui()
 }
 
 /// Style for mode tab hover
 pub fn mode_hover() -> Style {
-    Style::default().fg(NEON_CYAN)
+    theme::current().style("mode_hover").to_ratatui()
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -204,22 +283,22 @@ pub fn mode_hover() -> Style {
 
 /// Style for git staged files
 pub fn git_staged() -> Style {
-    Style::default().fg(SUCCESS_GREEN)
+    theme::current().style("git_staged").to_ratatui()
 }
 
 /// Style for git modified files
 pub fn git_modified() -> Style {
-    Style::default().fg(ELECTRIC_YELLOW)
+    theme::current().style("git_modified").to_ratatui()
 }
 
 /// Style for git untracked files
 pub fn git_untracked() -> Style {
-    Style::default().fg(TEXT_DIM)
+    theme::current().style("git_untracked").to_ratatui()
 }
 
 /// Style for git deleted files
 pub fn git_deleted() -> Style {
-    Style::default().fg(ERROR_RED)
+    theme::current().style("git_deleted").to_ratatui()
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -234,25 +313,19 @@ pub fn git_deleted() -> Style {
 )]
 pub fn heat_color(frequency: f32) -> Color {
     let frequency = frequency.clamp(0.0, 1.0);
+    let t = theme::current();
 
-    // Cold: TEXT_DIM (98, 114, 164)
-    // Warm: CORAL (255, 106, 193)
-    // Hot: ERROR_RED (255, 99, 99)
+    // Get colors from theme
+    let cold = t.color("text.dim");
+    let warm = t.color("accent.tertiary");
+    let hot = t.color("error");
 
     if frequency < 0.5 {
-        let t = frequency * 2.0;
-        Color::Rgb(
-            (98.0 + (255.0 - 98.0) * t) as u8,
-            (114.0 + (106.0 - 114.0) * t) as u8,
-            (164.0 + (193.0 - 164.0) * t) as u8,
-        )
+        let interp = frequency * 2.0;
+        cold.lerp(&warm, interp).to_ratatui()
     } else {
-        let t = (frequency - 0.5) * 2.0;
-        Color::Rgb(
-            255,
-            (106.0 + (99.0 - 106.0) * t) as u8,
-            (193.0 + (99.0 - 193.0) * t) as u8,
-        )
+        let interp = (frequency - 0.5) * 2.0;
+        warm.lerp(&hot, interp).to_ratatui()
     }
 }
 
@@ -262,22 +335,22 @@ pub fn heat_color(frequency: f32) -> Color {
 
 /// Style for added lines in diff
 pub fn diff_added() -> Style {
-    Style::default().fg(SUCCESS_GREEN)
+    theme::current().style("diff_added").to_ratatui()
 }
 
 /// Style for removed lines in diff
 pub fn diff_removed() -> Style {
-    Style::default().fg(ERROR_RED)
+    theme::current().style("diff_removed").to_ratatui()
 }
 
 /// Style for diff hunk headers
 pub fn diff_hunk() -> Style {
-    Style::default().fg(NEON_CYAN)
+    theme::current().style("diff_hunk").to_ratatui()
 }
 
 /// Style for diff context lines
 pub fn diff_context() -> Style {
-    Style::default().fg(TEXT_DIM)
+    theme::current().style("diff_context").to_ratatui()
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -339,36 +412,14 @@ pub fn format_mode_indicator(_name: &str, active: bool) -> Style {
 
 /// Get a color for a gradient position (0.0 = start, 1.0 = end)
 /// Gradient goes from `ELECTRIC_PURPLE` → `NEON_CYAN`
-#[allow(
-    clippy::cast_possible_truncation,
-    clippy::cast_sign_loss,
-    clippy::as_conversions
-)]
 pub fn gradient_purple_cyan(position: f32) -> Color {
-    let t = position.clamp(0.0, 1.0);
-    // ELECTRIC_PURPLE (225, 53, 255) → NEON_CYAN (128, 255, 234)
-    Color::Rgb(
-        (225.0 + (128.0 - 225.0) * t) as u8,
-        (53.0 + (255.0 - 53.0) * t) as u8,
-        (255.0 + (234.0 - 255.0) * t) as u8,
-    )
+    theme::current().gradient("primary", position).to_ratatui()
 }
 
 /// Get a color for a gradient position (0.0 = start, 1.0 = end)
 /// Gradient goes from CORAL → `ELECTRIC_YELLOW`
-#[allow(
-    clippy::cast_possible_truncation,
-    clippy::cast_sign_loss,
-    clippy::as_conversions
-)]
 pub fn gradient_coral_yellow(position: f32) -> Color {
-    let t = position.clamp(0.0, 1.0);
-    // CORAL (255, 106, 193) → ELECTRIC_YELLOW (241, 250, 140)
-    Color::Rgb(
-        (255.0 + (241.0 - 255.0) * t) as u8,
-        (106.0 + (250.0 - 106.0) * t) as u8,
-        (193.0 + (140.0 - 193.0) * t) as u8,
-    )
+    theme::current().gradient("warm", position).to_ratatui()
 }
 
 /// Unicode block characters for drawing gradient bars
@@ -393,35 +444,24 @@ pub fn styled_gradient_text(text: &str, gradient_fn: fn(f32) -> Color) -> Vec<Sp
         .collect()
 }
 
-/// Create a horizontal gradient line
+/// Create a horizontal gradient line using theme gradient
 #[allow(clippy::as_conversions, clippy::cast_precision_loss)]
 pub fn gradient_line(width: usize) -> Vec<Span<'static>> {
-    let char = LINE_THIN;
-    (0..width)
-        .map(|i| {
-            let position = i as f32 / (width - 1).max(1) as f32;
-            Span::styled(
-                char.to_string(),
-                Style::default().fg(gradient_purple_cyan(position)),
-            )
-        })
-        .collect()
+    if let Some(gradient) = theme::current().get_gradient("primary") {
+        theme_gradient_line(width, LINE_THIN, gradient)
+    } else {
+        // Fallback
+        vec![Span::raw(LINE_THIN.to_string().repeat(width))]
+    }
 }
 
 /// Create a thick horizontal gradient line
 #[allow(clippy::as_conversions, clippy::cast_precision_loss)]
 pub fn gradient_line_thick(width: usize) -> Vec<Span<'static>> {
-    let char = LINE_THICK;
-    (0..width)
-        .map(|i| {
-            let position = i as f32 / (width - 1).max(1) as f32;
-            Span::styled(
-                char.to_string(),
-                Style::default().fg(gradient_purple_cyan(position)),
-            )
-        })
-        .collect()
+    if let Some(gradient) = theme::current().get_gradient("primary") {
+        theme_gradient_line(width, LINE_THICK, gradient)
+    } else {
+        // Fallback
+        vec![Span::raw(LINE_THICK.to_string().repeat(width))]
+    }
 }
-
-// Import needed for Span
-use ratatui::text::Span;

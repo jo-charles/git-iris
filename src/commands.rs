@@ -6,13 +6,50 @@ use crate::instruction_presets::{
 use crate::log_debug;
 use crate::providers::{Provider, ProviderConfig};
 use crate::ui;
-use crate::ui::rgb::{
-    CORAL, DIM_SEPARATOR, DIM_WHITE, ELECTRIC_PURPLE, ELECTRIC_YELLOW, NEON_CYAN, SUCCESS_GREEN,
-};
 use anyhow::Context;
 use anyhow::{Result, anyhow};
 use colored::Colorize;
 use std::collections::HashMap;
+
+/// Helper to get themed colors for terminal output
+mod colors {
+    use crate::theme;
+
+    pub fn accent_primary() -> (u8, u8, u8) {
+        let c = theme::current().color("accent.primary");
+        (c.r, c.g, c.b)
+    }
+
+    pub fn accent_secondary() -> (u8, u8, u8) {
+        let c = theme::current().color("accent.secondary");
+        (c.r, c.g, c.b)
+    }
+
+    pub fn accent_tertiary() -> (u8, u8, u8) {
+        let c = theme::current().color("accent.tertiary");
+        (c.r, c.g, c.b)
+    }
+
+    pub fn warning() -> (u8, u8, u8) {
+        let c = theme::current().color("warning");
+        (c.r, c.g, c.b)
+    }
+
+    pub fn success() -> (u8, u8, u8) {
+        let c = theme::current().color("success");
+        (c.r, c.g, c.b)
+    }
+
+    pub fn text_secondary() -> (u8, u8, u8) {
+        let c = theme::current().color("text.secondary");
+        (c.r, c.g, c.b)
+    }
+
+    pub fn text_dim() -> (u8, u8, u8) {
+        let c = theme::current().color("text.dim");
+        (c.r, c.g, c.b)
+    }
+}
 
 /// Apply common configuration changes to a config object
 /// Returns true if any changes were made
@@ -333,21 +370,27 @@ pub fn handle_project_config_command(
 
 /// Display the configuration with `SilkCircuit` styling
 fn print_configuration(config: &Config) {
+    let purple = colors::accent_primary();
+    let cyan = colors::accent_secondary();
+    let coral = colors::accent_tertiary();
+    let yellow = colors::warning();
+    let green = colors::success();
+    let dim = colors::text_secondary();
+    let dim_sep = colors::text_dim();
+
     println!();
     println!(
         "{}  {}  {}",
-        "━━━".truecolor(ELECTRIC_PURPLE.0, ELECTRIC_PURPLE.1, ELECTRIC_PURPLE.2),
-        "IRIS CONFIGURATION"
-            .truecolor(NEON_CYAN.0, NEON_CYAN.1, NEON_CYAN.2)
-            .bold(),
-        "━━━".truecolor(ELECTRIC_PURPLE.0, ELECTRIC_PURPLE.1, ELECTRIC_PURPLE.2)
+        "━━━".truecolor(purple.0, purple.1, purple.2),
+        "IRIS CONFIGURATION".truecolor(cyan.0, cyan.1, cyan.2).bold(),
+        "━━━".truecolor(purple.0, purple.1, purple.2)
     );
     println!();
 
     // Global Settings
     print_section_header("GLOBAL");
 
-    print_config_row("Provider", &config.default_provider, NEON_CYAN, true);
+    print_config_row("Provider", &config.default_provider, cyan, true);
     print_config_row(
         "Gitmoji",
         if config.use_gitmoji {
@@ -355,25 +398,17 @@ fn print_configuration(config: &Config) {
         } else {
             "disabled"
         },
-        if config.use_gitmoji {
-            SUCCESS_GREEN
-        } else {
-            DIM_WHITE
-        },
+        if config.use_gitmoji { green } else { dim },
         false,
     );
-    print_config_row("Preset", &config.instruction_preset, ELECTRIC_YELLOW, false);
+    print_config_row("Preset", &config.instruction_preset, yellow, false);
 
     // Custom Instructions (if any)
     if !config.instructions.is_empty() {
         println!();
         print_section_header("INSTRUCTIONS");
         for line in config.instructions.lines() {
-            println!(
-                "  {}",
-                line.truecolor(DIM_WHITE.0, DIM_WHITE.1, DIM_WHITE.2)
-                    .italic()
-            );
+            println!("  {}", line.truecolor(dim.0, dim.1, dim.2).italic());
         }
     }
 
@@ -396,30 +431,30 @@ fn print_configuration(config: &Config) {
         print_section_header(&header);
 
         // Model
-        print_config_row("Model", &provider_config.model, NEON_CYAN, true);
+        print_config_row("Model", &provider_config.model, cyan, true);
 
         // Fast Model
         let fast_model = provider_config.fast_model.as_deref().unwrap_or("(default)");
-        print_config_row("Fast Model", fast_model, NEON_CYAN, false);
+        print_config_row("Fast Model", fast_model, cyan, false);
 
         // Token Limit
         if let Some(limit) = provider_config.token_limit {
-            print_config_row("Token Limit", &limit.to_string(), CORAL, false);
+            print_config_row("Token Limit", &limit.to_string(), coral, false);
         }
 
         // Additional Parameters
         if !provider_config.additional_params.is_empty() {
             println!(
                 "  {} {}",
-                "Params".truecolor(DIM_WHITE.0, DIM_WHITE.1, DIM_WHITE.2),
-                "─".truecolor(DIM_SEPARATOR.0, DIM_SEPARATOR.1, DIM_SEPARATOR.2)
+                "Params".truecolor(dim.0, dim.1, dim.2),
+                "─".truecolor(dim_sep.0, dim_sep.1, dim_sep.2)
             );
             for (key, value) in &provider_config.additional_params {
                 println!(
                     "    {} {} {}",
-                    key.truecolor(NEON_CYAN.0, NEON_CYAN.1, NEON_CYAN.2),
-                    "→".truecolor(DIM_SEPARATOR.0, DIM_SEPARATOR.1, DIM_SEPARATOR.2),
-                    value.truecolor(DIM_WHITE.0, DIM_WHITE.1, DIM_WHITE.2)
+                    key.truecolor(cyan.0, cyan.1, cyan.2),
+                    "→".truecolor(dim_sep.0, dim_sep.1, dim_sep.2),
+                    value.truecolor(dim.0, dim.1, dim.2)
                 );
             }
         }
@@ -428,31 +463,29 @@ fn print_configuration(config: &Config) {
     println!();
     println!(
         "{}",
-        "─"
-            .repeat(40)
-            .truecolor(DIM_SEPARATOR.0, DIM_SEPARATOR.1, DIM_SEPARATOR.2)
+        "─".repeat(40).truecolor(dim_sep.0, dim_sep.1, dim_sep.2)
     );
     println!();
 }
 
 /// Print a section header in `SilkCircuit` style
 fn print_section_header(name: &str) {
+    let purple = colors::accent_primary();
+    let dim_sep = colors::text_dim();
     println!(
         "{} {} {}",
-        "─".truecolor(ELECTRIC_PURPLE.0, ELECTRIC_PURPLE.1, ELECTRIC_PURPLE.2),
-        name.truecolor(ELECTRIC_PURPLE.0, ELECTRIC_PURPLE.1, ELECTRIC_PURPLE.2)
-            .bold(),
-        "─".repeat(30 - name.len().min(28)).truecolor(
-            DIM_SEPARATOR.0,
-            DIM_SEPARATOR.1,
-            DIM_SEPARATOR.2
-        )
+        "─".truecolor(purple.0, purple.1, purple.2),
+        name.truecolor(purple.0, purple.1, purple.2).bold(),
+        "─"
+            .repeat(30 - name.len().min(28))
+            .truecolor(dim_sep.0, dim_sep.1, dim_sep.2)
     );
 }
 
 /// Print a config row with label and value
 fn print_config_row(label: &str, value: &str, value_color: (u8, u8, u8), highlight: bool) {
-    let label_styled = format!("{label:>12}").truecolor(DIM_WHITE.0, DIM_WHITE.1, DIM_WHITE.2);
+    let dim = colors::text_secondary();
+    let label_styled = format!("{label:>12}").truecolor(dim.0, dim.1, dim.2);
 
     let value_styled = if highlight {
         value

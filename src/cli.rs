@@ -2,6 +2,7 @@ use crate::commands;
 use crate::common::CommonParams;
 use crate::log_debug;
 use crate::providers::Provider;
+use crate::theme;
 use crate::ui;
 use clap::builder::{Styles, styling::AnsiColor};
 use clap::{Parser, Subcommand, crate_version};
@@ -78,6 +79,14 @@ pub struct Cli {
         help = "Enable debug mode with gorgeous color-coded output showing agent execution details"
     )]
     pub debug: bool,
+
+    /// Override the theme for this session
+    #[arg(
+        long = "theme",
+        global = true,
+        help = "Override theme for this session (use 'git-iris themes' to list available)"
+    )]
+    pub theme: Option<String>,
 }
 
 /// Enumeration of available subcommands
@@ -351,6 +360,10 @@ pub enum Commands {
     /// List available instruction presets
     #[command(about = "List available instruction presets")]
     ListPresets,
+
+    /// List available themes
+    #[command(about = "List available themes")]
+    Themes,
 }
 
 /// Define custom styles for Clap
@@ -404,6 +417,9 @@ pub async fn main() -> anyhow::Result<()> {
         crate::ui::set_quiet_mode(true);
     }
 
+    // Initialize theme
+    initialize_theme(cli.theme.as_deref())?;
+
     // Enable debug mode if requested
     if cli.debug {
         crate::agents::debug::enable_debug_mode();
@@ -423,6 +439,32 @@ pub async fn main() -> anyhow::Result<()> {
         )
         .await
     }
+}
+
+/// Initialize the theme from CLI flag or config
+fn initialize_theme(cli_theme: Option<&str>) -> anyhow::Result<()> {
+    use crate::config::Config;
+
+    // CLI flag takes precedence
+    let theme_name = if let Some(name) = cli_theme {
+        Some(name.to_string())
+    } else {
+        // Try to load from config
+        Config::load()
+            .ok()
+            .and_then(|c| if c.theme.is_empty() { None } else { Some(c.theme) })
+    };
+
+    // Load the theme if specified, otherwise default is already active
+    if let Some(name) = theme_name {
+        if let Err(e) = theme::load_theme_by_name(&name) {
+            ui::print_warning(&format!("Failed to load theme '{}': {}. Using default.", name, e));
+        } else {
+            log_debug!("Loaded theme: {}", name);
+        }
+    }
+
+    Ok(())
 }
 
 /// Configuration for the Gen command
@@ -917,6 +959,7 @@ pub async fn handle_command(
             print,
         ),
         Commands::ListPresets => commands::handle_list_presets_command(),
+        Commands::Themes => handle_themes(),
         Commands::Pr {
             common,
             print,
@@ -931,6 +974,84 @@ pub async fn handle_command(
             to,
         } => handle_studio(common, mode, from, to, repository_url).await,
     }
+}
+
+/// Handle the `Themes` command - list available themes
+fn handle_themes() -> anyhow::Result<()> {
+    ui::print_version(crate_version!());
+    ui::print_newline();
+
+    let available = theme::list_available_themes();
+    let current = theme::current();
+    let current_name = &current.meta.name;
+
+    // Header
+    let header_color = theme::current().color("accent.primary");
+    println!(
+        "{}",
+        "Available Themes:".truecolor(header_color.r, header_color.g, header_color.b).bold()
+    );
+    println!();
+
+    for info in available {
+        let is_current = info.display_name == *current_name;
+        let marker = if is_current { "● " } else { "  " };
+
+        let name_color = if is_current {
+            theme::current().color("success")
+        } else {
+            theme::current().color("accent.secondary")
+        };
+
+        let desc_color = theme::current().color("text.secondary");
+
+        print!(
+            "{}{}",
+            marker.truecolor(name_color.r, name_color.g, name_color.b),
+            info.name.truecolor(name_color.r, name_color.g, name_color.b).bold()
+        );
+
+        // Show display name if different from filename
+        if info.display_name != info.name {
+            print!(
+                " ({})",
+                info.display_name.truecolor(desc_color.r, desc_color.g, desc_color.b)
+            );
+        }
+
+        // Show variant
+        let variant_str = match info.variant {
+            theme::ThemeVariant::Dark => "dark",
+            theme::ThemeVariant::Light => "light",
+        };
+        let dim_color = theme::current().color("text.dim");
+        print!(
+            " [{}]",
+            variant_str.truecolor(dim_color.r, dim_color.g, dim_color.b)
+        );
+
+        if is_current {
+            let active_color = theme::current().color("success");
+            print!(
+                " {}",
+                "(active)".truecolor(active_color.r, active_color.g, active_color.b)
+            );
+        }
+
+        println!();
+    }
+
+    println!();
+
+    // Usage hint
+    let hint_color = theme::current().color("text.dim");
+    println!(
+        "{}",
+        "Use --theme <name> to override, or set 'theme' in config.toml"
+            .truecolor(hint_color.r, hint_color.g, hint_color.b)
+    );
+
+    Ok(())
 }
 
 /// Handle the `Pr` command with agent framework

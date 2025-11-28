@@ -1,3 +1,7 @@
+//! CLI output utilities with `SilkCircuit` Neon theming.
+//!
+//! This module provides themed CLI output using the centralized theme system.
+
 use colored::Colorize;
 use indicatif::{ProgressBar, ProgressStyle};
 use parking_lot::Mutex;
@@ -5,12 +9,59 @@ use ratatui::style::Color;
 use std::fmt::Write;
 use std::time::Duration;
 
+use crate::theme::adapters::cli::gradient_string;
+use crate::theme;
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // SilkCircuit Neon — Electric meets elegant
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// RGB tuple constants for use with the `colored` crate's `.truecolor()` method
+// RGB tuple constants for backwards compatibility with the `colored` crate's `.truecolor()` method
 pub mod rgb {
+    use crate::theme;
+    use crate::theme::adapters::cli::ToColoredRgb;
+
+    /// Get Electric Purple RGB from theme
+    pub fn electric_purple() -> (u8, u8, u8) {
+        theme::current().color("accent.primary").to_rgb()
+    }
+
+    /// Get Neon Cyan RGB from theme
+    pub fn neon_cyan() -> (u8, u8, u8) {
+        theme::current().color("accent.secondary").to_rgb()
+    }
+
+    /// Get Coral RGB from theme
+    pub fn coral() -> (u8, u8, u8) {
+        theme::current().color("accent.tertiary").to_rgb()
+    }
+
+    /// Get Electric Yellow RGB from theme
+    pub fn electric_yellow() -> (u8, u8, u8) {
+        theme::current().color("warning").to_rgb()
+    }
+
+    /// Get Success Green RGB from theme
+    pub fn success_green() -> (u8, u8, u8) {
+        theme::current().color("success").to_rgb()
+    }
+
+    /// Get Error Red RGB from theme
+    pub fn error_red() -> (u8, u8, u8) {
+        theme::current().color("error").to_rgb()
+    }
+
+    /// Get Dim White RGB from theme
+    pub fn dim_white() -> (u8, u8, u8) {
+        theme::current().color("text.secondary").to_rgb()
+    }
+
+    /// Get Dim Separator RGB from theme
+    pub fn dim_separator() -> (u8, u8, u8) {
+        theme::current().color("text.dim").to_rgb()
+    }
+
+    // Legacy constants for backwards compatibility
     pub const ELECTRIC_PURPLE: (u8, u8, u8) = (225, 53, 255);
     pub const NEON_CYAN: (u8, u8, u8) = (128, 255, 234);
     pub const CORAL: (u8, u8, u8) = (255, 106, 193);
@@ -21,7 +72,7 @@ pub mod rgb {
     pub const DIM_SEPARATOR: (u8, u8, u8) = (60, 60, 70);
 }
 
-// Ratatui Color constants for TUI rendering
+// Ratatui Color constants for TUI rendering (legacy, prefer theme::current())
 /// Electric Purple #e135ff — Keywords, control flow, importance
 pub const ELECTRIC_PURPLE: Color = Color::Rgb(225, 53, 255);
 /// Pure Pink #ff00ff — Tags, booleans, maximum emphasis
@@ -131,36 +182,49 @@ pub fn create_spinner(message: &str) -> ProgressBar {
     pb
 }
 
+/// Print info message using theme colors
 pub fn print_info(message: &str) {
     if !is_quiet_mode() {
-        println!("{}", message.cyan().bold());
+        let color = theme::current().color("info");
+        println!("{}", message.truecolor(color.r, color.g, color.b).bold());
     }
 }
 
+/// Print warning message using theme colors
 pub fn print_warning(message: &str) {
     if !is_quiet_mode() {
-        println!("{}", message.yellow().bold());
+        let color = theme::current().color("warning");
+        println!("{}", message.truecolor(color.r, color.g, color.b).bold());
     }
 }
 
+/// Print error message using theme colors
 pub fn print_error(message: &str) {
     // Always print errors, even in quiet mode
-    eprintln!("{}", message.red().bold());
+    let color = theme::current().color("error");
+    eprintln!("{}", message.truecolor(color.r, color.g, color.b).bold());
 }
 
+/// Print success message using theme colors
 pub fn print_success(message: &str) {
     if !is_quiet_mode() {
-        println!("{}", message.green().bold());
+        let color = theme::current().color("success");
+        println!("{}", message.truecolor(color.r, color.g, color.b).bold());
     }
 }
 
 pub fn print_version(version: &str) {
     if !is_quiet_mode() {
+        let t = theme::current();
+        let purple = t.color("accent.primary");
+        let cyan = t.color("accent.secondary");
+        let green = t.color("success");
+
         println!(
             "{} {} {}",
-            "🔮 Git-Iris".magenta().bold(),
-            "version".cyan(),
-            version.green()
+            "🔮 Git-Iris".truecolor(purple.r, purple.g, purple.b).bold(),
+            "version".truecolor(cyan.r, cyan.g, cyan.b),
+            version.truecolor(green.r, green.g, green.b)
         );
     }
 }
@@ -168,9 +232,10 @@ pub fn print_version(version: &str) {
 /// Print content with decorative borders
 pub fn print_bordered_content(content: &str) {
     if !is_quiet_mode() {
-        println!("{}", "━".repeat(50).bright_purple());
+        let color = theme::current().color("accent.primary");
+        println!("{}", "━".repeat(50).truecolor(color.r, color.g, color.b));
         println!("{content}");
-        println!("{}", "━".repeat(50).bright_purple());
+        println!("{}", "━".repeat(50).truecolor(color.r, color.g, color.b));
     }
 }
 
@@ -190,28 +255,36 @@ pub fn print_newline() {
 
 /// Create gradient text with `SilkCircuit` Electric Purple -> Neon Cyan
 pub fn create_gradient_text(text: &str) -> String {
-    let gradient = vec![
-        (225, 53, 255),  // Electric Purple
-        (200, 100, 255), // Mid purple
-        (180, 150, 250), // Light purple
-        (150, 200, 245), // Purple-cyan
-        (128, 255, 234), // Neon Cyan
-    ];
-
-    apply_gradient(text, &gradient)
+    if let Some(gradient) = theme::current().get_gradient("primary") {
+        gradient_string(text, gradient)
+    } else {
+        // Fallback to legacy gradient
+        let gradient = vec![
+            (225, 53, 255),  // Electric Purple
+            (200, 100, 255), // Mid purple
+            (180, 150, 250), // Light purple
+            (150, 200, 245), // Purple-cyan
+            (128, 255, 234), // Neon Cyan
+        ];
+        apply_gradient(text, &gradient)
+    }
 }
 
 /// Create secondary gradient with `SilkCircuit` Coral -> Electric Yellow
 pub fn create_secondary_gradient_text(text: &str) -> String {
-    let gradient = vec![
-        (255, 106, 193), // Coral
-        (255, 150, 180), // Light coral
-        (255, 200, 160), // Coral-yellow
-        (248, 230, 140), // Light yellow
-        (241, 250, 140), // Electric Yellow
-    ];
-
-    apply_gradient(text, &gradient)
+    if let Some(gradient) = theme::current().get_gradient("warm") {
+        gradient_string(text, gradient)
+    } else {
+        // Fallback to legacy gradient
+        let gradient = vec![
+            (255, 106, 193), // Coral
+            (255, 150, 180), // Light coral
+            (255, 200, 160), // Coral-yellow
+            (248, 230, 140), // Light yellow
+            (241, 250, 140), // Electric Yellow
+        ];
+        apply_gradient(text, &gradient)
+    }
 }
 
 fn apply_gradient(text: &str, gradient: &[(u8, u8, u8)]) -> String {

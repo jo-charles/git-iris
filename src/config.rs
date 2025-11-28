@@ -36,6 +36,9 @@ pub struct Config {
     /// Instruction preset name
     #[serde(default = "default_preset")]
     pub instruction_preset: String,
+    /// Theme name (empty = default `SilkCircuit` Neon)
+    #[serde(default)]
+    pub theme: String,
     /// Runtime-only: temporary instructions override
     #[serde(skip)]
     pub temp_instructions: Option<String>,
@@ -71,6 +74,7 @@ impl Default for Config {
             use_gitmoji: true,
             instructions: String::new(),
             instruction_preset: default_preset(),
+            theme: String::new(),
             temp_instructions: None,
             temp_preset: None,
             is_project_config: false,
@@ -161,6 +165,11 @@ impl Config {
 
         if project_config.instruction_preset != default_preset() {
             self.instruction_preset = project_config.instruction_preset;
+        }
+
+        // Theme override
+        if !project_config.theme.is_empty() {
+            self.theme = project_config.theme;
         }
     }
 
