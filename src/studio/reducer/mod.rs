@@ -7,6 +7,10 @@
 //!
 //! Side effects are returned for the app to execute after state update.
 
+mod agent;
+mod modal;
+mod navigation;
+
 use crossterm::event::MouseEventKind;
 
 use super::events::{
