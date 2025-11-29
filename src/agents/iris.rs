@@ -439,9 +439,12 @@ Guidelines:
             // Workspace for Iris's notes and task management (clone to share Arc-backed state)
             .tool(DebugTool::new(self.workspace.clone()))
             // Parallel analysis for distributing work across multiple subagents
-            .tool(DebugTool::new(ParallelAnalyze::new(
+            .tool(DebugTool::new(ParallelAnalyze::with_timeout(
                 &self.provider,
                 fast_model,
+                self.config
+                    .as_ref()
+                    .map_or(120, |c| c.subagent_timeout_secs),
             )))
             // Sub-agent delegation (Rig's built-in agent-as-tool!)
             .tool(sub_agent);

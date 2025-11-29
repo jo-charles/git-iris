@@ -39,6 +39,9 @@ pub struct Config {
     /// Theme name (empty = default `SilkCircuit` Neon)
     #[serde(default)]
     pub theme: String,
+    /// Timeout in seconds for parallel subagent tasks (default: 120)
+    #[serde(default = "default_subagent_timeout")]
+    pub subagent_timeout_secs: u64,
     /// Runtime-only: temporary instructions override
     #[serde(skip)]
     pub temp_instructions: Option<String>,
@@ -58,6 +61,10 @@ fn default_preset() -> String {
     "default".to_string()
 }
 
+fn default_subagent_timeout() -> u64 {
+    120 // 2 minutes
+}
+
 impl Default for Config {
     fn default() -> Self {
         let mut providers = HashMap::new();
@@ -75,6 +82,7 @@ impl Default for Config {
             instructions: String::new(),
             instruction_preset: default_preset(),
             theme: String::new(),
+            subagent_timeout_secs: default_subagent_timeout(),
             temp_instructions: None,
             temp_preset: None,
             is_project_config: false,
@@ -174,6 +182,11 @@ impl Config {
         // Theme override
         if !project_config.theme.is_empty() {
             self.theme = project_config.theme;
+        }
+
+        // Subagent timeout override
+        if project_config.subagent_timeout_secs != default_subagent_timeout() {
+            self.subagent_timeout_secs = project_config.subagent_timeout_secs;
         }
     }
 

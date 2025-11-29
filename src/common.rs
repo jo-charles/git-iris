@@ -21,8 +21,21 @@ pub struct CommonParams {
     )]
     pub preset: Option<String>,
 
-    /// Enable or disable Gitmoji
-    #[arg(long, help = "Enable or disable Gitmoji")]
+    /// Enable Gitmoji (default: true)
+    #[arg(
+        long = "gitmoji",
+        help = "Enable Gitmoji",
+        conflicts_with = "no_gitmoji",
+        action = clap::ArgAction::SetTrue
+    )]
+    gitmoji_flag: bool,
+
+    /// Disable Gitmoji
+    #[arg(long = "no-gitmoji", help = "Disable Gitmoji", action = clap::ArgAction::SetTrue)]
+    no_gitmoji: bool,
+
+    /// Internal: resolved gitmoji value (Some(true), Some(false), or None)
+    #[arg(skip)]
     pub gitmoji: Option<bool>,
 
     /// Repository URL to use instead of local repository
@@ -35,6 +48,19 @@ pub struct CommonParams {
 }
 
 impl CommonParams {
+    /// Get the resolved gitmoji value from CLI flags
+    /// Returns Some(true) for --gitmoji, Some(false) for --no-gitmoji, None if neither specified
+    #[must_use]
+    pub fn resolved_gitmoji(&self) -> Option<bool> {
+        if self.gitmoji_flag {
+            Some(true)
+        } else if self.no_gitmoji {
+            Some(false)
+        } else {
+            self.gitmoji // fallback to any programmatically set value
+        }
+    }
+
     pub fn apply_to_config(&self, config: &mut Config) -> Result<bool> {
         let mut changes_made = false;
 
@@ -66,7 +92,7 @@ impl CommonParams {
             config.set_temp_preset(Some(preset.clone()));
         }
 
-        if let Some(use_gitmoji) = self.gitmoji
+        if let Some(use_gitmoji) = self.resolved_gitmoji()
             && config.use_gitmoji != use_gitmoji
         {
             config.use_gitmoji = use_gitmoji;

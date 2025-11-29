@@ -20,8 +20,8 @@ use tokio::sync::Mutex;
 
 use crate::agents::debug as agent_debug;
 
-/// Timeout for individual subagent tasks (2 minutes)
-const SUBAGENT_TIMEOUT: Duration = Duration::from_secs(120);
+/// Default timeout for individual subagent tasks (2 minutes)
+const DEFAULT_SUBAGENT_TIMEOUT_SECS: u64 = 120;
 
 /// Arguments for parallel analysis
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -140,10 +140,18 @@ impl SubagentRunner {
 pub struct ParallelAnalyze {
     runner: SubagentRunner,
     model: String,
+    /// Timeout in seconds for each subagent task
+    timeout_secs: u64,
 }
 
 impl ParallelAnalyze {
+    /// Create a new parallel analyzer with default timeout
     pub fn new(provider: &str, model: &str) -> Self {
+        Self::with_timeout(provider, model, DEFAULT_SUBAGENT_TIMEOUT_SECS)
+    }
+
+    /// Create a new parallel analyzer with custom timeout
+    pub fn with_timeout(provider: &str, model: &str, timeout_secs: u64) -> Self {
         // Default to openai if creation fails
         let runner = SubagentRunner::new(provider, model).unwrap_or_else(|_| {
             tracing::warn!(
@@ -156,6 +164,7 @@ impl ParallelAnalyze {
         Self {
             runner,
             model: model.to_string(),
+            timeout_secs,
         }
     }
 }
@@ -220,25 +229,25 @@ impl Tool for ParallelAnalyze {
 
         // Spawn all tasks as parallel tokio tasks, tracking index for ordering
         let mut handles = Vec::new();
+        let timeout = Duration::from_secs(self.timeout_secs);
         for (index, task) in tasks.into_iter().enumerate() {
             let runner = self.runner.clone();
             let results = Arc::clone(&results);
+            let task_timeout = timeout;
+            let timeout_secs = self.timeout_secs;
 
             let handle = tokio::spawn(async move {
                 // Wrap task execution in timeout to prevent hanging
-                let result =
-                    match tokio::time::timeout(SUBAGENT_TIMEOUT, runner.run_task(&task)).await {
-                        Ok(result) => result,
-                        Err(_) => SubagentResult {
-                            task: task.clone(),
-                            result: String::new(),
-                            success: false,
-                            error: Some(format!(
-                                "Task timed out after {} seconds",
-                                SUBAGENT_TIMEOUT.as_secs()
-                            )),
-                        },
-                    };
+                let result = match tokio::time::timeout(task_timeout, runner.run_task(&task)).await
+                {
+                    Ok(result) => result,
+                    Err(_) => SubagentResult {
+                        task: task.clone(),
+                        result: String::new(),
+                        success: false,
+                        error: Some(format!("Task timed out after {} seconds", timeout_secs)),
+                    },
+                };
 
                 // Store result at original index to preserve ordering
                 let mut guard = results.lock().await;

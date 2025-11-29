@@ -5,8 +5,10 @@ use crate::providers::Provider;
 use crate::theme;
 use crate::ui;
 use clap::builder::{Styles, styling::AnsiColor};
-use clap::{Parser, Subcommand, crate_version};
+use clap::{CommandFactory, Parser, Subcommand, crate_version};
+use clap_complete::{Shell, generate};
 use colored::Colorize;
+use std::io;
 
 /// Default log file path for debug output
 pub const LOG_FILE: &str = "git-iris-debug.log";
@@ -260,6 +262,17 @@ pub enum Commands {
         #[arg(long, help = "Output raw markdown without any console formatting")]
         raw: bool,
 
+        /// Update the release notes file with the new content
+        #[arg(long, help = "Update the release notes file with the new content")]
+        update: bool,
+
+        /// Path to the release notes file
+        #[arg(
+            long,
+            help = "Path to the release notes file (defaults to RELEASE_NOTES.md)"
+        )]
+        file: Option<String>,
+
         /// Explicit version name to use in the release notes instead of getting it from Git
         #[arg(long, help = "Explicit version name to use in the release notes")]
         version_name: Option<String>,
@@ -323,6 +336,13 @@ pub enum Commands {
             help = "Set additional parameters for the specified provider (key=value)"
         )]
         param: Option<Vec<String>>,
+
+        /// Set timeout in seconds for parallel subagent tasks
+        #[arg(
+            long,
+            help = "Set timeout in seconds for parallel subagent tasks (default: 120)"
+        )]
+        subagent_timeout: Option<u64>,
     },
 
     /// Create or update a project-specific configuration file
@@ -356,6 +376,13 @@ pub enum Commands {
         )]
         param: Option<Vec<String>>,
 
+        /// Set timeout in seconds for parallel subagent tasks
+        #[arg(
+            long,
+            help = "Set timeout in seconds for parallel subagent tasks (default: 120)"
+        )]
+        subagent_timeout: Option<u64>,
+
         /// Print the current project configuration
         #[arg(short, long, help = "Print the current project configuration")]
         print: bool,
@@ -368,6 +395,17 @@ pub enum Commands {
     /// List available themes
     #[command(about = "List available themes")]
     Themes,
+
+    /// Generate shell completions
+    #[command(
+        about = "Generate shell completions",
+        long_about = "Generate shell completion scripts for bash, zsh, fish, elvish, or powershell.\n\nUsage examples:\n• Bash: git-iris completions bash >> ~/.bashrc\n• Zsh:  git-iris completions zsh >> ~/.zshrc\n• Fish: git-iris completions fish > ~/.config/fish/completions/git-iris.fish"
+    )]
+    Completions {
+        /// Shell to generate completions for
+        #[arg(value_enum)]
+        shell: Shell,
+    },
 }
 
 /// Define custom styles for Clap
@@ -674,16 +712,26 @@ fn handle_config(
     fast_model: Option<String>,
     token_limit: Option<usize>,
     param: Option<Vec<String>>,
+    subagent_timeout: Option<u64>,
 ) -> anyhow::Result<()> {
     log_debug!(
-        "Handling 'config' command with common: {:?}, api_key: {:?}, model: {:?}, token_limit: {:?}, param: {:?}",
+        "Handling 'config' command with common: {:?}, api_key: {:?}, model: {:?}, token_limit: {:?}, param: {:?}, subagent_timeout: {:?}",
         common,
         api_key,
         model,
         token_limit,
-        param
+        param,
+        subagent_timeout
     );
-    commands::handle_config_command(common, api_key, model, fast_model, token_limit, param)
+    commands::handle_config_command(
+        common,
+        api_key,
+        model,
+        fast_model,
+        token_limit,
+        param,
+        subagent_timeout,
+    )
 }
 
 /// Handle the `Review` command
@@ -852,20 +900,25 @@ async fn handle_changelog(
 }
 
 /// Handle the `Release Notes` command
+#[allow(clippy::too_many_arguments)]
 async fn handle_release_notes(
     common: CommonParams,
     from: String,
     to: Option<String>,
     raw: bool,
     repository_url: Option<String>,
+    update: bool,
+    file: Option<String>,
     _version_name: Option<String>,
 ) -> anyhow::Result<()> {
     log_debug!(
-        "Handling 'release-notes' command with common: {:?}, from: {}, to: {:?}, raw: {}",
+        "Handling 'release-notes' command with common: {:?}, from: {}, to: {:?}, raw: {}, update: {}, file: {:?}",
         common,
         from,
         to,
-        raw
+        raw,
+        update,
+        file
     );
 
     // For raw output, skip all formatting
@@ -875,6 +928,8 @@ async fn handle_release_notes(
     }
 
     use crate::agents::{IrisAgentService, TaskContext};
+    use std::fs;
+    use std::path::Path;
 
     // Create structured context for release notes
     let context = TaskContext::for_changelog(from, to);
@@ -896,6 +951,43 @@ async fn handle_release_notes(
     }
 
     println!("{response}");
+
+    // Handle --update flag
+    if update {
+        let release_notes_path = file.unwrap_or_else(|| "RELEASE_NOTES.md".to_string());
+        let formatted_content = response.to_string();
+
+        let update_spinner = ui::create_spinner(&format!(
+            "Updating release notes file at {release_notes_path}..."
+        ));
+
+        // Write or append to file
+        let path = Path::new(&release_notes_path);
+        let result = if path.exists() {
+            // Prepend to existing file
+            let existing = fs::read_to_string(path)?;
+            fs::write(path, format!("{formatted_content}\n\n---\n\n{existing}"))
+        } else {
+            // Create new file
+            fs::write(path, &formatted_content)
+        };
+
+        match result {
+            Ok(()) => {
+                update_spinner.finish_and_clear();
+                ui::print_success(&format!(
+                    "✨ Release notes successfully updated at {}",
+                    release_notes_path.bright_green()
+                ));
+            }
+            Err(e) => {
+                update_spinner.finish_and_clear();
+                ui::print_error(&format!("Failed to update release notes file: {e}"));
+                return Err(e.into());
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -934,7 +1026,16 @@ pub async fn handle_command(
             fast_model,
             token_limit,
             param,
-        } => handle_config(&common, api_key, model, fast_model, token_limit, param),
+            subagent_timeout,
+        } => handle_config(
+            &common,
+            api_key,
+            model,
+            fast_model,
+            token_limit,
+            param,
+            subagent_timeout,
+        ),
         Commands::Review {
             common,
             print,
@@ -982,14 +1083,29 @@ pub async fn handle_command(
             from,
             to,
             raw,
+            update,
+            file,
             version_name,
-        } => handle_release_notes(common, from, to, raw, repository_url, version_name).await,
+        } => {
+            handle_release_notes(
+                common,
+                from,
+                to,
+                raw,
+                repository_url,
+                update,
+                file,
+                version_name,
+            )
+            .await
+        }
         Commands::ProjectConfig {
             common,
             model,
             fast_model,
             token_limit,
             param,
+            subagent_timeout,
             print,
         } => commands::handle_project_config_command(
             &common,
@@ -997,11 +1113,16 @@ pub async fn handle_command(
             fast_model,
             token_limit,
             param,
+            subagent_timeout,
             print,
         ),
         Commands::ListPresets => commands::handle_list_presets_command(),
         Commands::Themes => {
             handle_themes();
+            Ok(())
+        }
+        Commands::Completions { shell } => {
+            handle_completions(shell);
             Ok(())
         }
         Commands::Pr {
@@ -1102,6 +1223,12 @@ fn handle_themes() {
             hint_color.b
         )
     );
+}
+
+/// Handle the `Completions` command - generate shell completion scripts
+fn handle_completions(shell: Shell) {
+    let mut cmd = Cli::command();
+    generate(shell, &mut cmd, "git-iris", &mut io::stdout());
 }
 
 /// Handle the `Pr` command with agent framework

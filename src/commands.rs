@@ -77,6 +77,7 @@ fn apply_config_changes(
     token_limit: Option<usize>,
     param: Option<Vec<String>>,
     api_key: Option<String>,
+    subagent_timeout: Option<u64>,
 ) -> anyhow::Result<bool> {
     let mut changes_made = false;
 
@@ -143,7 +144,7 @@ fn apply_config_changes(
     }
 
     // Apply gitmoji setting
-    if let Some(use_gitmoji) = common.gitmoji
+    if let Some(use_gitmoji) = common.resolved_gitmoji()
         && config.use_gitmoji != use_gitmoji
     {
         config.use_gitmoji = use_gitmoji;
@@ -179,6 +180,14 @@ fn apply_config_changes(
         }
     }
 
+    // Apply subagent timeout
+    if let Some(timeout) = subagent_timeout
+        && config.subagent_timeout_secs != timeout
+    {
+        config.subagent_timeout_secs = timeout;
+        changes_made = true;
+    }
+
     Ok(changes_made)
 }
 
@@ -191,14 +200,16 @@ pub fn handle_config_command(
     fast_model: Option<String>,
     token_limit: Option<usize>,
     param: Option<Vec<String>>,
+    subagent_timeout: Option<u64>,
 ) -> anyhow::Result<()> {
     log_debug!(
-        "Starting 'config' command with common: {:?}, api_key: {:?}, model: {:?}, token_limit: {:?}, param: {:?}",
+        "Starting 'config' command with common: {:?}, api_key: {:?}, model: {:?}, token_limit: {:?}, param: {:?}, subagent_timeout: {:?}",
         common,
         api_key,
         model,
         token_limit,
-        param
+        param,
+        subagent_timeout
     );
 
     let mut config = Config::load()?;
@@ -212,6 +223,7 @@ pub fn handle_config_command(
         token_limit,
         param,
         api_key,
+        subagent_timeout,
     )?;
 
     if changes_made {
@@ -224,34 +236,6 @@ pub fn handle_config_command(
     print_configuration(&config);
 
     Ok(())
-}
-
-/// Process and apply configuration changes to a config object for project configs
-///
-/// This is a specialized wrapper around the `apply_config_changes` function that ensures
-/// API keys are never passed to project configuration files.
-///
-/// # Arguments
-///
-/// * `config` - The configuration object to modify
-/// * `common` - Common parameters from command line
-/// * `model` - Optional model to set for the selected provider
-/// * `token_limit` - Optional token limit to set
-/// * `param` - Optional additional parameters to set
-///
-/// # Returns
-///
-/// Boolean indicating if any changes were made to the configuration
-fn apply_project_config_changes(
-    config: &mut Config,
-    common: &CommonParams,
-    model: Option<String>,
-    fast_model: Option<String>,
-    token_limit: Option<usize>,
-    param: Option<Vec<String>>,
-) -> anyhow::Result<bool> {
-    // Use the shared function but don't pass an API key (never stored in project configs)
-    apply_config_changes(config, common, model, fast_model, token_limit, param, None)
 }
 
 /// Handle printing current project configuration
@@ -289,7 +273,7 @@ fn print_project_config() {
 ///
 /// * `common` - Common parameters from command line
 /// * `model` - Optional model to set for the selected provider
-/// * `token_limit` - Optional token limit to set  
+/// * `token_limit` - Optional token limit to set
 /// * `param` - Optional additional parameters to set
 /// * `print` - Whether to just print the current project config
 ///
@@ -302,19 +286,18 @@ pub fn handle_project_config_command(
     fast_model: Option<String>,
     token_limit: Option<usize>,
     param: Option<Vec<String>>,
+    subagent_timeout: Option<u64>,
     print: bool,
 ) -> anyhow::Result<()> {
     log_debug!(
-        "Starting 'project-config' command with common: {:?}, model: {:?}, token_limit: {:?}, param: {:?}, print: {}",
+        "Starting 'project-config' command with common: {:?}, model: {:?}, token_limit: {:?}, param: {:?}, subagent_timeout: {:?}, print: {}",
         common,
         model,
         token_limit,
         param,
+        subagent_timeout,
         print
     );
-
-    // Load the global config first
-    let mut config = Config::load()?;
 
     // Set up a header to explain what's happening
     println!("\n{}", "✨ Project Configuration".bright_magenta().bold());
@@ -325,12 +308,139 @@ pub fn handle_project_config_command(
         return Ok(());
     }
 
-    // Apply changes and track if any were made
-    let changes_made =
-        apply_project_config_changes(&mut config, common, model, fast_model, token_limit, param)?;
+    // Start with existing project config or empty config (NOT the full personal config)
+    let mut config = Config::load_project_config().unwrap_or_else(|_| Config {
+        default_provider: String::new(),
+        providers: HashMap::new(),
+        use_gitmoji: true,
+        instructions: String::new(),
+        instruction_preset: String::new(),
+        theme: String::new(),
+        subagent_timeout_secs: 120,
+        temp_instructions: None,
+        temp_preset: None,
+        is_project_config: true,
+    });
+
+    // Track what we're changing
+    let mut changes_made = false;
+
+    // Apply provider change
+    if let Some(provider_str) = &common.provider {
+        let provider: Provider = provider_str.parse().map_err(|_| {
+            anyhow!(
+                "Invalid provider: {}. Available: {}",
+                provider_str,
+                Provider::all_names().join(", ")
+            )
+        })?;
+
+        if config.default_provider != provider.name() {
+            config.default_provider = provider.name().to_string();
+            // Ensure provider entry exists
+            config
+                .providers
+                .entry(provider.name().to_string())
+                .or_default();
+            changes_made = true;
+        }
+    }
+
+    // Get provider name to use (from CLI or existing default)
+    let provider_name = common
+        .provider
+        .clone()
+        .or_else(|| {
+            if config.default_provider.is_empty() {
+                None
+            } else {
+                Some(config.default_provider.clone())
+            }
+        })
+        .unwrap_or_else(|| Provider::default().name().to_string());
+
+    // Ensure provider config entry exists if we're setting model/fast_model/token_limit/params
+    if model.is_some() || fast_model.is_some() || token_limit.is_some() || param.is_some() {
+        config.providers.entry(provider_name.clone()).or_default();
+    }
+
+    // Apply model change
+    if let Some(m) = model
+        && let Some(provider_config) = config.providers.get_mut(&provider_name)
+        && provider_config.model != m
+    {
+        provider_config.model = m;
+        changes_made = true;
+    }
+
+    // Apply fast model change
+    if let Some(fm) = fast_model
+        && let Some(provider_config) = config.providers.get_mut(&provider_name)
+        && provider_config.fast_model != Some(fm.clone())
+    {
+        provider_config.fast_model = Some(fm);
+        changes_made = true;
+    }
+
+    // Apply token limit
+    if let Some(limit) = token_limit
+        && let Some(provider_config) = config.providers.get_mut(&provider_name)
+        && provider_config.token_limit != Some(limit)
+    {
+        provider_config.token_limit = Some(limit);
+        changes_made = true;
+    }
+
+    // Apply additional params
+    if let Some(params) = param
+        && let Some(provider_config) = config.providers.get_mut(&provider_name)
+    {
+        let additional_params = parse_additional_params(&params);
+        if provider_config.additional_params != additional_params {
+            provider_config.additional_params = additional_params;
+            changes_made = true;
+        }
+    }
+
+    // Apply gitmoji setting
+    if let Some(use_gitmoji) = common.resolved_gitmoji()
+        && config.use_gitmoji != use_gitmoji
+    {
+        config.use_gitmoji = use_gitmoji;
+        changes_made = true;
+    }
+
+    // Apply instructions
+    if let Some(instr) = &common.instructions
+        && config.instructions != *instr
+    {
+        config.instructions.clone_from(instr);
+        changes_made = true;
+    }
+
+    // Apply preset
+    if let Some(preset) = &common.preset {
+        let preset_library = get_instruction_preset_library();
+        if preset_library.get_preset(preset).is_some() {
+            if config.instruction_preset != *preset {
+                config.instruction_preset.clone_from(preset);
+                changes_made = true;
+            }
+        } else {
+            return Err(anyhow!("Invalid preset: {}", preset));
+        }
+    }
+
+    // Apply subagent timeout
+    if let Some(timeout) = subagent_timeout
+        && config.subagent_timeout_secs != timeout
+    {
+        config.subagent_timeout_secs = timeout;
+        changes_made = true;
+    }
 
     if changes_made {
-        // Save to project config file
+        // Save to project config file (only contains what we set)
         config.save_as_project_config()?;
         ui::print_success("Project configuration created/updated successfully.");
         println!();
@@ -404,6 +514,12 @@ fn print_configuration(config: &Config) {
         false,
     );
     print_config_row("Preset", &config.instruction_preset, yellow, false);
+    print_config_row(
+        "Subagent Timeout",
+        &format!("{}s", config.subagent_timeout_secs),
+        coral,
+        false,
+    );
 
     // Custom Instructions (if any)
     if !config.instructions.is_empty() {
@@ -414,11 +530,13 @@ fn print_configuration(config: &Config) {
         }
     }
 
-    // Show all configured providers (those with API keys), sorted alphabetically
+    // Show all configured providers
+    // For personal configs: show only those with API keys
+    // For project configs: show all providers (they never have API keys)
     let mut providers: Vec<_> = config
         .providers
         .iter()
-        .filter(|(_, cfg)| !cfg.api_key.is_empty())
+        .filter(|(_, cfg)| config.is_project_config || !cfg.api_key.is_empty())
         .collect();
     providers.sort_by_key(|(name, _)| name.as_str());
 
