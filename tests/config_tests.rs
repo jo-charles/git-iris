@@ -122,6 +122,8 @@ fn test_project_config_security() {
         instructions: Some("Test instructions".to_string()),
         preset: Some("default".to_string()),
         gitmoji: Some(true),
+        gitmoji_flag: false,
+        no_gitmoji: false,
         repository_url: None,
     };
 

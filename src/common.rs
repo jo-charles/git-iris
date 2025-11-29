@@ -28,11 +28,11 @@ pub struct CommonParams {
         conflicts_with = "no_gitmoji",
         action = clap::ArgAction::SetTrue
     )]
-    gitmoji_flag: bool,
+    pub gitmoji_flag: bool,
 
     /// Disable Gitmoji
     #[arg(long = "no-gitmoji", help = "Disable Gitmoji", action = clap::ArgAction::SetTrue)]
-    no_gitmoji: bool,
+    pub no_gitmoji: bool,
 
     /// Internal: resolved gitmoji value (Some(true), Some(false), or None)
     #[arg(skip)]

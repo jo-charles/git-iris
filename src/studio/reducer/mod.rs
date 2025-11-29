@@ -7,17 +7,21 @@
 //!
 //! Side effects are returned for the app to execute after state update.
 
+mod agent;
+mod content;
+mod git;
 mod modal;
 mod navigation;
+mod settings;
+mod ui;
 
 use crossterm::event::MouseEventKind;
 
 use super::events::{
-    AgentResult, AgentTask, ChatContext, ContentPayload, ContentType, DataType, ModalType,
-    NotificationLevel, ScrollDirection, SideEffect, StudioEvent, TaskType,
+    AgentTask, ChatContext, DataType, ModalType, ScrollDirection, SideEffect, StudioEvent, TaskType,
 };
-use super::history::{ChatRole, ContentData, History};
-use super::state::{EmojiMode, Modal, Mode, Notification, StudioState};
+use super::history::{ChatRole, History};
+use super::state::{EmojiMode, Modal, Mode, StudioState};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Reducer Function
@@ -229,8 +233,7 @@ pub fn reduce(
         // Agent Response Events
         // ─────────────────────────────────────────────────────────────────────────
         StudioEvent::AgentStarted { task_type } => {
-            state.set_iris_thinking(format!("Working on {}...", task_type));
-            history.record_agent_start(task_type);
+            agent::agent_started(state, history, task_type);
         }
 
         StudioEvent::AgentProgress {
@@ -238,134 +241,15 @@ pub fn reduce(
             tool_name,
             message,
         } => {
-            // Update status with tool progress
-            state.set_iris_thinking(format!("{}: {}", tool_name, message));
+            agent::agent_progress(state, &tool_name, &message);
         }
 
         StudioEvent::AgentComplete { task_type, result } => {
-            state.set_iris_idle();
-            history.record_agent_complete(task_type.clone(), true);
-
-            match result {
-                AgentResult::CommitMessages(messages) => {
-                    state.modes.commit.messages.clone_from(&messages);
-                    state.modes.commit.current_index = 0;
-                    state.modes.commit.generating = false;
-                    state
-                        .modes
-                        .commit
-                        .message_editor
-                        .set_messages(messages.clone());
-
-                    // Record in history
-                    if let Some(msg) = messages.first() {
-                        history.record_content(
-                            Mode::Commit,
-                            ContentType::CommitMessage,
-                            &ContentData::Commit(msg.clone()),
-                            super::events::EventSource::Agent,
-                            "generation_complete",
-                        );
-                    }
-                }
-
-                AgentResult::ReviewContent(content) => {
-                    state.modes.review.review_content.clone_from(&content);
-                    state.modes.review.generating = false;
-
-                    history.record_content(
-                        Mode::Review,
-                        ContentType::CodeReview,
-                        &ContentData::Markdown(content),
-                        super::events::EventSource::Agent,
-                        "generation_complete",
-                    );
-                }
-
-                AgentResult::PRContent(content) => {
-                    state.modes.pr.pr_content.clone_from(&content);
-                    state.modes.pr.generating = false;
-
-                    history.record_content(
-                        Mode::PR,
-                        ContentType::PRDescription,
-                        &ContentData::Markdown(content),
-                        super::events::EventSource::Agent,
-                        "generation_complete",
-                    );
-                }
-
-                AgentResult::ChangelogContent(content) => {
-                    state.modes.changelog.changelog_content.clone_from(&content);
-                    state.modes.changelog.generating = false;
-
-                    history.record_content(
-                        Mode::Changelog,
-                        ContentType::Changelog,
-                        &ContentData::Markdown(content),
-                        super::events::EventSource::Agent,
-                        "generation_complete",
-                    );
-                }
-
-                AgentResult::ReleaseNotesContent(content) => {
-                    state
-                        .modes
-                        .release_notes
-                        .release_notes_content
-                        .clone_from(&content);
-                    state.modes.release_notes.generating = false;
-
-                    history.record_content(
-                        Mode::ReleaseNotes,
-                        ContentType::ReleaseNotes,
-                        &ContentData::Markdown(content),
-                        super::events::EventSource::Agent,
-                        "generation_complete",
-                    );
-                }
-
-                AgentResult::ChatResponse(response) => {
-                    // Add Iris response to history
-                    history.add_chat_message(ChatRole::Iris, &response);
-
-                    // Update chat state
-                    state.chat_state.add_iris_response(&response);
-                }
-
-                AgentResult::SemanticBlame(result) => {
-                    state.modes.explore.semantic_blame = Some(result);
-                    state.modes.explore.blame_loading = false;
-                    state.notify(Notification::success("Blame analysis complete"));
-                }
-            }
-
-            state.mark_dirty();
+            agent::agent_complete(state, history, task_type, result);
         }
 
         StudioEvent::AgentError { task_type, error } => {
-            state.set_iris_error(&error);
-            history.record_agent_complete(task_type.clone(), false);
-
-            // Reset generating flags
-            match task_type {
-                TaskType::Commit => state.modes.commit.generating = false,
-                TaskType::Review => state.modes.review.generating = false,
-                TaskType::PR => state.modes.pr.generating = false,
-                TaskType::Changelog => state.modes.changelog.generating = false,
-                TaskType::ReleaseNotes => state.modes.release_notes.generating = false,
-                TaskType::Chat => {
-                    state.chat_state.is_responding = false;
-                }
-                TaskType::SemanticBlame => {
-                    state.modes.explore.blame_loading = false;
-                }
-            }
-
-            state.notify(Notification::error(format!(
-                "{} failed: {}",
-                task_type, error
-            )));
+            agent::agent_error(state, history, task_type, &error);
         }
 
         StudioEvent::StreamingChunk {
@@ -373,62 +257,11 @@ pub fn reduce(
             chunk: _,
             aggregated,
         } => {
-            // Update streaming content for the appropriate mode
-            match task_type {
-                TaskType::Review => {
-                    state.modes.review.streaming_content = Some(aggregated);
-                }
-                TaskType::PR => {
-                    state.modes.pr.streaming_content = Some(aggregated);
-                }
-                TaskType::Changelog => {
-                    state.modes.changelog.streaming_content = Some(aggregated);
-                }
-                TaskType::ReleaseNotes => {
-                    state.modes.release_notes.streaming_content = Some(aggregated);
-                }
-                TaskType::Chat => {
-                    // For chat, append to the current response
-                    state.chat_state.streaming_response = Some(aggregated);
-                }
-                TaskType::SemanticBlame => {
-                    state.modes.explore.streaming_blame = Some(aggregated);
-                }
-                TaskType::Commit => {
-                    // Commit doesn't stream (structured JSON)
-                }
-            }
-            state.mark_dirty();
+            agent::streaming_chunk(state, task_type, aggregated);
         }
 
         StudioEvent::StreamingComplete { task_type } => {
-            // Clear streaming state - the final AgentComplete event will set the real content
-            match task_type {
-                TaskType::Review => {
-                    state.modes.review.streaming_content = None;
-                }
-                TaskType::PR => {
-                    state.modes.pr.streaming_content = None;
-                }
-                TaskType::Changelog => {
-                    state.modes.changelog.streaming_content = None;
-                }
-                TaskType::ReleaseNotes => {
-                    state.modes.release_notes.streaming_content = None;
-                }
-                TaskType::Chat => {
-                    state.chat_state.streaming_response = None;
-                    // Move final current_tool to history before clearing
-                    if let Some(tool) = state.chat_state.current_tool.take() {
-                        state.chat_state.add_tool_to_history(tool);
-                    }
-                }
-                TaskType::SemanticBlame => {
-                    state.modes.explore.streaming_blame = None;
-                }
-                TaskType::Commit => {}
-            }
-            state.mark_dirty();
+            agent::streaming_complete(state, task_type);
         }
 
         // ─────────────────────────────────────────────────────────────────────────
@@ -436,96 +269,9 @@ pub fn reduce(
         // ─────────────────────────────────────────────────────────────────────────
         StudioEvent::UpdateContent {
             content_type,
-            content,
+            content: payload,
         } => {
-            match (content_type, content) {
-                (ContentType::CommitMessage, ContentPayload::Commit(msg)) => {
-                    // Update current message
-                    if state.modes.commit.messages.is_empty() {
-                        state.modes.commit.messages = vec![msg.clone()];
-                        state
-                            .modes
-                            .commit
-                            .message_editor
-                            .set_messages(vec![msg.clone()]);
-                    } else {
-                        let idx = state.modes.commit.current_index;
-                        state.modes.commit.messages[idx] = msg.clone();
-                        state
-                            .modes
-                            .commit
-                            .message_editor
-                            .set_messages(state.modes.commit.messages.clone());
-                    }
-
-                    history.record_content(
-                        Mode::Commit,
-                        content_type,
-                        &ContentData::Commit(msg),
-                        super::events::EventSource::Tool,
-                        "tool_update",
-                    );
-                }
-
-                (ContentType::PRDescription, ContentPayload::Markdown(content)) => {
-                    state.modes.pr.pr_content.clone_from(&content);
-
-                    history.record_content(
-                        Mode::PR,
-                        content_type,
-                        &ContentData::Markdown(content),
-                        super::events::EventSource::Tool,
-                        "tool_update",
-                    );
-                }
-
-                (ContentType::CodeReview, ContentPayload::Markdown(content)) => {
-                    state.modes.review.review_content.clone_from(&content);
-
-                    history.record_content(
-                        Mode::Review,
-                        content_type,
-                        &ContentData::Markdown(content),
-                        super::events::EventSource::Tool,
-                        "tool_update",
-                    );
-                }
-
-                (ContentType::Changelog, ContentPayload::Markdown(content)) => {
-                    state.modes.changelog.changelog_content.clone_from(&content);
-
-                    history.record_content(
-                        Mode::Changelog,
-                        content_type,
-                        &ContentData::Markdown(content),
-                        super::events::EventSource::Tool,
-                        "tool_update",
-                    );
-                }
-
-                (ContentType::ReleaseNotes, ContentPayload::Markdown(content)) => {
-                    state
-                        .modes
-                        .release_notes
-                        .release_notes_content
-                        .clone_from(&content);
-
-                    history.record_content(
-                        Mode::ReleaseNotes,
-                        content_type,
-                        &ContentData::Markdown(content),
-                        super::events::EventSource::Tool,
-                        "tool_update",
-                    );
-                }
-
-                _ => {
-                    // Mismatched content type and payload
-                    state.notify(Notification::warning("Received mismatched content update"));
-                }
-            }
-
-            state.mark_dirty();
+            content::update_content(state, history, content_type, payload);
         }
 
         StudioEvent::LoadData {
@@ -541,54 +287,34 @@ pub fn reduce(
         }
 
         StudioEvent::StageFile(path) => {
-            effects.push(SideEffect::GitStage(path));
+            effects.push(content::stage_file(path));
         }
 
         StudioEvent::UnstageFile(path) => {
-            effects.push(SideEffect::GitUnstage(path));
+            effects.push(content::unstage_file(path));
         }
 
         // ─────────────────────────────────────────────────────────────────────────
         // File & Git Events
         // ─────────────────────────────────────────────────────────────────────────
-        StudioEvent::FileStaged(path) => {
-            state.notify(Notification::success(format!("Staged: {}", path.display())));
-            effects.push(SideEffect::RefreshGitStatus);
+        StudioEvent::FileStaged(ref path) => {
+            effects.extend(git::file_staged(state, path));
         }
 
-        StudioEvent::FileUnstaged(path) => {
-            state.notify(Notification::info(format!("Unstaged: {}", path.display())));
-            effects.push(SideEffect::RefreshGitStatus);
+        StudioEvent::FileUnstaged(ref path) => {
+            effects.extend(git::file_unstaged(state, path));
         }
 
         StudioEvent::RefreshGitStatus => {
-            effects.push(SideEffect::RefreshGitStatus);
+            effects.extend(git::refresh_git_status());
         }
 
         StudioEvent::GitStatusRefreshed => {
-            state.mark_dirty();
+            git::git_status_refreshed(state);
         }
 
         StudioEvent::SelectFile(path) => {
-            // Update selected file based on current mode
-            match state.active_mode {
-                Mode::Explore => {
-                    state.modes.explore.current_file = Some(path);
-                }
-                Mode::Commit => {
-                    // Find index of file in staged files
-                    if let Some(idx) = state
-                        .git_status
-                        .staged_files
-                        .iter()
-                        .position(|f| f == &path)
-                    {
-                        state.modes.commit.selected_file_index = idx;
-                    }
-                }
-                _ => {}
-            }
-            state.mark_dirty();
+            git::select_file(state, path);
         }
 
         // ─────────────────────────────────────────────────────────────────────────
@@ -661,102 +387,46 @@ pub fn reduce(
         // UI Events
         // ─────────────────────────────────────────────────────────────────────────
         StudioEvent::Notify { level, message } => {
-            let notification = match level {
-                NotificationLevel::Info => Notification::info(message),
-                NotificationLevel::Success => Notification::success(message),
-                NotificationLevel::Warning => Notification::warning(message),
-                NotificationLevel::Error => Notification::error(message),
-            };
-            state.notify(notification);
+            ui::notify(state, level, message);
         }
 
         StudioEvent::Scroll { direction, amount } => {
-            navigation::apply_scroll(state, direction, amount);
+            ui::scroll(state, direction, amount);
         }
 
         StudioEvent::ToggleEditMode => {
-            if state.active_mode == Mode::Commit {
-                state.modes.commit.editing_message = !state.modes.commit.editing_message;
-                if state.modes.commit.editing_message {
-                    state.modes.commit.message_editor.enter_edit_mode();
-                } else {
-                    state.modes.commit.message_editor.exit_edit_mode();
-                }
-            }
-            state.mark_dirty();
+            ui::toggle_edit_mode(state);
         }
 
         StudioEvent::NextMessageVariant => {
-            let commit = &mut state.modes.commit;
-            if !commit.messages.is_empty() {
-                commit.current_index = (commit.current_index + 1) % commit.messages.len();
-                // Use the editor's built-in navigation which syncs everything
-                commit.message_editor.next_message();
-            }
-            state.mark_dirty();
+            ui::next_message_variant(state);
         }
 
         StudioEvent::PrevMessageVariant => {
-            let commit = &mut state.modes.commit;
-            if !commit.messages.is_empty() {
-                commit.current_index = if commit.current_index == 0 {
-                    commit.messages.len() - 1
-                } else {
-                    commit.current_index - 1
-                };
-                // Use the editor's built-in navigation which syncs everything
-                commit.message_editor.prev_message();
-            }
-            state.mark_dirty();
+            ui::prev_message_variant(state);
         }
 
         StudioEvent::CopyToClipboard(content) => {
-            effects.push(SideEffect::CopyToClipboard(content));
+            effects.push(ui::copy_to_clipboard(content));
         }
 
         // ─────────────────────────────────────────────────────────────────────────
         // Settings Events
         // ─────────────────────────────────────────────────────────────────────────
         StudioEvent::SetPreset(preset) => {
-            state.modes.commit.preset = preset;
-            state.mark_dirty();
+            settings::set_preset(state, preset);
         }
 
         StudioEvent::ToggleGitmoji => {
-            state.modes.commit.use_gitmoji = !state.modes.commit.use_gitmoji;
-            state.modes.commit.emoji_mode = if state.modes.commit.use_gitmoji {
-                EmojiMode::Auto
-            } else {
-                EmojiMode::None
-            };
-            state.mark_dirty();
+            settings::toggle_gitmoji(state);
         }
 
         StudioEvent::SetEmoji(emoji) => {
-            state.modes.commit.emoji_mode = if emoji.is_empty() {
-                EmojiMode::None
-            } else {
-                EmojiMode::Custom(emoji)
-            };
-            state.mark_dirty();
+            settings::set_emoji(state, emoji);
         }
 
         StudioEvent::ToggleAmendMode => {
-            state.modes.commit.amend_mode = !state.modes.commit.amend_mode;
-            if state.modes.commit.amend_mode {
-                // Load original message from HEAD if repo is available
-                if let Some(repo) = &state.repo
-                    && let Ok(msg) = repo.get_head_commit_message()
-                {
-                    state.modes.commit.original_message = Some(msg);
-                }
-            } else {
-                state.modes.commit.original_message = None;
-            }
-            // Clear messages when toggling amend mode
-            state.modes.commit.messages.clear();
-            state.modes.commit.message_editor.clear();
-            state.mark_dirty();
+            settings::toggle_amend_mode(state);
         }
 
         // ─────────────────────────────────────────────────────────────────────────
@@ -944,6 +614,7 @@ fn reduce_mouse_event(
 mod tests {
     use super::*;
     use crate::config::Config;
+    use crate::studio::events::NotificationLevel;
     use crate::studio::state::PanelId;
 
     fn test_state() -> StudioState {
