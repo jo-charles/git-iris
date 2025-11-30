@@ -9,6 +9,7 @@ pub use chat::{ChatMessage, ChatRole, ChatState, truncate_preview};
 pub use modes::{ChangelogCommit, ModeStates, PrCommit};
 
 use crate::agents::StatusMessageBatch;
+use crate::companion::CompanionService;
 use crate::config::Config;
 use crate::git::GitRepo;
 use crate::types::format_commit_message;
@@ -849,6 +850,58 @@ impl IrisStatus {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// Companion Session Display
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// A single commit entry for display
+#[derive(Debug, Clone, Default)]
+pub struct CommitEntry {
+    /// Short hash (7 chars)
+    pub short_hash: String,
+    /// Commit message (first line)
+    pub message: String,
+    /// Author name
+    pub author: String,
+    /// Relative time (e.g., "2 hours ago")
+    pub relative_time: String,
+}
+
+/// Snapshot of companion session for UI display
+#[derive(Debug, Clone, Default)]
+pub struct CompanionSessionDisplay {
+    /// Number of files touched this session
+    pub files_touched: usize,
+    /// Number of commits made this session
+    pub commits_made: usize,
+    /// Session duration in human-readable form
+    pub duration: String,
+    /// Most recently touched file (for activity indicator)
+    pub last_touched_file: Option<PathBuf>,
+    /// Welcome message if returning to branch
+    pub welcome_message: Option<String>,
+    /// When welcome message was shown (for auto-clear)
+    pub welcome_shown_at: Option<std::time::Instant>,
+    /// Whether file watcher is active
+    pub watcher_active: bool,
+
+    // ─── Git Browser Info ───
+    /// Current HEAD commit
+    pub head_commit: Option<CommitEntry>,
+    /// Recent commits (mini log, up to 5)
+    pub recent_commits: Vec<CommitEntry>,
+    /// Commits ahead of remote
+    pub ahead: usize,
+    /// Commits behind remote
+    pub behind: usize,
+    /// Current branch name
+    pub branch: String,
+    /// Number of staged files
+    pub staged_count: usize,
+    /// Number of unstaged files
+    pub unstaged_count: usize,
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // Main Studio State
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -884,6 +937,12 @@ pub struct StudioState {
     /// Iris agent status
     pub iris_status: IrisStatus,
 
+    /// Companion service for ambient awareness (optional - may fail to init)
+    pub companion: Option<CompanionService>,
+
+    /// Companion session display data (updated periodically)
+    pub companion_display: CompanionSessionDisplay,
+
     /// Whether the UI needs redraw
     pub dirty: bool,
 
@@ -894,6 +953,51 @@ pub struct StudioState {
 impl StudioState {
     /// Create new studio state
     pub fn new(config: Config, repo: Option<Arc<GitRepo>>) -> Self {
+        // Try to initialize companion service
+        let (companion, companion_display) = if let Some(ref git_repo) = repo {
+            let repo_path = git_repo.repo_path().clone();
+            let branch = git_repo
+                .get_current_branch()
+                .unwrap_or_else(|_| "main".to_string());
+
+            match CompanionService::new(repo_path, &branch) {
+                Ok(service) => {
+                    // Load or create branch memory
+                    let mut branch_mem = service
+                        .load_branch_memory(&branch)
+                        .ok()
+                        .flatten()
+                        .unwrap_or_else(|| crate::companion::BranchMemory::new(branch.clone()));
+
+                    // Get welcome message before recording visit (which updates last_visited)
+                    let welcome = branch_mem.welcome_message();
+
+                    // Record this visit
+                    branch_mem.record_visit();
+
+                    // Save updated branch memory
+                    if let Err(e) = service.save_branch_memory(&branch_mem) {
+                        tracing::warn!("Failed to save branch memory: {}", e);
+                    }
+
+                    let display = CompanionSessionDisplay {
+                        watcher_active: service.has_watcher(),
+                        welcome_message: welcome.clone(),
+                        welcome_shown_at: welcome.map(|_| std::time::Instant::now()),
+                        ..Default::default()
+                    };
+
+                    (Some(service), display)
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to initialize companion: {}", e);
+                    (None, CompanionSessionDisplay::default())
+                }
+            }
+        } else {
+            (None, CompanionSessionDisplay::default())
+        };
+
         Self {
             repo,
             git_status: GitStatus::default(),
@@ -905,6 +1009,8 @@ impl StudioState {
             chat_state: ChatState::new(),
             notifications: VecDeque::new(),
             iris_status: IrisStatus::Idle,
+            companion,
+            companion_display,
             dirty: true,
             last_render: std::time::Instant::now(),
         }
@@ -1271,5 +1377,125 @@ impl StudioState {
         }
 
         emojis
+    }
+
+    /// Update companion display from session data and git info
+    pub fn update_companion_display(&mut self) {
+        // Update session data from companion
+        if let Some(ref companion) = self.companion {
+            let session = companion.session().read();
+
+            // Format duration
+            let duration = session.duration();
+            let duration_str = if duration.num_hours() > 0 {
+                format!("{}h {}m", duration.num_hours(), duration.num_minutes() % 60)
+            } else if duration.num_minutes() > 0 {
+                format!("{}m", duration.num_minutes())
+            } else {
+                "just started".to_string()
+            };
+
+            // Get most recently touched file
+            let last_touched = session
+                .recent_files()
+                .first()
+                .map(|f| f.path.clone());
+
+            self.companion_display.files_touched = session.files_count();
+            self.companion_display.commits_made = session.commits_made.len();
+            self.companion_display.duration = duration_str;
+            self.companion_display.last_touched_file = last_touched;
+            self.companion_display.watcher_active = companion.has_watcher();
+        }
+
+        // Update git info from repo and git_status
+        self.companion_display.branch = self.git_status.branch.clone();
+        self.companion_display.staged_count = self.git_status.staged_count;
+        self.companion_display.unstaged_count =
+            self.git_status.modified_count + self.git_status.untracked_count;
+        self.companion_display.ahead = self.git_status.commits_ahead;
+        self.companion_display.behind = self.git_status.commits_behind;
+
+        // Fetch recent commits from repo
+        if let Some(ref repo) = self.repo
+            && let Ok(commits) = repo.get_recent_commits(6) {
+                let mut entries: Vec<CommitEntry> = commits
+                    .into_iter()
+                    .map(|c| {
+                        let relative_time = Self::format_relative_time(&c.timestamp);
+                        CommitEntry {
+                            short_hash: c.hash[..7.min(c.hash.len())].to_string(),
+                            message: c.message.lines().next().unwrap_or("").to_string(),
+                            author: c
+                                .author
+                                .split('<')
+                                .next()
+                                .unwrap_or(&c.author)
+                                .trim()
+                                .to_string(),
+                            relative_time,
+                        }
+                    })
+                    .collect();
+
+                // First commit is HEAD
+                self.companion_display.head_commit = entries.first().cloned();
+
+                // Rest are recent commits (skip HEAD, take up to 5)
+                if !entries.is_empty() {
+                    entries.remove(0);
+                }
+                self.companion_display.recent_commits = entries.into_iter().take(5).collect();
+            }
+    }
+
+    /// Format a timestamp as relative time
+    fn format_relative_time(timestamp: &str) -> String {
+        use chrono::{DateTime, Utc};
+
+        // Try to parse the timestamp
+        if let Ok(dt) = DateTime::parse_from_rfc3339(timestamp) {
+            let now = Utc::now();
+            let then: DateTime<Utc> = dt.into();
+            let duration = now.signed_duration_since(then);
+
+            if duration.num_days() > 365 {
+                format!("{}y ago", duration.num_days() / 365)
+            } else if duration.num_days() > 30 {
+                format!("{}mo ago", duration.num_days() / 30)
+            } else if duration.num_days() > 0 {
+                format!("{}d ago", duration.num_days())
+            } else if duration.num_hours() > 0 {
+                format!("{}h ago", duration.num_hours())
+            } else if duration.num_minutes() > 0 {
+                format!("{}m ago", duration.num_minutes())
+            } else {
+                "just now".to_string()
+            }
+        } else {
+            // Fallback: try simpler format or return as-is
+            timestamp.split('T').next().unwrap_or(timestamp).to_string()
+        }
+    }
+
+    /// Clear welcome message (after user has seen it)
+    pub fn clear_companion_welcome(&mut self) {
+        self.companion_display.welcome_message = None;
+    }
+
+    /// Record a file touch in companion (for manual tracking when watcher isn't active)
+    pub fn companion_touch_file(&mut self, path: PathBuf) {
+        if let Some(ref companion) = self.companion {
+            companion.touch_file(path);
+        }
+    }
+
+    /// Record a commit in companion
+    pub fn companion_record_commit(&mut self, hash: String) {
+        if let Some(ref companion) = self.companion {
+            companion.record_commit(hash);
+        }
+        // Update display
+        self.update_companion_display();
     }
 }

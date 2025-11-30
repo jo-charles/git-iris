@@ -559,6 +559,9 @@ impl StudioApp {
             // Check for completed Iris tasks
             self.check_iris_results();
 
+            // Poll companion events (file watcher)
+            self.check_companion_events();
+
             // Process any queued events through reducer
             if let Some(result) = self.process_events() {
                 return Ok(result);
@@ -656,6 +659,38 @@ impl StudioApp {
 
             // Push tick event for animations
             self.push_event(StudioEvent::Tick);
+        }
+    }
+
+    /// Check for companion events (file watcher)
+    /// Convert companion events to `StudioEvents` and push to queue
+    fn check_companion_events(&mut self) {
+        use crate::companion::CompanionEvent;
+
+        // Collect events first to avoid borrow conflicts
+        let events: Vec<_> = {
+            let Some(companion) = &mut self.state.companion else {
+                return;
+            };
+
+            let mut collected = Vec::new();
+            while let Some(event) = companion.try_recv_event() {
+                collected.push(event);
+            }
+            collected
+        };
+
+        // Now convert and push events
+        for event in events {
+            let studio_event = match event {
+                CompanionEvent::FileCreated(path) => StudioEvent::CompanionFileCreated(path),
+                CompanionEvent::FileModified(path) => StudioEvent::CompanionFileModified(path),
+                CompanionEvent::FileDeleted(path) => StudioEvent::CompanionFileDeleted(path),
+                CompanionEvent::FileRenamed(_old, new) => StudioEvent::CompanionFileModified(new),
+                CompanionEvent::GitRefChanged => StudioEvent::CompanionGitRefChanged,
+                CompanionEvent::WatcherError(err) => StudioEvent::CompanionWatcherError(err),
+            };
+            self.push_event(studio_event);
         }
     }
 
@@ -1304,10 +1339,17 @@ impl StudioApp {
         }
     }
 
-    fn perform_commit(&self, message: &str) -> ExitResult {
+    fn perform_commit(&mut self, message: &str) -> ExitResult {
         if let Some(service) = &self.commit_service {
             match service.perform_commit(message) {
                 Ok(result) => {
+                    // Record commit in companion
+                    self.state
+                        .companion_record_commit(result.commit_hash.clone());
+
+                    // Also update branch memory commit count
+                    self.update_branch_commit_count(&result.branch);
+
                     let output = crate::output::format_commit_result(&result, message);
                     ExitResult::Committed(output)
                 }
@@ -1318,10 +1360,14 @@ impl StudioApp {
         }
     }
 
-    fn perform_amend(&self, message: &str) -> ExitResult {
+    fn perform_amend(&mut self, message: &str) -> ExitResult {
         if let Some(service) = &self.commit_service {
             match service.perform_amend(message) {
                 Ok(result) => {
+                    // Record amend in companion (still counts as commit activity)
+                    self.state
+                        .companion_record_commit(result.commit_hash.clone());
+
                     let output = crate::output::format_commit_result(&result, message);
                     ExitResult::Amended(output)
                 }
@@ -1329,6 +1375,23 @@ impl StudioApp {
             }
         } else {
             ExitResult::Error("Commit service not available".to_string())
+        }
+    }
+
+    /// Update branch memory commit count
+    fn update_branch_commit_count(&self, branch: &str) {
+        if let Some(ref companion) = self.state.companion {
+            let mut branch_mem = companion
+                .load_branch_memory(branch)
+                .ok()
+                .flatten()
+                .unwrap_or_else(|| crate::companion::BranchMemory::new(branch.to_string()));
+
+            branch_mem.record_commit();
+
+            if let Err(e) = companion.save_branch_memory(&branch_mem) {
+                tracing::warn!("Failed to save branch memory after commit: {}", e);
+            }
         }
     }
 
@@ -1808,9 +1871,13 @@ impl StudioApp {
 
         match repo.stage_file(std::path::Path::new(path)) {
             Ok(()) => {
+                // Track in companion
+                self.state
+                    .companion_touch_file(std::path::PathBuf::from(path));
                 self.state
                     .notify(Notification::success(format!("Staged: {}", path)));
                 let _ = self.refresh_git_status();
+                self.state.update_companion_display();
             }
             Err(e) => {
                 self.state
@@ -1830,9 +1897,13 @@ impl StudioApp {
 
         match repo.unstage_file(std::path::Path::new(path)) {
             Ok(()) => {
+                // Track in companion
+                self.state
+                    .companion_touch_file(std::path::PathBuf::from(path));
                 self.state
                     .notify(Notification::success(format!("Unstaged: {}", path)));
                 let _ = self.refresh_git_status();
+                self.state.update_companion_display();
             }
             Err(e) => {
                 self.state
@@ -1850,10 +1921,25 @@ impl StudioApp {
             return;
         };
 
+        // Track all modified files before staging
+        let files_to_track: Vec<_> = self
+            .state
+            .git_status
+            .modified_files
+            .iter()
+            .cloned()
+            .chain(self.state.git_status.untracked_files.iter().cloned())
+            .collect();
+
         match repo.stage_all() {
             Ok(()) => {
+                // Track all in companion
+                for path in files_to_track {
+                    self.state.companion_touch_file(path);
+                }
                 self.state.notify(Notification::success("Staged all files"));
                 let _ = self.refresh_git_status();
+                self.state.update_companion_display();
             }
             Err(e) => {
                 self.state
@@ -1871,11 +1957,22 @@ impl StudioApp {
             return;
         };
 
+        // Track all staged files before unstaging
+        let files_to_track: Vec<_> = self
+            .state
+            .git_status
+            .staged_files.clone();
+
         match repo.unstage_all() {
             Ok(()) => {
+                // Track all in companion
+                for path in files_to_track {
+                    self.state.companion_touch_file(path);
+                }
                 self.state
                     .notify(Notification::success("Unstaged all files"));
                 let _ = self.refresh_git_status();
+                self.state.update_companion_display();
             }
             Err(e) => {
                 self.state

@@ -51,13 +51,13 @@ pub fn render_explore_panel(
             );
         }
         PanelId::Right => {
-            // Context panel - show semantic blame results
+            // Context panel - show semantic blame results or companion session
             let title = if state.modes.explore.blame_loading {
                 " Context (analyzing...) "
             } else if state.modes.explore.semantic_blame.is_some() {
                 " Why This Code? "
             } else {
-                " Context "
+                " Session "
             };
 
             let block = Block::default()
@@ -90,12 +90,204 @@ pub fn render_explore_panel(
                 // Show semantic blame result
                 render_semantic_blame(frame, inner, blame);
             } else {
-                // Show placeholder
-                let text = Paragraph::new("Select code and press 'w' to ask why")
-                    .style(Style::default().fg(theme::text_dim_color()));
-                frame.render_widget(text, inner);
+                // Show companion session info
+                render_companion_session(frame, inner, state);
             }
         }
+    }
+}
+
+/// Render companion session info in the context panel
+fn render_companion_session(frame: &mut Frame, area: Rect, state: &StudioState) {
+    use ratatui::layout::{Constraint, Layout};
+
+    let display = &state.companion_display;
+
+    // Calculate dynamic layout based on content
+    let has_welcome = display.welcome_message.is_some();
+    let commits_count = display.recent_commits.len();
+
+    let mut constraints = vec![];
+    if has_welcome {
+        constraints.push(Constraint::Length(2)); // Welcome
+    }
+    constraints.push(Constraint::Length(4)); // Branch + HEAD
+    constraints.push(Constraint::Length((commits_count as u16).saturating_add(2))); // Recent log
+    constraints.push(Constraint::Length(5)); // Session stats
+    constraints.push(Constraint::Min(1)); // Hints
+
+    let chunks = Layout::vertical(constraints).split(area);
+    let mut chunk_idx = 0;
+
+    // Welcome message (if any)
+    if has_welcome {
+        if let Some(ref welcome) = display.welcome_message {
+            let welcome_lines = vec![Line::from(vec![
+                Span::styled("◆ ", Style::default().fg(theme::accent_tertiary())),
+                Span::styled(
+                    welcome.clone(),
+                    Style::default()
+                        .fg(theme::accent_primary())
+                        .add_modifier(Modifier::BOLD),
+                ),
+            ])];
+            frame.render_widget(Paragraph::new(welcome_lines), chunks[chunk_idx]);
+        }
+        chunk_idx += 1;
+    }
+
+    // Branch + HEAD section
+    let mut branch_lines = Vec::new();
+
+    // Branch name with ahead/behind
+    let mut branch_spans = vec![
+        Span::styled("⎇ ", Style::default().fg(theme::accent_tertiary())),
+        Span::styled(
+            &display.branch,
+            Style::default()
+                .fg(theme::accent_secondary())
+                .add_modifier(Modifier::BOLD),
+        ),
+    ];
+    if display.ahead > 0 || display.behind > 0 {
+        branch_spans.push(Span::styled(" ", Style::default()));
+        if display.ahead > 0 {
+            branch_spans.push(Span::styled(
+                format!("↑{}", display.ahead),
+                Style::default().fg(theme::success_color()),
+            ));
+        }
+        if display.behind > 0 {
+            if display.ahead > 0 {
+                branch_spans.push(Span::styled(" ", Style::default()));
+            }
+            branch_spans.push(Span::styled(
+                format!("↓{}", display.behind),
+                Style::default().fg(theme::warning_color()),
+            ));
+        }
+    }
+    branch_lines.push(Line::from(branch_spans));
+
+    // HEAD commit
+    if let Some(ref head) = display.head_commit {
+        branch_lines.push(Line::from(vec![
+            Span::styled("  ", Style::default()),
+            Span::styled(&head.short_hash, theme::commit_hash()),
+            Span::styled(" ", Style::default()),
+            Span::styled(
+                truncate_str(&head.message, 25),
+                Style::default().fg(theme::text_primary_color()),
+            ),
+        ]));
+        branch_lines.push(Line::from(vec![
+            Span::styled("  ", Style::default()),
+            Span::styled(&head.author, theme::author()),
+            Span::styled(" · ", Style::default().fg(theme::text_dim_color())),
+            Span::styled(&head.relative_time, theme::timestamp()),
+        ]));
+    }
+    frame.render_widget(Paragraph::new(branch_lines), chunks[chunk_idx]);
+    chunk_idx += 1;
+
+    // Recent commits log
+    let mut log_lines = vec![Line::from(Span::styled(
+        "─── History ───",
+        Style::default().fg(theme::text_dim_color()),
+    ))];
+    for commit in &display.recent_commits {
+        log_lines.push(Line::from(vec![
+            Span::styled(&commit.short_hash, theme::commit_hash()),
+            Span::styled(" ", Style::default()),
+            Span::styled(
+                truncate_str(&commit.message, 22),
+                Style::default().fg(theme::text_secondary_color()),
+            ),
+        ]));
+    }
+    if display.recent_commits.is_empty() {
+        log_lines.push(Line::from(Span::styled(
+            "  (no history)",
+            Style::default().fg(theme::text_dim_color()),
+        )));
+    }
+    frame.render_widget(Paragraph::new(log_lines), chunks[chunk_idx]);
+    chunk_idx += 1;
+
+    // Session stats
+    let mut stats_lines = vec![Line::from(Span::styled(
+        "─── Session ───",
+        Style::default().fg(theme::text_dim_color()),
+    ))];
+
+    // Staged / unstaged counts
+    let mut status_spans = vec![Span::styled("  ", Style::default())];
+    if display.staged_count > 0 {
+        status_spans.push(Span::styled(
+            format!("●{} staged", display.staged_count),
+            Style::default().fg(theme::success_color()),
+        ));
+    }
+    if display.unstaged_count > 0 {
+        if display.staged_count > 0 {
+            status_spans.push(Span::styled("  ", Style::default()));
+        }
+        status_spans.push(Span::styled(
+            format!("○{} unstaged", display.unstaged_count),
+            Style::default().fg(theme::warning_color()),
+        ));
+    }
+    if display.staged_count == 0 && display.unstaged_count == 0 {
+        status_spans.push(Span::styled(
+            "clean",
+            Style::default().fg(theme::text_dim_color()),
+        ));
+    }
+    stats_lines.push(Line::from(status_spans));
+
+    // Duration + files touched
+    stats_lines.push(Line::from(vec![
+        Span::styled("  ◷ ", Style::default().fg(theme::text_dim_color())),
+        Span::styled(&display.duration, Style::default().fg(theme::text_primary_color())),
+        Span::styled("  ◇ ", Style::default().fg(theme::text_dim_color())),
+        Span::styled(
+            format!("{} files", display.files_touched),
+            Style::default().fg(theme::text_primary_color()),
+        ),
+    ]));
+
+    // Commits made this session
+    if display.commits_made > 0 {
+        stats_lines.push(Line::from(vec![
+            Span::styled("  ", Style::default()),
+            Span::styled(
+                format!("{} commits this session", display.commits_made),
+                Style::default().fg(theme::success_color()),
+            ),
+        ]));
+    }
+
+    frame.render_widget(Paragraph::new(stats_lines), chunks[chunk_idx]);
+    chunk_idx += 1;
+
+    // Hints at bottom
+    let hint_lines = vec![
+        Line::from(vec![
+            Span::styled("[w]", Style::default().fg(theme::accent_secondary())),
+            Span::styled(" why  ", Style::default().fg(theme::text_muted_color())),
+            Span::styled("[/]", Style::default().fg(theme::accent_secondary())),
+            Span::styled(" chat", Style::default().fg(theme::text_muted_color())),
+        ]),
+    ];
+    frame.render_widget(Paragraph::new(hint_lines), chunks[chunk_idx]);
+}
+
+/// Truncate a string to max length with ellipsis
+fn truncate_str(s: &str, max_len: usize) -> String {
+    if s.len() <= max_len {
+        s.to_string()
+    } else {
+        format!("{}…", &s[..max_len.saturating_sub(1)])
     }
 }
 

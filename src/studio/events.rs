@@ -214,6 +214,30 @@ pub enum StudioEvent {
 
     /// Tick (for animations, polling)
     Tick,
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Companion Events (ambient awareness)
+    // ─────────────────────────────────────────────────────────────────────────
+    /// File was created in the repository
+    CompanionFileCreated(PathBuf),
+
+    /// File was modified in the repository
+    CompanionFileModified(PathBuf),
+
+    /// File was deleted from the repository
+    CompanionFileDeleted(PathBuf),
+
+    /// Git ref changed (branch switch, commit, etc.)
+    CompanionGitRefChanged,
+
+    /// File watcher error occurred
+    CompanionWatcherError(String),
+
+    /// Branch switched - show welcome message if returning
+    CompanionBranchSwitch {
+        branch: String,
+        welcome_message: Option<String>,
+    },
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

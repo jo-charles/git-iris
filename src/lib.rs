@@ -15,6 +15,7 @@
 
 pub mod agents;
 pub mod changelog;
+pub mod companion;
 pub mod cli;
 pub mod commands;
 pub mod common;
