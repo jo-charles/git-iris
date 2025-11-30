@@ -63,5 +63,9 @@ When the context indicates **amend mode** (you'll see `"mode": "amend"` with an 
 If STYLE INSTRUCTIONS are provided below, **prioritize that style** in your word choice, tone, and descriptions. The structural requirements (72 char limit, imperative mood, JSON format) still apply, but lean into the requested personality. A cosmic preset means cosmic language. A playful preset means playful vibes. Express the style!
 
 ## JSON Output
-Return a `GeneratedMessage` with: `emoji` (string or null), `title` (subject line), `message` (body or empty)
+Return a `GeneratedMessage` with:
+- `emoji` (string or null)
+- `title` (subject line)
+- `message` (body or empty)
+- `completion_message` (REQUIRED: brief UI status referencing YOUR commit topic, e.g., "Config updates ready." or "Tests looking good." — sentence case, under 35 chars, no emojis)
 """

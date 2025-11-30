@@ -14,6 +14,9 @@ pub struct GeneratedMessage {
     pub title: String,
     /// Detailed commit message body
     pub message: String,
+    /// Brief completion status message for the UI (e.g., "Auth refactor ready.")
+    #[serde(default)]
+    pub completion_message: Option<String>,
 }
 
 /// Formats a commit message from a `GeneratedMessage`

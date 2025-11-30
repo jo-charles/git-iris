@@ -264,6 +264,11 @@ pub fn reduce(
             agent::streaming_complete(state, task_type);
         }
 
+        StudioEvent::StatusMessage(message) => {
+            tracing::info!("Processing StatusMessage event: {:?}", message.message);
+            state.add_status_message(message);
+        }
+
         // ─────────────────────────────────────────────────────────────────────────
         // Tool-Triggered Events (agent controls UI)
         // ─────────────────────────────────────────────────────────────────────────

@@ -636,6 +636,7 @@ mod tests {
             emoji: Some("✨".to_string()),
             title: "Add new feature".to_string(),
             message: "Implement the thing".to_string(),
+            completion_message: None,
         };
 
         history.record_content(
@@ -663,6 +664,7 @@ mod tests {
             emoji: Some("🔧".to_string()),
             title: "Fix the bug".to_string(),
             message: "Details here".to_string(),
+            completion_message: None,
         };
 
         let data = ContentData::Commit(msg);

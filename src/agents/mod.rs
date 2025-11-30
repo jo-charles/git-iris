@@ -16,6 +16,7 @@ pub mod setup;
 
 // Status and reporting
 pub mod status;
+pub mod status_messages;
 
 // Debug observability
 pub mod debug;
@@ -29,4 +30,7 @@ pub use context::TaskContext;
 pub use core::{AgentBackend, AgentContext, TaskResult};
 pub use iris::{IrisAgent, IrisAgentBuilder, StreamingCallback, StructuredResponse};
 pub use setup::{AgentSetupService, IrisAgentService, handle_with_agent};
+pub use status_messages::{
+    StatusContext, StatusMessage, StatusMessageBatch, StatusMessageGenerator,
+};
 pub use tools::{GitChangedFiles, GitDiff, GitLog, GitRepoInfo, GitStatus};

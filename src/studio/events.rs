@@ -109,6 +109,9 @@ pub enum StudioEvent {
     /// Streaming completed (final response)
     StreamingComplete { task_type: TaskType },
 
+    /// Dynamic status message received from fast model
+    StatusMessage(crate::agents::StatusMessage),
+
     // ─────────────────────────────────────────────────────────────────────────
     // Tool-Triggered Events (agent controls UI)
     // ─────────────────────────────────────────────────────────────────────────

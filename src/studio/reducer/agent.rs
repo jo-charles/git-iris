@@ -25,7 +25,19 @@ pub fn agent_complete(
     task_type: TaskType,
     result: AgentResult,
 ) {
-    state.set_iris_idle();
+    // Only set fallback completion if not already set (agent may have set a better one)
+    if !state.iris_status.is_complete() {
+        let completion_msg = match task_type {
+            TaskType::Commit => "Ready.",
+            TaskType::Review => "Review ready.",
+            TaskType::PR => "PR ready.",
+            TaskType::Changelog => "Changelog ready.",
+            TaskType::ReleaseNotes => "Release notes ready.",
+            TaskType::Chat => "Done.",
+            TaskType::SemanticBlame => "Blame ready.",
+        };
+        state.set_iris_complete(completion_msg);
+    }
     history.record_agent_complete(task_type, true);
 
     match result {

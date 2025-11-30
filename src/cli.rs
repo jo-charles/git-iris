@@ -111,10 +111,6 @@ pub enum Commands {
         #[arg(short, long, help = "Automatically commit with the generated message")]
         auto_commit: bool,
 
-        /// Disable Gitmoji for this commit
-        #[arg(long, help = "Disable Gitmoji for this commit")]
-        no_gitmoji: bool,
-
         /// Print the generated message to stdout and exit
         #[arg(short, long, help = "Print the generated message to stdout and exit")]
         print: bool,
@@ -1001,16 +997,18 @@ pub async fn handle_command(
         Commands::Gen {
             common,
             auto_commit,
-            no_gitmoji,
             print,
             no_verify,
             amend,
         } => {
+            // Get gitmoji setting from common params (--gitmoji/--no-gitmoji flags)
+            // Default to true if not explicitly set
+            let use_gitmoji = common.resolved_gitmoji().unwrap_or(true);
             handle_gen(
                 common,
                 GenConfig {
                     auto_commit,
-                    use_gitmoji: !no_gitmoji,
+                    use_gitmoji,
                     print_only: print,
                     verify: !no_verify,
                     amend,

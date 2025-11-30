@@ -8,6 +8,7 @@ mod modes;
 pub use chat::{ChatMessage, ChatRole, ChatState, truncate_preview};
 pub use modes::{ChangelogCommit, ModeStates, PrCommit};
 
+use crate::agents::StatusMessageBatch;
 use crate::config::Config;
 use crate::git::GitRepo;
 use crate::types::format_commit_message;
@@ -780,8 +781,19 @@ pub enum IrisStatus {
     #[default]
     Idle,
     Thinking {
+        /// Current display message (may be static fallback or dynamic)
         task: String,
+        /// Original fallback message (used if no dynamic messages arrive)
+        fallback: String,
+        /// Spinner animation frame
         spinner_frame: usize,
+        /// Dynamic status message from the fast model (we keep ONE per task)
+        dynamic_messages: StatusMessageBatch,
+    },
+    /// Task completed - show completion message (stays until next task)
+    Complete {
+        /// Completion message to display
+        message: String,
     },
     Error(String),
 }
@@ -798,10 +810,40 @@ impl IrisStatus {
         }
     }
 
-    /// Advance the spinner frame
+    /// Get the current display message
+    pub fn message(&self) -> Option<&str> {
+        match self {
+            IrisStatus::Thinking { task, .. } => Some(task),
+            IrisStatus::Complete { message, .. } => Some(message),
+            IrisStatus::Error(msg) => Some(msg),
+            IrisStatus::Idle => None,
+        }
+    }
+
+    /// Check if this is a completion state
+    pub fn is_complete(&self) -> bool {
+        matches!(self, IrisStatus::Complete { .. })
+    }
+
+    /// Advance the spinner frame (Complete just stays put)
     pub fn tick(&mut self) {
         if let IrisStatus::Thinking { spinner_frame, .. } = self {
             *spinner_frame = (*spinner_frame + 1) % super::theme::SPINNER_BRAILLE.len();
+        }
+    }
+
+    /// Set the dynamic status message (replaces any previous - we only keep ONE)
+    pub fn add_dynamic_message(&mut self, message: crate::agents::StatusMessage) {
+        if let IrisStatus::Thinking {
+            task,
+            dynamic_messages,
+            ..
+        } = self
+        {
+            // Replace the current message with the new one
+            task.clone_from(&message.message);
+            dynamic_messages.clear();
+            dynamic_messages.add(message);
         }
     }
 }
@@ -1048,16 +1090,33 @@ impl StudioState {
 
     /// Update Iris status
     pub fn set_iris_thinking(&mut self, task: impl Into<String>) {
+        let msg = task.into();
         self.iris_status = IrisStatus::Thinking {
-            task: task.into(),
+            task: msg.clone(),
+            fallback: msg,
             spinner_frame: 0,
+            dynamic_messages: StatusMessageBatch::new(),
         };
+        self.dirty = true;
+    }
+
+    /// Add a dynamic status message (received from fast model)
+    pub fn add_status_message(&mut self, message: crate::agents::StatusMessage) {
+        self.iris_status.add_dynamic_message(message);
         self.dirty = true;
     }
 
     /// Set Iris idle
     pub fn set_iris_idle(&mut self) {
         self.iris_status = IrisStatus::Idle;
+        self.dirty = true;
+    }
+
+    /// Set Iris complete with a message (stays until next task)
+    pub fn set_iris_complete(&mut self, message: impl Into<String>) {
+        self.iris_status = IrisStatus::Complete {
+            message: message.into(),
+        };
         self.dirty = true;
     }
 
@@ -1072,7 +1131,7 @@ impl StudioState {
         self.iris_status.tick();
         self.cleanup_notifications();
 
-        // Mark dirty if we have active animations
+        // Mark dirty if we have active animations (Thinking spinner)
         if matches!(self.iris_status, IrisStatus::Thinking { .. }) {
             self.dirty = true;
         }

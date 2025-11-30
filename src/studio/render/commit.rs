@@ -57,7 +57,8 @@ pub fn render_commit_panel(
                 preset_name, emoji_indicator, amend_indicator
             );
 
-            // Render message editor
+            // Render message editor with dynamic status message
+            let status_msg = state.iris_status.message();
             render_message_editor(
                 frame,
                 area,
@@ -65,6 +66,7 @@ pub fn render_commit_panel(
                 &title,
                 is_focused,
                 state.modes.commit.generating,
+                status_msg,
             );
         }
         PanelId::Right => {

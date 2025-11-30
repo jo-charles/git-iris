@@ -18,6 +18,7 @@ impl StudioApp {
         message: String,
         context: crate::studio::events::ChatContext,
     ) {
+        use super::super::events::AgentTask;
         use crate::agents::StructuredResponse;
         use crate::agents::status::IRIS_STATUS;
         use crate::agents::tools::{ContentUpdate, create_content_update_channel};
@@ -31,6 +32,13 @@ impl StudioApp {
             ));
             return;
         };
+
+        // Spawn dynamic status messages
+        let task = AgentTask::Chat {
+            message: message.clone(),
+            context: context.clone(),
+        };
+        self.spawn_status_messages(&task);
 
         // Create bounded content update channel for tool-based updates
         let (content_tx, mut content_rx) = create_content_update_channel();
@@ -105,6 +113,7 @@ impl StudioApp {
                                     emoji,
                                     title,
                                     message,
+                                    completion_message: None,
                                 })
                             }
                             ContentUpdate::PR { content } => {
@@ -281,6 +290,7 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
 
     /// Spawn a task for code review generation with streaming
     pub(super) fn spawn_review_generation(&self, from_ref: String, to_ref: String) {
+        use super::super::events::AgentTask;
         use crate::agents::{StructuredResponse, TaskContext};
 
         let Some(agent) = self.agent_service.clone() else {
@@ -291,6 +301,13 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
             });
             return;
         };
+
+        // Spawn dynamic status messages
+        let task = AgentTask::Review {
+            from_ref: from_ref.clone(),
+            to_ref: to_ref.clone(),
+        };
+        self.spawn_status_messages(&task);
 
         let tx = self.iris_result_tx.clone();
         let streaming_tx = tx.clone();
@@ -353,7 +370,8 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
     // ═══════════════════════════════════════════════════════════════════════════════
 
     /// Spawn a task for PR description generation with streaming
-    pub(super) fn spawn_pr_generation(&self, base_branch: String, _to_ref: String) {
+    pub(super) fn spawn_pr_generation(&self, base_branch: String, to_ref: &str) {
+        use super::super::events::AgentTask;
         use crate::agents::{StructuredResponse, TaskContext};
 
         let Some(agent) = self.agent_service.clone() else {
@@ -364,6 +382,13 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
             });
             return;
         };
+
+        // Spawn dynamic status messages
+        let task = AgentTask::PR {
+            base_branch: base_branch.clone(),
+            to_ref: to_ref.to_string(),
+        };
+        self.spawn_status_messages(&task);
 
         let tx = self.iris_result_tx.clone();
         let streaming_tx = tx.clone();
@@ -413,6 +438,7 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
 
     /// Spawn a task for changelog generation with streaming
     pub(super) fn spawn_changelog_generation(&self, from_ref: String, to_ref: String) {
+        use super::super::events::AgentTask;
         use crate::agents::{StructuredResponse, TaskContext};
 
         let Some(agent) = self.agent_service.clone() else {
@@ -423,6 +449,13 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
             });
             return;
         };
+
+        // Spawn dynamic status messages
+        let task = AgentTask::Changelog {
+            from_ref: from_ref.clone(),
+            to_ref: to_ref.clone(),
+        };
+        self.spawn_status_messages(&task);
 
         let tx = self.iris_result_tx.clone();
         let streaming_tx = tx.clone();
@@ -475,6 +508,7 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
 
     /// Spawn a task for release notes generation with streaming
     pub(super) fn spawn_release_notes_generation(&self, from_ref: String, to_ref: String) {
+        use super::super::events::AgentTask;
         use crate::agents::{StructuredResponse, TaskContext};
 
         let Some(agent) = self.agent_service.clone() else {
@@ -485,6 +519,13 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
             });
             return;
         };
+
+        // Spawn dynamic status messages
+        let task = AgentTask::ReleaseNotes {
+            from_ref: from_ref.clone(),
+            to_ref: to_ref.clone(),
+        };
+        self.spawn_status_messages(&task);
 
         let tx = self.iris_result_tx.clone();
         let streaming_tx = tx.clone();
@@ -543,6 +584,7 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
         use_gitmoji: bool,
         amend: bool,
     ) {
+        use super::super::events::AgentTask;
         use crate::agents::{StructuredResponse, TaskContext};
 
         let Some(agent) = self.agent_service.clone() else {
@@ -553,6 +595,15 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
             });
             return;
         };
+
+        // Spawn dynamic status messages
+        let task = AgentTask::Commit {
+            instructions: instructions.clone(),
+            preset: preset.clone(),
+            use_gitmoji,
+            amend,
+        };
+        self.spawn_status_messages(&task);
 
         // Get original message for amend mode
         let original_message = if amend {
@@ -777,6 +828,7 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
     /// Spawn the semantic blame agent to explain why the code exists.
     /// Used when blame info is already collected (e.g., from `AgentTask::SemanticBlame`).
     pub(super) fn spawn_semantic_blame(&self, blame_info: BlameInfo) {
+        use super::super::events::AgentTask;
         use crate::agents::StructuredResponse;
 
         let Some(agent) = self.agent_service.clone() else {
@@ -787,6 +839,12 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
             });
             return;
         };
+
+        // Spawn dynamic status messages
+        let task = AgentTask::SemanticBlame {
+            blame_info: blame_info.clone(),
+        };
+        self.spawn_status_messages(&task);
 
         let tx = self.iris_result_tx.clone();
 

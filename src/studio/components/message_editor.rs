@@ -225,6 +225,7 @@ pub fn render_message_editor(
     title: &str,
     focused: bool,
     generating: bool,
+    status_message: Option<&str>,
 ) {
     // Build title with message count indicator
     let count_indicator = if state.message_count() > 1 {
@@ -274,6 +275,9 @@ pub fn render_message_editor(
                 % spinner_frames.len();
             let spinner = spinner_frames[frame_idx];
 
+            // Use dynamic status message if available, otherwise fallback
+            let status_text = status_message.unwrap_or("Iris is crafting your commit message");
+
             Paragraph::new(vec![
                 Line::from(""),
                 Line::from(vec![
@@ -282,15 +286,10 @@ pub fn render_message_editor(
                         Style::default().fg(theme::accent_primary()),
                     ),
                     Span::styled(
-                        "Analyzing staged changes...",
+                        status_text,
                         Style::default().fg(theme::text_primary_color()),
                     ),
                 ]),
-                Line::from(""),
-                Line::from(Span::styled(
-                    "Iris is crafting your commit message",
-                    theme::dimmed(),
-                )),
             ])
         } else {
             Paragraph::new(vec![
