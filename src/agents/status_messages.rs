@@ -198,10 +198,10 @@ impl StatusMessageGenerator {
             .agent(provider, fast_model)
             .map_err(|e| anyhow::anyhow!("Failed to create status agent: {}", e))?
             .preamble(
-                "You write tiny, witty waiting messages. Like a friend saying 'one sec'. \
-                 NOT summaries. NOT descriptions. Just a vibe. \
-                 NEVER list multiple things. NEVER describe what you're doing in detail. \
-                 Max 25 chars. End with ellipsis. No emojis. Just the message text.",
+                "You write fun waiting messages for a Git AI named Iris. \
+                 Concise, yet fun and encouraging, add vibes, be clever, not cheesy. \
+                 Capitalize first letter, end with ellipsis. Under 35 chars. No emojis. \
+                 Just the message text, nothing else.",
             )
             .max_tokens(50)
             .build();
@@ -257,46 +257,26 @@ impl StatusMessageGenerator {
 
     /// Build the prompt for status message generation
     fn build_prompt(context: &StatusContext) -> String {
-        let mut prompt = String::new();
+        let mut prompt = String::from("Context:\n");
 
-        // Give minimal context - just pick ONE interesting file or branch
-        let focus = if !context.files.is_empty() {
-            // Pick a .rs or .ts file if available, otherwise first file
-            context
-                .files
-                .iter()
-                .find(|f| f.ends_with(".rs") || f.ends_with(".ts") || f.ends_with(".tsx"))
-                .or(context.files.first())
-                .map(|f| {
-                    // Just the filename, not path
-                    f.rsplit('/').next().unwrap_or(f).to_string()
-                })
-        } else {
-            None
-        };
+        prompt.push_str(&format!("Task: {}\n", context.task_type));
 
-        if let Some(file) = &focus {
-            prompt.push_str(&format!("File: {}\n", file));
-        }
         if let Some(branch) = &context.branch {
             prompt.push_str(&format!("Branch: {}\n", branch));
         }
 
+        if !context.files.is_empty() {
+            let file_list: Vec<&str> = context.files.iter().take(3).map(String::as_str).collect();
+            prompt.push_str(&format!("Files: {}\n", file_list.join(", ")));
+        } else if let Some(count) = context.file_count {
+            prompt.push_str(&format!("File count: {}\n", count));
+        }
+
         prompt.push_str(
-            "\nWrite a SHORT, witty waiting message (this is NOT a commit message).\n\n\
-             GOOD examples:\n\
-             - \"Poking at reducer.rs...\"\n\
-             - \"Reading the diff...\"\n\
-             - \"Hmm, interesting...\"\n\
-             - \"One sec...\"\n\
-             - \"Parsing the vibes...\"\n\n\
-             BAD (too descriptive, never do this):\n\
-             - \"Committing docs, config, and stuff to main...\"\n\
-             - \"Updating authentication and tests...\"\n\n\
-             RULES:\n\
-             - Max 25 chars, end with ellipsis (...)\n\
-             - Pick ONE thing to mention OR be vague\n\
-             - Dry wit, minimal. NOT a summary.\n\
+            "\nYour task is to use the limited context above to generate a fun waiting message \
+             shown to the user while the main task executes. Concise, yet fun and encouraging. \
+             Add fun vibes depending on the context. Be clever. \
+             Capitalize the first letter and end with ellipsis. Under 35 chars. No emojis.\n\n\
              Just the message:",
         );
         prompt
