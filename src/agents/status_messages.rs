@@ -95,6 +95,15 @@ impl Default for StatusMessage {
     }
 }
 
+/// Capitalize first letter of a string (sentence case)
+fn capitalize_first(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        None => String::new(),
+        Some(first) => first.to_uppercase().chain(chars).collect(),
+    }
+}
+
 /// Generator for dynamic status messages
 pub struct StatusMessageGenerator {
     provider: String,
@@ -189,11 +198,10 @@ impl StatusMessageGenerator {
             .agent(provider, fast_model)
             .map_err(|e| anyhow::anyhow!("Failed to create status agent: {}", e))?
             .preamble(
-                "You generate casual, clever status messages for a Git AI named Iris. \
-                 Sound like a chill friend, not a LinkedIn post. \
-                 BANNED: orchestrating/crafting/curating/weaving/sculpting/transforming/synergy. \
-                 BANNED: amazing/beautiful/incredible/joy/elegant/stunning. \
-                 End with ellipsis (...). Under 55 chars. No emojis. ONLY the message.",
+                "You write tiny, witty waiting messages. Like a friend saying 'one sec'. \
+                 NOT summaries. NOT descriptions. Just a vibe. \
+                 NEVER list multiple things. NEVER describe what you're doing in detail. \
+                 Max 25 chars. End with ellipsis. No emojis. Just the message text.",
             )
             .max_tokens(50)
             .build();
@@ -228,7 +236,7 @@ impl StatusMessageGenerator {
             }
         };
 
-        let message = response.trim().to_string();
+        let message = capitalize_first(response.trim());
         tracing::info!(
             "Status agent response ({} chars): {:?}",
             message.len(),
@@ -249,45 +257,46 @@ impl StatusMessageGenerator {
 
     /// Build the prompt for status message generation
     fn build_prompt(context: &StatusContext) -> String {
-        let mut prompt = String::from("What I'm working on:\n\n");
+        let mut prompt = String::new();
 
-        prompt.push_str(&format!("Task: {}\n", context.task_type));
-        prompt.push_str(&format!("Activity: {}\n", context.activity));
+        // Give minimal context - just pick ONE interesting file or branch
+        let focus = if !context.files.is_empty() {
+            // Pick a .rs or .ts file if available, otherwise first file
+            context
+                .files
+                .iter()
+                .find(|f| f.ends_with(".rs") || f.ends_with(".ts") || f.ends_with(".tsx"))
+                .or(context.files.first())
+                .map(|f| {
+                    // Just the filename, not path
+                    f.rsplit('/').next().unwrap_or(f).to_string()
+                })
+        } else {
+            None
+        };
 
+        if let Some(file) = &focus {
+            prompt.push_str(&format!("File: {}\n", file));
+        }
         if let Some(branch) = &context.branch {
             prompt.push_str(&format!("Branch: {}\n", branch));
         }
 
-        // Include actual file names for context
-        if !context.files.is_empty() {
-            let file_list: Vec<&str> = context.files.iter().take(5).map(String::as_str).collect();
-            prompt.push_str(&format!("Files: {}\n", file_list.join(", ")));
-            if context.files.len() > 5 {
-                prompt.push_str(&format!("(+{} more)\n", context.files.len() - 5));
-            }
-        } else if let Some(count) = context.file_count {
-            prompt.push_str(&format!("File count: {}\n", count));
-        }
-
-        if let Some(summary) = &context.change_summary {
-            prompt.push_str(&format!("Changes: {}\n", summary));
-        }
-
-        if context.is_regeneration {
-            prompt.push_str("This is a REGENERATION—they want a fresh take.\n");
-            if let Some(hint) = &context.current_content_hint {
-                prompt.push_str(&format!("Current content is about: {}\n", hint));
-            }
-        }
-
         prompt.push_str(
-            "\nGenerate a casual, clever status message. Use the ACTUAL files/branch from context above.\n\
-             Style: dry wit, understated. NOT corporate or enthusiastic.\n\n\
+            "\nWrite a SHORT, witty waiting message (this is NOT a commit message).\n\n\
+             GOOD examples:\n\
+             - \"Poking at reducer.rs...\"\n\
+             - \"Reading the diff...\"\n\
+             - \"Hmm, interesting...\"\n\
+             - \"One sec...\"\n\
+             - \"Parsing the vibes...\"\n\n\
+             BAD (too descriptive, never do this):\n\
+             - \"Committing docs, config, and stuff to main...\"\n\
+             - \"Updating authentication and tests...\"\n\n\
              RULES:\n\
-             - Reference ONLY files/branches from the context above, never make up names\n\
-             - Sentence case, end with ellipsis (...)\n\
-             - Under 45 chars\n\
-             - BANNED: orchestrating/crafting/curating/weaving/stuff/things/changes/auth\n\
+             - Max 25 chars, end with ellipsis (...)\n\
+             - Pick ONE thing to mention OR be vague\n\
+             - Dry wit, minimal. NOT a summary.\n\
              Just the message:",
         );
         prompt
@@ -330,7 +339,7 @@ impl StatusMessageGenerator {
 
         let agent = Self::build_status_agent(&self.provider, &self.fast_model)?;
         let response = agent.prompt(&prompt).await?;
-        let message = response.trim().to_string();
+        let message = capitalize_first(response.trim());
 
         if message.is_empty() || message.len() > 80 {
             return Ok(Self::default_completion(context));
@@ -507,12 +516,16 @@ mod tests {
         let rt = Runtime::new().unwrap();
         rt.block_on(async {
             // Get provider/model from env or use defaults
-            let provider = std::env::var("IRIS_PROVIDER").unwrap_or_else(|_| "anthropic".to_string());
+            let provider =
+                std::env::var("IRIS_PROVIDER").unwrap_or_else(|_| "anthropic".to_string());
             let model = std::env::var("IRIS_MODEL")
                 .unwrap_or_else(|_| "claude-haiku-4-5-20251001".to_string());
 
             println!("\n{}", "=".repeat(60));
-            println!("Status Message Debug - Provider: {}, Model: {}", provider, model);
+            println!(
+                "Status Message Debug - Provider: {}, Model: {}",
+                provider, model
+            );
             println!("{}\n", "=".repeat(60));
 
             let generator = StatusMessageGenerator::new(&provider, &model);
@@ -553,8 +566,10 @@ mod tests {
 
             for (i, ctx) in scenarios.iter().enumerate() {
                 println!("--- Scenario {} ---", i + 1);
-                println!("Task: {}, Branch: {:?}, Files: {:?}",
-                    ctx.task_type, ctx.branch, ctx.files);
+                println!(
+                    "Task: {}, Branch: {:?}, Files: {:?}",
+                    ctx.task_type, ctx.branch, ctx.files
+                );
                 if ctx.is_regeneration {
                     println!("(Regeneration, hint: {:?})", ctx.current_content_hint);
                 }

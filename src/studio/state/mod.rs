@@ -1114,8 +1114,17 @@ impl StudioState {
 
     /// Set Iris complete with a message (stays until next task)
     pub fn set_iris_complete(&mut self, message: impl Into<String>) {
+        let msg = message.into();
+        // Capitalize first letter for consistent sentence case
+        let capitalized = {
+            let mut chars = msg.chars();
+            match chars.next() {
+                None => String::new(),
+                Some(first) => first.to_uppercase().chain(chars).collect(),
+            }
+        };
         self.iris_status = IrisStatus::Complete {
-            message: message.into(),
+            message: capitalized,
         };
         self.dirty = true;
     }
