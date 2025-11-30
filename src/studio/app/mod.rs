@@ -666,8 +666,7 @@ impl StudioApp {
             let event = match result {
                 IrisTaskResult::CommitMessages(messages) => {
                     // Use completion_message from agent if available, otherwise spawn generation
-                    if let Some(msg) = messages.first().and_then(|m| m.completion_message.clone())
-                    {
+                    if let Some(msg) = messages.first().and_then(|m| m.completion_message.clone()) {
                         tracing::info!("Using agent completion_message: {:?}", msg);
                         self.state.set_iris_complete(msg);
                     } else {
@@ -891,12 +890,18 @@ impl StudioApp {
             }
             super::events::AgentTask::Review { .. } => {
                 let existing = &self.state.modes.review.review_content;
-                let hint = existing.lines().next().map(|l| l.chars().take(50).collect());
+                let hint = existing
+                    .lines()
+                    .next()
+                    .map(|l| l.chars().take(50).collect());
                 (!existing.is_empty(), hint)
             }
             super::events::AgentTask::PR { .. } => {
                 let existing = &self.state.modes.pr.pr_content;
-                let hint = existing.lines().next().map(|l| l.chars().take(50).collect());
+                let hint = existing
+                    .lines()
+                    .next()
+                    .map(|l| l.chars().take(50).collect());
                 (!existing.is_empty(), hint)
             }
             super::events::AgentTask::Changelog { .. } => {

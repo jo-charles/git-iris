@@ -42,14 +42,16 @@ pub fn agent_complete(
 
     match result {
         AgentResult::CommitMessages(messages) => {
-            state.modes.commit.messages.clone_from(&messages);
-            state.modes.commit.current_index = 0;
+            // Append new messages to preserve history (for left/right navigation)
+            let first_new_index = state.modes.commit.messages.len();
+            state.modes.commit.messages.extend(messages.clone());
+            state.modes.commit.current_index = first_new_index;
             state.modes.commit.generating = false;
             state
                 .modes
                 .commit
                 .message_editor
-                .set_messages(messages.clone());
+                .add_messages(messages.clone());
 
             // Record in history
             if let Some(msg) = messages.first() {

@@ -53,7 +53,7 @@ impl MessageEditorState {
         }
     }
 
-    /// Set generated messages
+    /// Set generated messages (replaces all existing)
     pub fn set_messages(&mut self, messages: Vec<GeneratedMessage>) {
         self.generated_messages = messages;
         self.selected_message = 0;
@@ -61,6 +61,18 @@ impl MessageEditorState {
         if let Some(msg) = first_msg {
             self.load_message(&msg);
         }
+    }
+
+    /// Add messages to existing list (preserves history)
+    /// Returns the index of the first new message
+    pub fn add_messages(&mut self, messages: Vec<GeneratedMessage>) -> usize {
+        let first_new_index = self.generated_messages.len();
+        self.generated_messages.extend(messages);
+        self.selected_message = first_new_index;
+        if let Some(msg) = self.generated_messages.get(first_new_index).cloned() {
+            self.load_message(&msg);
+        }
+        first_new_index
     }
 
     /// Load a message into the editor
