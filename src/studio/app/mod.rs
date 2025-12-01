@@ -40,8 +40,8 @@ use super::history::History;
 use super::layout::{LayoutAreas, calculate_layout, get_mode_layout};
 use super::reducer::reduce;
 use super::render::{
-    render_changelog_panel, render_commit_panel, render_explore_panel, render_modal,
-    render_pr_panel, render_release_notes_panel, render_review_panel,
+    render_changelog_panel, render_commit_panel, render_companion_status_bar, render_explore_panel,
+    render_modal, render_pr_panel, render_release_notes_panel, render_review_panel,
 };
 use super::state::{GitStatus, IrisStatus, Mode, Notification, PanelId, StudioState};
 use super::theme;
@@ -84,6 +84,15 @@ pub enum IrisTaskResult {
     CompletionMessage(String),
     /// Error from the task (includes which task failed)
     Error { task_type: TaskType, error: String },
+    /// File log loaded for explore mode
+    FileLogLoaded {
+        file: std::path::PathBuf,
+        entries: Vec<crate::studio::state::FileLogEntry>,
+    },
+    /// Global commit log loaded
+    GlobalLogLoaded {
+        entries: Vec<crate::studio::state::FileLogEntry>,
+    },
 }
 
 /// Type of content update triggered by chat
@@ -332,6 +341,14 @@ impl StudioApp {
                         }
                     }
                 }
+
+                SideEffect::LoadFileLog(path) => {
+                    self.load_file_log(&path);
+                }
+
+                SideEffect::LoadGlobalLog => {
+                    self.load_global_log();
+                }
             }
         }
         None
@@ -475,7 +492,222 @@ impl StudioApp {
         if !all_files.is_empty() {
             let tree_state = super::components::FileTreeState::from_paths(&all_files, &statuses);
             self.state.modes.explore.file_tree = tree_state;
+
+            // Load file log for initially selected file
+            if let Some(entry) = self.state.modes.explore.file_tree.selected_entry()
+                && !entry.is_dir
+            {
+                let path = entry.path.clone();
+                self.state.modes.explore.current_file = Some(path.clone());
+                // Load file content into code view
+                if let Err(e) = self.state.modes.explore.code_view.load_file(&path) {
+                    tracing::warn!("Failed to load initial file: {}", e);
+                }
+                // Trigger file log loading
+                self.state.modes.explore.file_log_loading = true;
+                self.load_file_log(&path);
+            }
         }
+    }
+
+    /// Load git log for a specific file (async)
+    fn load_file_log(&self, path: &std::path::Path) {
+        use crate::studio::state::FileLogEntry;
+
+        let Some(repo) = &self.state.repo else {
+            return;
+        };
+
+        let tx = self.iris_result_tx.clone();
+        let file = path.to_path_buf();
+        let repo_path = repo.repo_path().clone();
+
+        tokio::spawn(async move {
+            let file_for_result = file.clone();
+            let result = tokio::task::spawn_blocking(move || {
+                use std::process::Command;
+
+                // Make file path relative to repo root
+                let relative_path = file
+                    .strip_prefix(&repo_path)
+                    .unwrap_or(&file)
+                    .to_string_lossy()
+                    .to_string();
+
+                // Run git log for the specific file with format:
+                // %H = full hash, %h = short hash, %s = subject, %an = author, %ar = relative time
+                let output = Command::new("git")
+                    .args([
+                        "-C",
+                        repo_path.to_str().unwrap_or("."),
+                        "log",
+                        "--follow",
+                        "--pretty=format:%H|%h|%s|%an|%ar",
+                        "--numstat",
+                        "-n",
+                        "50", // Limit to 50 entries
+                        "--",
+                        &relative_path,
+                    ])
+                    .output()?;
+
+                if !output.status.success() {
+                    return Ok(Vec::new());
+                }
+
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let mut entries = Vec::new();
+                let mut current_entry: Option<FileLogEntry> = None;
+
+                for line in stdout.lines() {
+                    if line.contains('|') && line.len() > 40 {
+                        // This is a commit line
+                        if let Some(entry) = current_entry.take() {
+                            entries.push(entry);
+                        }
+
+                        let parts: Vec<&str> = line.splitn(5, '|').collect();
+                        if parts.len() >= 5 {
+                            current_entry = Some(FileLogEntry {
+                                hash: parts[0].to_string(),
+                                short_hash: parts[1].to_string(),
+                                message: parts[2].to_string(),
+                                author: parts[3].to_string(),
+                                relative_time: parts[4].to_string(),
+                                additions: None,
+                                deletions: None,
+                            });
+                        }
+                    } else if let Some(ref mut entry) = current_entry {
+                        // This is a numstat line (additions\tdeletions\tfilename)
+                        let stat_parts: Vec<&str> = line.split('\t').collect();
+                        if stat_parts.len() >= 2 {
+                            entry.additions = stat_parts[0].parse().ok();
+                            entry.deletions = stat_parts[1].parse().ok();
+                        }
+                    }
+                }
+
+                // Don't forget the last entry
+                if let Some(entry) = current_entry {
+                    entries.push(entry);
+                }
+
+                Ok::<_, std::io::Error>(entries)
+            })
+            .await;
+
+            match result {
+                Ok(Ok(entries)) => {
+                    let _ = tx.send(IrisTaskResult::FileLogLoaded {
+                        file: file_for_result,
+                        entries,
+                    });
+                }
+                Ok(Err(e)) => {
+                    tracing::warn!("Failed to load file log: {}", e);
+                }
+                Err(e) => {
+                    tracing::warn!("File log task panicked: {}", e);
+                }
+            }
+        });
+    }
+
+    /// Load global commit log (not file-specific)
+    fn load_global_log(&self) {
+        use crate::studio::state::FileLogEntry;
+
+        let Some(repo) = &self.state.repo else {
+            return;
+        };
+
+        let tx = self.iris_result_tx.clone();
+        let repo_path = repo.repo_path().clone();
+
+        tokio::spawn(async move {
+            let result = tokio::task::spawn_blocking(move || {
+                use std::process::Command;
+
+                // Run git log for the whole repo
+                let output = Command::new("git")
+                    .args([
+                        "-C",
+                        repo_path.to_str().unwrap_or("."),
+                        "log",
+                        "--pretty=format:%H|%h|%s|%an|%ar",
+                        "--shortstat",
+                        "-n",
+                        "100", // Limit to 100 entries
+                    ])
+                    .output()?;
+
+                if !output.status.success() {
+                    return Ok(Vec::new());
+                }
+
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let mut entries = Vec::new();
+                let mut current_entry: Option<FileLogEntry> = None;
+
+                for line in stdout.lines() {
+                    if line.contains('|') && line.len() > 40 {
+                        // This is a commit line
+                        if let Some(entry) = current_entry.take() {
+                            entries.push(entry);
+                        }
+
+                        let parts: Vec<&str> = line.splitn(5, '|').collect();
+                        if parts.len() >= 5 {
+                            current_entry = Some(FileLogEntry {
+                                hash: parts[0].to_string(),
+                                short_hash: parts[1].to_string(),
+                                message: parts[2].to_string(),
+                                author: parts[3].to_string(),
+                                relative_time: parts[4].to_string(),
+                                additions: None,
+                                deletions: None,
+                            });
+                        }
+                    } else if line.contains("insertion") || line.contains("deletion") {
+                        // This is a shortstat line
+                        if let Some(ref mut entry) = current_entry {
+                            // Parse "N files changed, M insertions(+), K deletions(-)"
+                            for part in line.split(',') {
+                                let part = part.trim();
+                                if part.contains("insertion") {
+                                    entry.additions =
+                                        part.split_whitespace().next().and_then(|n| n.parse().ok());
+                                } else if part.contains("deletion") {
+                                    entry.deletions =
+                                        part.split_whitespace().next().and_then(|n| n.parse().ok());
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Don't forget the last entry
+                if let Some(entry) = current_entry {
+                    entries.push(entry);
+                }
+
+                Ok::<_, std::io::Error>(entries)
+            })
+            .await;
+
+            match result {
+                Ok(Ok(entries)) => {
+                    let _ = tx.send(IrisTaskResult::GlobalLogLoaded { entries });
+                }
+                Ok(Err(e)) => {
+                    tracing::warn!("Failed to load global log: {}", e);
+                }
+                Err(e) => {
+                    tracing::warn!("Global log task panicked: {}", e);
+                }
+            }
+        });
     }
 
     /// Run the TUI application
@@ -827,6 +1059,14 @@ impl StudioApp {
 
                 IrisTaskResult::Error { task_type, error } => {
                     StudioEvent::AgentError { task_type, error }
+                }
+
+                IrisTaskResult::FileLogLoaded { file, entries } => {
+                    StudioEvent::FileLogLoaded { file, entries }
+                }
+
+                IrisTaskResult::GlobalLogLoaded { entries } => {
+                    StudioEvent::GlobalLogLoaded { entries }
                 }
             };
 
@@ -1405,6 +1645,12 @@ impl StudioApp {
         self.render_header(frame, areas.header);
         self.render_tabs(frame, areas.tabs);
         self.render_panels(frame, &areas);
+
+        // Render companion status bar for explore mode
+        if let Some(companion_area) = areas.companion_bar {
+            render_companion_status_bar(frame, companion_area, &self.state);
+        }
+
         self.render_status(frame, areas.status);
 
         // Store layout for mouse hit testing
@@ -1958,10 +2204,7 @@ impl StudioApp {
         };
 
         // Track all staged files before unstaging
-        let files_to_track: Vec<_> = self
-            .state
-            .git_status
-            .staged_files.clone();
+        let files_to_track: Vec<_> = self.state.git_status.staged_files.clone();
 
         match repo.unstage_all() {
             Ok(()) => {

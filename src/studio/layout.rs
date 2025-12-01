@@ -252,27 +252,57 @@ pub struct LayoutAreas {
     pub content: Rect,
     /// Individual panel areas
     pub panels: Vec<Rect>,
+    /// Companion status bar (explore mode only)
+    pub companion_bar: Option<Rect>,
     /// Status bar area
     pub status: Rect,
 }
 
 /// Calculate layout areas for the given terminal size
 pub fn calculate_layout(area: Rect, mode: Mode) -> LayoutAreas {
-    // Main vertical split: header, tabs, content, status
-    let main_chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
+    // Explore mode gets an extra companion status bar
+    let has_companion_bar = matches!(mode, Mode::Explore);
+
+    // Main vertical split: header, tabs, content, [companion], status
+    let constraints = if has_companion_bar {
+        vec![
+            Constraint::Length(1), // Header
+            Constraint::Length(2), // Tabs
+            Constraint::Min(10),   // Content
+            Constraint::Length(1), // Companion bar
+            Constraint::Length(1), // Status
+        ]
+    } else {
+        vec![
             Constraint::Length(1), // Header
             Constraint::Length(2), // Tabs
             Constraint::Min(10),   // Content
             Constraint::Length(1), // Status
-        ])
+        ]
+    };
+
+    let main_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(constraints)
         .split(area);
 
-    let header = main_chunks[0];
-    let tabs = main_chunks[1];
-    let content = main_chunks[2];
-    let status = main_chunks[3];
+    let (header, tabs, content, companion_bar, status) = if has_companion_bar {
+        (
+            main_chunks[0],
+            main_chunks[1],
+            main_chunks[2],
+            Some(main_chunks[3]),
+            main_chunks[4],
+        )
+    } else {
+        (
+            main_chunks[0],
+            main_chunks[1],
+            main_chunks[2],
+            None,
+            main_chunks[3],
+        )
+    };
 
     // Get mode-specific layout
     let mode_layout = get_mode_layout(mode);
@@ -290,6 +320,7 @@ pub fn calculate_layout(area: Rect, mode: Mode) -> LayoutAreas {
         tabs,
         content,
         panels,
+        companion_bar,
         status,
     }
 }

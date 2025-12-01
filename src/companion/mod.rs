@@ -57,7 +57,10 @@ impl CompanionService {
                 Some(w)
             }
             Err(e) => {
-                tracing::warn!("Failed to start file watcher: {}. Companion will run without live updates.", e);
+                tracing::warn!(
+                    "Failed to start file watcher: {}. Companion will run without live updates.",
+                    e
+                );
                 None
             }
         };

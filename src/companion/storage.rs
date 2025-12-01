@@ -25,8 +25,12 @@ impl CompanionStorage {
         let branches_dir = repo_dir.join("branches");
 
         // Ensure directories exist
-        fs::create_dir_all(&branches_dir)
-            .with_context(|| format!("Failed to create companion directory: {}", branches_dir.display()))?;
+        fs::create_dir_all(&branches_dir).with_context(|| {
+            format!(
+                "Failed to create companion directory: {}",
+                branches_dir.display()
+            )
+        })?;
 
         Ok(Self {
             repo_dir,
@@ -52,8 +56,7 @@ impl CompanionStorage {
 
     /// Sanitize branch name for filesystem
     fn sanitize_branch_name(branch: &str) -> String {
-        branch
-            .replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "_")
+        branch.replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "_")
     }
 
     /// Get session file path
@@ -104,8 +107,13 @@ impl CompanionStorage {
         drop(file);
 
         // Atomic rename
-        fs::rename(&temp_path, path)
-            .with_context(|| format!("Failed to rename {} to {}", temp_path.display(), path.display()))?;
+        fs::rename(&temp_path, path).with_context(|| {
+            format!(
+                "Failed to rename {} to {}",
+                temp_path.display(),
+                path.display()
+            )
+        })?;
 
         Ok(())
     }
@@ -134,9 +142,10 @@ impl CompanionStorage {
                 let entry = entry?;
                 let path = entry.path();
                 if path.extension().is_some_and(|e| e == "json")
-                    && let Some(stem) = path.file_stem() {
-                        branches.push(stem.to_string_lossy().to_string());
-                    }
+                    && let Some(stem) = path.file_stem()
+                {
+                    branches.push(stem.to_string_lossy().to_string());
+                }
             }
         }
 

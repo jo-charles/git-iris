@@ -13,8 +13,28 @@ use super::EmojiMode;
 // Explore Mode
 // ═══════════════════════════════════════════════════════════════════════════════
 
+/// A commit entry in the file log
+#[derive(Debug, Clone)]
+pub struct FileLogEntry {
+    /// Full commit hash
+    pub hash: String,
+    /// Short hash (7 chars)
+    pub short_hash: String,
+    /// Commit message (first line)
+    pub message: String,
+    /// Author name
+    pub author: String,
+    /// Relative time (e.g., "2 days ago")
+    pub relative_time: String,
+    /// Lines added in this commit for the file
+    pub additions: Option<usize>,
+    /// Lines removed in this commit for the file
+    pub deletions: Option<usize>,
+}
+
 /// State for Explore mode
 #[derive(Default)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct ExploreState {
     /// Currently selected file
     pub current_file: Option<PathBuf>,
@@ -38,6 +58,20 @@ pub struct ExploreState {
     pub streaming_blame: Option<String>,
     /// Whether semantic blame is loading
     pub blame_loading: bool,
+    /// File log entries for the currently selected file
+    pub file_log: Vec<FileLogEntry>,
+    /// Selected index in file log
+    pub file_log_selected: usize,
+    /// Scroll offset for file log
+    pub file_log_scroll: usize,
+    /// Whether file log is loading
+    pub file_log_loading: bool,
+    /// Global commit log (all commits, not file-specific)
+    pub global_log: Vec<FileLogEntry>,
+    /// Whether to show global log instead of file log
+    pub show_global_log: bool,
+    /// Whether global log is loading
+    pub global_log_loading: bool,
 }
 
 impl std::fmt::Debug for ExploreState {

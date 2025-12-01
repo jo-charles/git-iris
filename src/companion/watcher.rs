@@ -6,7 +6,7 @@
 use anyhow::{Context, Result};
 use ignore::gitignore::{Gitignore, GitignoreBuilder};
 use notify::{RecommendedWatcher, RecursiveMode};
-use notify_debouncer_full::{new_debouncer, DebounceEventResult, Debouncer, RecommendedCache};
+use notify_debouncer_full::{DebounceEventResult, Debouncer, RecommendedCache, new_debouncer};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -92,7 +92,9 @@ impl FileWatcherService {
             // Fallback: just ignore .git
             let mut fallback = GitignoreBuilder::new(repo_path);
             let _ = fallback.add_line(None, ".git/");
-            fallback.build().expect("Failed to build fallback gitignore")
+            fallback
+                .build()
+                .expect("Failed to build fallback gitignore")
         }))
     }
 
@@ -133,7 +135,9 @@ impl FileWatcherService {
 
                         let companion_event = match event.kind {
                             EventKind::Create(_) => Some(CompanionEvent::FileCreated(path.clone())),
-                            EventKind::Modify(_) => Some(CompanionEvent::FileModified(path.clone())),
+                            EventKind::Modify(_) => {
+                                Some(CompanionEvent::FileModified(path.clone()))
+                            }
                             EventKind::Remove(_) => Some(CompanionEvent::FileDeleted(path.clone())),
                             _ => None,
                         };

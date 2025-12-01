@@ -6,7 +6,7 @@ mod chat;
 mod modes;
 
 pub use chat::{ChatMessage, ChatRole, ChatState, truncate_preview};
-pub use modes::{ChangelogCommit, ModeStates, PrCommit};
+pub use modes::{ChangelogCommit, FileLogEntry, ModeStates, PrCommit};
 
 use crate::agents::StatusMessageBatch;
 use crate::companion::CompanionService;
@@ -1396,10 +1396,7 @@ impl StudioState {
             };
 
             // Get most recently touched file
-            let last_touched = session
-                .recent_files()
-                .first()
-                .map(|f| f.path.clone());
+            let last_touched = session.recent_files().first().map(|f| f.path.clone());
 
             self.companion_display.files_touched = session.files_count();
             self.companion_display.commits_made = session.commits_made.len();
@@ -1418,35 +1415,36 @@ impl StudioState {
 
         // Fetch recent commits from repo
         if let Some(ref repo) = self.repo
-            && let Ok(commits) = repo.get_recent_commits(6) {
-                let mut entries: Vec<CommitEntry> = commits
-                    .into_iter()
-                    .map(|c| {
-                        let relative_time = Self::format_relative_time(&c.timestamp);
-                        CommitEntry {
-                            short_hash: c.hash[..7.min(c.hash.len())].to_string(),
-                            message: c.message.lines().next().unwrap_or("").to_string(),
-                            author: c
-                                .author
-                                .split('<')
-                                .next()
-                                .unwrap_or(&c.author)
-                                .trim()
-                                .to_string(),
-                            relative_time,
-                        }
-                    })
-                    .collect();
+            && let Ok(commits) = repo.get_recent_commits(6)
+        {
+            let mut entries: Vec<CommitEntry> = commits
+                .into_iter()
+                .map(|c| {
+                    let relative_time = Self::format_relative_time(&c.timestamp);
+                    CommitEntry {
+                        short_hash: c.hash[..7.min(c.hash.len())].to_string(),
+                        message: c.message.lines().next().unwrap_or("").to_string(),
+                        author: c
+                            .author
+                            .split('<')
+                            .next()
+                            .unwrap_or(&c.author)
+                            .trim()
+                            .to_string(),
+                        relative_time,
+                    }
+                })
+                .collect();
 
-                // First commit is HEAD
-                self.companion_display.head_commit = entries.first().cloned();
+            // First commit is HEAD
+            self.companion_display.head_commit = entries.first().cloned();
 
-                // Rest are recent commits (skip HEAD, take up to 5)
-                if !entries.is_empty() {
-                    entries.remove(0);
-                }
-                self.companion_display.recent_commits = entries.into_iter().take(5).collect();
+            // Rest are recent commits (skip HEAD, take up to 5)
+            if !entries.is_empty() {
+                entries.remove(0);
             }
+            self.companion_display.recent_commits = entries.into_iter().take(5).collect();
+        }
     }
 
     /// Format a timestamp as relative time

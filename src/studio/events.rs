@@ -152,6 +152,26 @@ pub enum StudioEvent {
     /// Select a file in the tree
     SelectFile(PathBuf),
 
+    /// File log loaded for explore mode
+    FileLogLoaded {
+        file: PathBuf,
+        entries: Vec<crate::studio::state::FileLogEntry>,
+    },
+
+    /// File log loading started
+    FileLogLoading(PathBuf),
+
+    /// Global commit log loaded
+    GlobalLogLoaded {
+        entries: Vec<crate::studio::state::FileLogEntry>,
+    },
+
+    /// Global log loading started
+    GlobalLogLoading,
+
+    /// Toggle between file log and global log
+    ToggleGlobalLog,
+
     // ─────────────────────────────────────────────────────────────────────────
     // Modal Events
     // ─────────────────────────────────────────────────────────────────────────
@@ -468,6 +488,12 @@ pub enum SideEffect {
         start_line: usize,
         end_line: usize,
     },
+
+    /// Load file git log for the right panel in explore mode
+    LoadFileLog(PathBuf),
+
+    /// Load global commit log (not file-specific)
+    LoadGlobalLog,
 }
 
 /// Blame information gathered from git

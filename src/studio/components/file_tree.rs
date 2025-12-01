@@ -625,60 +625,90 @@ fn render_entry(entry: &FlatEntry, is_selected: bool, width: usize) -> Line<'sta
         get_file_icon(&entry.name)
     };
 
-    // Git status indicator with Unicode symbols
-    let status_indicator = match entry.git_status {
-        FileGitStatus::Staged => "●",
-        FileGitStatus::Modified => "◐",
-        FileGitStatus::Untracked => "◌",
-        FileGitStatus::Deleted => "✕",
-        FileGitStatus::Renamed => "➜",
-        FileGitStatus::Conflict => "⚠",
-        FileGitStatus::Normal => " ",
+    // Git status indicator with Unicode symbols - positioned at start for visibility
+    // Uses theme git_* styles for consistent, harmonized colors
+    let (status_indicator, status_style) = match entry.git_status {
+        FileGitStatus::Staged => ("▍", theme::git_staged().add_modifier(Modifier::BOLD)),
+        FileGitStatus::Modified => ("▍", theme::git_modified()),
+        FileGitStatus::Untracked => ("▍", theme::git_untracked()),
+        FileGitStatus::Deleted => ("▍", theme::git_deleted()),
+        FileGitStatus::Renamed => ("▍", theme::git_staged()),
+        FileGitStatus::Conflict => ("▍", theme::error().add_modifier(Modifier::BOLD)),
+        FileGitStatus::Normal => (" ", Style::default()),
     };
-    let status_style = entry.git_status.style();
 
     // Selection marker
-    let marker = if is_selected { ">" } else { " " };
+    let marker = if is_selected { "›" } else { " " };
     let marker_style = if is_selected {
-        Style::default().fg(theme::accent_primary())
+        Style::default()
+            .fg(theme::accent_primary())
+            .add_modifier(Modifier::BOLD)
     } else {
         Style::default()
     };
 
-    // Name style
+    // Name style - color coded by git status using theme git_* styles
     let name_style = if is_selected {
-        theme::selected()
+        // When selected, use git status color with selection background
+        match entry.git_status {
+            FileGitStatus::Staged => theme::git_staged()
+                .bg(theme::bg_highlight_color())
+                .add_modifier(Modifier::BOLD),
+            FileGitStatus::Modified => theme::git_modified().bg(theme::bg_highlight_color()),
+            FileGitStatus::Deleted => theme::git_deleted()
+                .bg(theme::bg_highlight_color())
+                .add_modifier(Modifier::DIM),
+            FileGitStatus::Untracked => theme::git_untracked().bg(theme::bg_highlight_color()),
+            FileGitStatus::Conflict => theme::error()
+                .bg(theme::bg_highlight_color())
+                .add_modifier(Modifier::BOLD),
+            _ => theme::selected(),
+        }
     } else if entry.is_dir {
         Style::default()
             .fg(theme::accent_secondary())
             .add_modifier(Modifier::BOLD)
     } else {
-        Style::default().fg(theme::text_primary_color())
+        // Color filename by git status using theme styles
+        match entry.git_status {
+            FileGitStatus::Staged => theme::git_staged().add_modifier(Modifier::BOLD),
+            FileGitStatus::Modified => theme::git_modified(),
+            FileGitStatus::Deleted => theme::git_deleted().add_modifier(Modifier::DIM),
+            FileGitStatus::Untracked => theme::git_untracked(),
+            FileGitStatus::Renamed => theme::git_staged(),
+            FileGitStatus::Conflict => theme::error().add_modifier(Modifier::BOLD),
+            FileGitStatus::Normal => Style::default().fg(theme::text_primary_color()),
+        }
+    };
+
+    // Icon style matches name for cohesion - use theme git_* styles
+    let icon_style = if entry.is_dir {
+        Style::default().fg(theme::accent_secondary())
+    } else {
+        match entry.git_status {
+            FileGitStatus::Staged => theme::git_staged(),
+            FileGitStatus::Modified => theme::git_modified(),
+            FileGitStatus::Deleted => theme::git_deleted(),
+            FileGitStatus::Untracked => theme::git_untracked(),
+            _ => Style::default().fg(theme::text_dim_color()),
+        }
     };
 
     // Calculate available width for name using unicode width
-    // Format: ">" (1) + " " (1) + indent + icon (1) + " " (1) + name + " " (1) + status (1)
-    let fixed_width = 1 + 1 + indent.width() + 1 + 1 + 1 + 1;
+    // Format: status (1) + ">" (1) + " " (1) + indent + icon (1) + " " (1) + name
+    let fixed_width = 1 + 1 + 1 + indent.width() + 1 + 1;
     let max_name_width = width.saturating_sub(fixed_width);
 
     // Truncate name if needed (using unicode width)
     let display_name = truncate_width(&entry.name, max_name_width);
 
     Line::from(vec![
+        Span::styled(status_indicator, status_style),
         Span::styled(marker, marker_style),
         Span::raw(" "),
         Span::raw(indent),
-        Span::styled(
-            format!("{} ", icon),
-            if entry.is_dir {
-                Style::default().fg(theme::accent_secondary())
-            } else {
-                Style::default().fg(theme::text_dim_color())
-            },
-        ),
+        Span::styled(format!("{} ", icon), icon_style),
         Span::styled(display_name, name_style),
-        Span::raw(" "),
-        Span::styled(status_indicator, status_style),
     ])
 }
 

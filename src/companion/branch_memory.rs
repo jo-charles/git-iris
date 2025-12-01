@@ -95,8 +95,7 @@ impl BranchMemory {
 
     /// Check if this is a returning visit (visited before more than 5 minutes ago)
     pub fn is_returning_visit(&self) -> bool {
-        self.session_count > 1
-            && self.time_since_last_visit() > chrono::Duration::minutes(5)
+        self.session_count > 1 && self.time_since_last_visit() > chrono::Duration::minutes(5)
     }
 
     /// Generate a welcome message if returning
@@ -114,6 +113,9 @@ impl BranchMemory {
             format!("{} minutes ago", duration.num_minutes())
         };
 
-        Some(format!("Welcome back to {}! Last here {}", self.branch_name, time_str))
+        Some(format!(
+            "Welcome back to {}! Last here {}",
+            self.branch_name, time_str
+        ))
     }
 }

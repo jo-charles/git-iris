@@ -2,9 +2,11 @@
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Modifier, Style};
+use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
+use ratatui::widgets::{
+    Block, Borders, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap,
+};
 
 use crate::studio::components::{render_code_view, render_file_tree};
 use crate::studio::state::{PanelId, StudioState};
@@ -51,97 +53,273 @@ pub fn render_explore_panel(
             );
         }
         PanelId::Right => {
-            // Context panel - show semantic blame results or companion session
-            let title = if state.modes.explore.blame_loading {
-                " Context (analyzing...) "
-            } else if state.modes.explore.semantic_blame.is_some() {
-                " Why This Code? "
-            } else {
-                " Session "
-            };
-
-            let block = Block::default()
-                .title(title)
-                .borders(Borders::ALL)
-                .border_style(if is_focused {
-                    theme::focused_border()
-                } else {
-                    theme::unfocused_border()
-                });
-            let inner = block.inner(area);
-            frame.render_widget(block, area);
-
+            // Right panel: semantic blame if active, otherwise file log
             if state.modes.explore.blame_loading {
-                // Show loading spinner
-                let frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
-                let idx = (std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis()
-                    / 100) as usize
-                    % frames.len();
-                let spinner = frames[idx];
-
-                let loading_text =
-                    Paragraph::new(format!("{} Iris is analyzing the code history...", spinner))
-                        .style(Style::default().fg(theme::accent_secondary()));
-                frame.render_widget(loading_text, inner);
+                render_blame_loading(frame, area, is_focused);
             } else if let Some(ref blame) = state.modes.explore.semantic_blame {
-                // Show semantic blame result
-                render_semantic_blame(frame, inner, blame);
+                render_semantic_blame_panel(frame, area, blame, is_focused);
             } else {
-                // Show companion session info
-                render_companion_session(frame, inner, state);
+                render_file_log_panel(frame, area, state, is_focused);
             }
         }
     }
 }
 
-/// Render companion session info in the context panel
-fn render_companion_session(frame: &mut Frame, area: Rect, state: &StudioState) {
-    use ratatui::layout::{Constraint, Layout};
+/// Render the file log panel (git history for selected file)
+fn render_file_log_panel(frame: &mut Frame, area: Rect, state: &mut StudioState, is_focused: bool) {
+    let show_global = state.modes.explore.show_global_log;
 
+    let title = if show_global {
+        " Commit Log (L) ".to_string()
+    } else {
+        let file_name = state
+            .modes
+            .explore
+            .current_file
+            .as_ref()
+            .and_then(|p| p.file_name())
+            .map(|f| f.to_string_lossy().to_string())
+            .unwrap_or_default();
+
+        if file_name.is_empty() {
+            " History (L) ".to_string()
+        } else {
+            format!(" {} (L) ", file_name)
+        }
+    };
+
+    let block = Block::default()
+        .title(title)
+        .borders(Borders::ALL)
+        .border_style(if is_focused {
+            theme::focused_border()
+        } else {
+            theme::unfocused_border()
+        });
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    if inner.height == 0 || inner.width == 0 {
+        return;
+    }
+
+    // Use either global log or file log based on toggle
+    let file_log = if show_global {
+        &state.modes.explore.global_log
+    } else {
+        &state.modes.explore.file_log
+    };
+    let selected = state.modes.explore.file_log_selected;
+    let scroll = state.modes.explore.file_log_scroll;
+    let visible_height = inner.height as usize;
+
+    let is_loading = if show_global {
+        state.modes.explore.global_log_loading
+    } else {
+        state.modes.explore.file_log_loading
+    };
+
+    if is_loading {
+        let frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+        let idx = (std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis()
+            / 100) as usize
+            % frames.len();
+        let spinner = frames[idx];
+        let loading = Paragraph::new(format!("{} Loading history...", spinner))
+            .style(Style::default().fg(theme::accent_secondary()));
+        frame.render_widget(loading, inner);
+        return;
+    }
+
+    if file_log.is_empty() {
+        let hint = if show_global {
+            "Press L to load commit log"
+        } else if state.modes.explore.current_file.is_none() {
+            "Select a file to view history"
+        } else {
+            "No history for this file"
+        };
+        let empty = Paragraph::new(hint).style(Style::default().fg(theme::text_dim_color()));
+        frame.render_widget(empty, inner);
+        return;
+    }
+
+    // Render file log entries (3 lines per entry: message, meta, separator)
+    let entry_height = 3;
+    let visible_entries = visible_height / entry_height;
+
+    let mut lines: Vec<Line> = Vec::new();
+    let panel_width = inner.width as usize;
+
+    for (i, entry) in file_log
+        .iter()
+        .enumerate()
+        .skip(scroll)
+        .take(visible_entries)
+    {
+        let is_selected = i == selected;
+        let bg = if is_selected {
+            Some(theme::bg_highlight_color())
+        } else {
+            None
+        };
+
+        // Line 1: marker + hash + message (truncated)
+        let marker = if is_selected { "› " } else { "  " };
+        let marker_style = if is_selected {
+            Style::default()
+                .fg(theme::accent_primary())
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default()
+        };
+
+        let hash_style = theme::commit_hash().bg(bg.unwrap_or(Color::Reset));
+        let msg_style = Style::default()
+            .fg(theme::text_primary_color())
+            .bg(bg.unwrap_or(Color::Reset));
+
+        // Calculate message width: panel - marker(2) - hash(7) - space(1)
+        let msg_width = panel_width.saturating_sub(10);
+        let truncated_msg = truncate_str(&entry.message, msg_width);
+
+        lines.push(Line::from(vec![
+            Span::styled(marker, marker_style.bg(bg.unwrap_or(Color::Reset))),
+            Span::styled(&entry.short_hash, hash_style),
+            Span::raw(" "),
+            Span::styled(truncated_msg, msg_style),
+        ]));
+
+        // Line 2: author · time · stats (indented)
+        let meta_style = Style::default()
+            .fg(theme::text_dim_color())
+            .bg(bg.unwrap_or(Color::Reset));
+        let author_style = Style::default()
+            .fg(theme::text_muted_color())
+            .bg(bg.unwrap_or(Color::Reset));
+        let time_style = Style::default()
+            .fg(theme::text_dim_color())
+            .bg(bg.unwrap_or(Color::Reset));
+
+        let mut meta_spans = vec![
+            Span::styled("  ", meta_style), // indent to align with message
+            Span::styled(&entry.author, author_style),
+            Span::styled(" · ", meta_style),
+            Span::styled(&entry.relative_time, time_style),
+        ];
+
+        // Add +/- stats if available
+        if let (Some(adds), Some(dels)) = (entry.additions, entry.deletions)
+            && (adds > 0 || dels > 0)
+        {
+            meta_spans.push(Span::styled(" ", meta_style));
+            if adds > 0 {
+                meta_spans.push(Span::styled(
+                    format!("+{adds}"),
+                    Style::default()
+                        .fg(theme::success_color())
+                        .bg(bg.unwrap_or(Color::Reset)),
+                ));
+            }
+            if dels > 0 {
+                meta_spans.push(Span::styled(
+                    format!("-{dels}"),
+                    Style::default()
+                        .fg(theme::error_color())
+                        .bg(bg.unwrap_or(Color::Reset)),
+                ));
+            }
+        }
+
+        lines.push(Line::from(meta_spans));
+
+        // Line 3: subtle separator
+        let sep_char = if i + 1 < file_log.len() { "─" } else { " " };
+        let sep = sep_char.repeat(panel_width.saturating_sub(2));
+        lines.push(Line::from(Span::styled(
+            format!(" {sep}"),
+            Style::default().fg(theme::bg_highlight_color()),
+        )));
+    }
+
+    let paragraph = Paragraph::new(lines);
+    frame.render_widget(paragraph, inner);
+
+    // Scrollbar
+    if file_log.len() > visible_entries {
+        let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+            .begin_symbol(None)
+            .end_symbol(None);
+        let mut scrollbar_state = ScrollbarState::new(file_log.len()).position(scroll);
+        frame.render_stateful_widget(
+            scrollbar,
+            area.inner(ratatui::layout::Margin {
+                vertical: 1,
+                horizontal: 0,
+            }),
+            &mut scrollbar_state,
+        );
+    }
+}
+
+/// Render blame loading state
+fn render_blame_loading(frame: &mut Frame, area: Rect, is_focused: bool) {
+    let block = Block::default()
+        .title(" Analyzing... ")
+        .borders(Borders::ALL)
+        .border_style(if is_focused {
+            theme::focused_border()
+        } else {
+            theme::unfocused_border()
+        });
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+    let idx = (std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
+        / 100) as usize
+        % frames.len();
+    let spinner = frames[idx];
+
+    let loading_text = Paragraph::new(format!("{} Iris is analyzing the code history...", spinner))
+        .style(Style::default().fg(theme::accent_secondary()));
+    frame.render_widget(loading_text, inner);
+}
+
+/// Render semantic blame panel with full content
+fn render_semantic_blame_panel(
+    frame: &mut Frame,
+    area: Rect,
+    blame: &crate::studio::events::SemanticBlameResult,
+    is_focused: bool,
+) {
+    let block = Block::default()
+        .title(" Why This Code? ")
+        .borders(Borders::ALL)
+        .border_style(if is_focused {
+            theme::focused_border()
+        } else {
+            theme::unfocused_border()
+        });
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    render_semantic_blame(frame, inner, blame);
+}
+
+/// Render the companion status bar (compact, at bottom of explore mode)
+pub fn render_companion_status_bar(frame: &mut Frame, area: Rect, state: &StudioState) {
     let display = &state.companion_display;
 
-    // Calculate dynamic layout based on content
-    let has_welcome = display.welcome_message.is_some();
-    let commits_count = display.recent_commits.len();
-
-    let mut constraints = vec![];
-    if has_welcome {
-        constraints.push(Constraint::Length(2)); // Welcome
-    }
-    constraints.push(Constraint::Length(4)); // Branch + HEAD
-    constraints.push(Constraint::Length((commits_count as u16).saturating_add(2))); // Recent log
-    constraints.push(Constraint::Length(5)); // Session stats
-    constraints.push(Constraint::Min(1)); // Hints
-
-    let chunks = Layout::vertical(constraints).split(area);
-    let mut chunk_idx = 0;
-
-    // Welcome message (if any)
-    if has_welcome {
-        if let Some(ref welcome) = display.welcome_message {
-            let welcome_lines = vec![Line::from(vec![
-                Span::styled("◆ ", Style::default().fg(theme::accent_tertiary())),
-                Span::styled(
-                    welcome.clone(),
-                    Style::default()
-                        .fg(theme::accent_primary())
-                        .add_modifier(Modifier::BOLD),
-                ),
-            ])];
-            frame.render_widget(Paragraph::new(welcome_lines), chunks[chunk_idx]);
-        }
-        chunk_idx += 1;
-    }
-
-    // Branch + HEAD section
-    let mut branch_lines = Vec::new();
-
-    // Branch name with ahead/behind
-    let mut branch_spans = vec![
-        Span::styled("⎇ ", Style::default().fg(theme::accent_tertiary())),
+    // Format: ⎇ branch ↑1↓2 | ●3 staged ○5 unstaged | ◷ 2h15m | [w] why [/] chat
+    let mut spans = vec![
+        Span::styled("⎇ ", Style::default().fg(theme::text_dim_color())),
         Span::styled(
             &display.branch,
             Style::default()
@@ -149,137 +327,103 @@ fn render_companion_session(frame: &mut Frame, area: Rect, state: &StudioState) 
                 .add_modifier(Modifier::BOLD),
         ),
     ];
+
+    // Ahead/behind
     if display.ahead > 0 || display.behind > 0 {
-        branch_spans.push(Span::styled(" ", Style::default()));
+        spans.push(Span::raw(" "));
         if display.ahead > 0 {
-            branch_spans.push(Span::styled(
+            spans.push(Span::styled(
                 format!("↑{}", display.ahead),
                 Style::default().fg(theme::success_color()),
             ));
         }
         if display.behind > 0 {
             if display.ahead > 0 {
-                branch_spans.push(Span::styled(" ", Style::default()));
+                spans.push(Span::raw(" "));
             }
-            branch_spans.push(Span::styled(
+            spans.push(Span::styled(
                 format!("↓{}", display.behind),
                 Style::default().fg(theme::warning_color()),
             ));
         }
     }
-    branch_lines.push(Line::from(branch_spans));
 
-    // HEAD commit
-    if let Some(ref head) = display.head_commit {
-        branch_lines.push(Line::from(vec![
-            Span::styled("  ", Style::default()),
-            Span::styled(&head.short_hash, theme::commit_hash()),
-            Span::styled(" ", Style::default()),
-            Span::styled(
-                truncate_str(&head.message, 25),
-                Style::default().fg(theme::text_primary_color()),
-            ),
-        ]));
-        branch_lines.push(Line::from(vec![
-            Span::styled("  ", Style::default()),
-            Span::styled(&head.author, theme::author()),
-            Span::styled(" · ", Style::default().fg(theme::text_dim_color())),
-            Span::styled(&head.relative_time, theme::timestamp()),
-        ]));
-    }
-    frame.render_widget(Paragraph::new(branch_lines), chunks[chunk_idx]);
-    chunk_idx += 1;
-
-    // Recent commits log
-    let mut log_lines = vec![Line::from(Span::styled(
-        "─── History ───",
+    spans.push(Span::styled(
+        " │ ",
         Style::default().fg(theme::text_dim_color()),
-    ))];
-    for commit in &display.recent_commits {
-        log_lines.push(Line::from(vec![
-            Span::styled(&commit.short_hash, theme::commit_hash()),
-            Span::styled(" ", Style::default()),
-            Span::styled(
-                truncate_str(&commit.message, 22),
-                Style::default().fg(theme::text_secondary_color()),
-            ),
-        ]));
-    }
-    if display.recent_commits.is_empty() {
-        log_lines.push(Line::from(Span::styled(
-            "  (no history)",
-            Style::default().fg(theme::text_dim_color()),
-        )));
-    }
-    frame.render_widget(Paragraph::new(log_lines), chunks[chunk_idx]);
-    chunk_idx += 1;
+    ));
 
-    // Session stats
-    let mut stats_lines = vec![Line::from(Span::styled(
-        "─── Session ───",
-        Style::default().fg(theme::text_dim_color()),
-    ))];
-
-    // Staged / unstaged counts
-    let mut status_spans = vec![Span::styled("  ", Style::default())];
+    // Staged/unstaged counts
     if display.staged_count > 0 {
-        status_spans.push(Span::styled(
-            format!("●{} staged", display.staged_count),
+        spans.push(Span::styled(
+            format!("●{}", display.staged_count),
             Style::default().fg(theme::success_color()),
         ));
+        spans.push(Span::raw(" "));
     }
     if display.unstaged_count > 0 {
-        if display.staged_count > 0 {
-            status_spans.push(Span::styled("  ", Style::default()));
-        }
-        status_spans.push(Span::styled(
-            format!("○{} unstaged", display.unstaged_count),
+        spans.push(Span::styled(
+            format!("○{}", display.unstaged_count),
             Style::default().fg(theme::warning_color()),
         ));
     }
     if display.staged_count == 0 && display.unstaged_count == 0 {
-        status_spans.push(Span::styled(
+        spans.push(Span::styled(
             "clean",
             Style::default().fg(theme::text_dim_color()),
         ));
     }
-    stats_lines.push(Line::from(status_spans));
 
-    // Duration + files touched
-    stats_lines.push(Line::from(vec![
-        Span::styled("  ◷ ", Style::default().fg(theme::text_dim_color())),
-        Span::styled(&display.duration, Style::default().fg(theme::text_primary_color())),
-        Span::styled("  ◇ ", Style::default().fg(theme::text_dim_color())),
-        Span::styled(
-            format!("{} files", display.files_touched),
-            Style::default().fg(theme::text_primary_color()),
-        ),
-    ]));
+    spans.push(Span::styled(
+        " │ ",
+        Style::default().fg(theme::text_dim_color()),
+    ));
 
-    // Commits made this session
-    if display.commits_made > 0 {
-        stats_lines.push(Line::from(vec![
-            Span::styled("  ", Style::default()),
-            Span::styled(
-                format!("{} commits this session", display.commits_made),
-                Style::default().fg(theme::success_color()),
-            ),
-        ]));
+    // Session duration
+    spans.push(Span::styled(
+        format!("◷ {}", display.duration),
+        Style::default().fg(theme::text_muted_color()),
+    ));
+
+    // Welcome message (if any)
+    if let Some(ref welcome) = display.welcome_message {
+        spans.push(Span::styled(
+            " │ ",
+            Style::default().fg(theme::text_dim_color()),
+        ));
+        spans.push(Span::styled(
+            welcome.clone(),
+            Style::default()
+                .fg(theme::accent_primary())
+                .add_modifier(Modifier::ITALIC),
+        ));
     }
 
-    frame.render_widget(Paragraph::new(stats_lines), chunks[chunk_idx]);
-    chunk_idx += 1;
+    // Keyboard hints (right-aligned would require calculating width)
+    spans.push(Span::styled(
+        " │ ",
+        Style::default().fg(theme::text_dim_color()),
+    ));
+    spans.push(Span::styled(
+        "[w]",
+        Style::default().fg(theme::accent_secondary()),
+    ));
+    spans.push(Span::styled(
+        "hy ",
+        Style::default().fg(theme::text_muted_color()),
+    ));
+    spans.push(Span::styled(
+        "[/]",
+        Style::default().fg(theme::accent_secondary()),
+    ));
+    spans.push(Span::styled(
+        "chat",
+        Style::default().fg(theme::text_muted_color()),
+    ));
 
-    // Hints at bottom
-    let hint_lines = vec![
-        Line::from(vec![
-            Span::styled("[w]", Style::default().fg(theme::accent_secondary())),
-            Span::styled(" why  ", Style::default().fg(theme::text_muted_color())),
-            Span::styled("[/]", Style::default().fg(theme::accent_secondary())),
-            Span::styled(" chat", Style::default().fg(theme::text_muted_color())),
-        ]),
-    ];
-    frame.render_widget(Paragraph::new(hint_lines), chunks[chunk_idx]);
+    let line = Line::from(spans);
+    let paragraph = Paragraph::new(line);
+    frame.render_widget(paragraph, area);
 }
 
 /// Truncate a string to max length with ellipsis

@@ -322,6 +322,26 @@ pub fn reduce(
             git::select_file(state, path);
         }
 
+        StudioEvent::FileLogLoading(path) => {
+            effects.extend(git::file_log_loading(state, path));
+        }
+
+        StudioEvent::FileLogLoaded { file, entries } => {
+            git::file_log_loaded(state, &file, entries);
+        }
+
+        StudioEvent::GlobalLogLoading => {
+            effects.extend(git::global_log_loading(state));
+        }
+
+        StudioEvent::GlobalLogLoaded { entries } => {
+            git::global_log_loaded(state, entries);
+        }
+
+        StudioEvent::ToggleGlobalLog => {
+            effects.extend(git::toggle_global_log(state));
+        }
+
         // ─────────────────────────────────────────────────────────────────────────
         // Modal Events
         // ─────────────────────────────────────────────────────────────────────────
@@ -465,34 +485,34 @@ pub fn reduce(
             // Check if branch changed
             if let Some(repo) = &state.repo
                 && let Ok(new_branch) = repo.get_current_branch()
-                    && new_branch != state.git_status.branch {
-                        // Branch switched! Load branch memory and check for welcome
-                        if let Some(ref companion) = state.companion {
-                            let mut branch_mem = companion
-                                .load_branch_memory(&new_branch)
-                                .ok()
-                                .flatten()
-                                .unwrap_or_else(|| crate::companion::BranchMemory::new(new_branch.clone()));
+                && new_branch != state.git_status.branch
+            {
+                // Branch switched! Load branch memory and check for welcome
+                if let Some(ref companion) = state.companion {
+                    let mut branch_mem = companion
+                        .load_branch_memory(&new_branch)
+                        .ok()
+                        .flatten()
+                        .unwrap_or_else(|| crate::companion::BranchMemory::new(new_branch.clone()));
 
-                            // Get welcome message before recording visit
-                            let welcome = branch_mem.welcome_message();
+                    // Get welcome message before recording visit
+                    let welcome = branch_mem.welcome_message();
 
-                            // Record the visit
-                            branch_mem.record_visit();
+                    // Record the visit
+                    branch_mem.record_visit();
 
-                            // Save updated branch memory
-                            let _ = companion.save_branch_memory(&branch_mem);
+                    // Save updated branch memory
+                    let _ = companion.save_branch_memory(&branch_mem);
 
-                            // Update display with welcome timing
-                            if let Some(msg) = welcome {
-                                state.companion_display.welcome_message = Some(msg);
-                                state.companion_display.welcome_shown_at =
-                                    Some(std::time::Instant::now());
-                            }
-                        }
-
-                        tracing::info!("Branch switched to: {}", new_branch);
+                    // Update display with welcome timing
+                    if let Some(msg) = welcome {
+                        state.companion_display.welcome_message = Some(msg);
+                        state.companion_display.welcome_shown_at = Some(std::time::Instant::now());
                     }
+                }
+
+                tracing::info!("Branch switched to: {}", new_branch);
+            }
 
             state.update_companion_display();
         }
@@ -502,7 +522,10 @@ pub fn reduce(
             tracing::warn!("Companion watcher error: {}", error);
         }
 
-        StudioEvent::CompanionBranchSwitch { branch, welcome_message } => {
+        StudioEvent::CompanionBranchSwitch {
+            branch,
+            welcome_message,
+        } => {
             // Store welcome message for display
             if let Some(msg) = welcome_message {
                 state.companion_display.welcome_message = Some(msg);
@@ -523,11 +546,12 @@ pub fn reduce(
 
             // Auto-clear welcome message after 30 seconds
             if let Some(shown_at) = state.companion_display.welcome_shown_at
-                && shown_at.elapsed() > std::time::Duration::from_secs(30) {
-                    state.clear_companion_welcome();
-                    state.companion_display.welcome_shown_at = None;
-                    state.mark_dirty();
-                }
+                && shown_at.elapsed() > std::time::Duration::from_secs(30)
+            {
+                state.clear_companion_welcome();
+                state.companion_display.welcome_shown_at = None;
+                state.mark_dirty();
+            }
         }
     }
 

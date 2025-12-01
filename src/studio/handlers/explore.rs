@@ -10,6 +10,32 @@ const DEFAULT_VISIBLE_HEIGHT: usize = 30;
 
 /// Handle key events in Explore mode
 pub fn handle_explore_key(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffect> {
+    // Global explore mode keys (work in any panel)
+    // Toggle between file log and global commit log
+    if let KeyCode::Char('L') = key.code {
+        state.modes.explore.show_global_log = !state.modes.explore.show_global_log;
+        state.modes.explore.file_log_selected = 0;
+        state.modes.explore.file_log_scroll = 0;
+
+        // Load global log if switching to global view and it's empty
+        if state.modes.explore.show_global_log && state.modes.explore.global_log.is_empty() {
+            state.modes.explore.global_log_loading = true;
+            state.notify(Notification::info("Loading commit log..."));
+            state.mark_dirty();
+            return vec![SideEffect::LoadGlobalLog];
+        }
+
+        let msg = if state.modes.explore.show_global_log {
+            "Showing global commit log (L to toggle)"
+        } else {
+            "Showing file history (L to toggle)"
+        };
+        state.notify(Notification::info(msg));
+        state.mark_dirty();
+        return vec![];
+    }
+
+    // Panel-specific keys
     match state.focused_panel {
         PanelId::Left => handle_file_tree_key(state, key),
         PanelId::Center => handle_code_view_key(state, key),
@@ -17,16 +43,21 @@ pub fn handle_explore_key(state: &mut StudioState, key: KeyEvent) -> Vec<SideEff
     }
 }
 
-/// Load the selected file into the code view
-fn load_selected_file(state: &mut StudioState) {
+/// Load the selected file into the code view and trigger file log loading
+fn load_selected_file(state: &mut StudioState) -> Vec<SideEffect> {
     if let Some(entry) = state.modes.explore.file_tree.selected_entry()
         && !entry.is_dir
     {
-        state.modes.explore.current_file = Some(entry.path.clone());
-        if let Err(e) = state.modes.explore.code_view.load_file(&entry.path) {
+        let path = entry.path.clone();
+        state.modes.explore.current_file = Some(path.clone());
+        if let Err(e) = state.modes.explore.code_view.load_file(&path) {
             state.notify(Notification::warning(format!("Could not load file: {}", e)));
         }
+        // Trigger file log loading
+        state.modes.explore.file_log_loading = true;
+        return vec![SideEffect::LoadFileLog(path)];
     }
+    vec![]
 }
 
 fn handle_file_tree_key(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffect> {
@@ -34,15 +65,15 @@ fn handle_file_tree_key(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffec
         // Navigation
         KeyCode::Char('j') | KeyCode::Down => {
             state.modes.explore.file_tree.select_next();
-            load_selected_file(state);
+            let effects = load_selected_file(state);
             state.mark_dirty();
-            vec![]
+            effects
         }
         KeyCode::Char('k') | KeyCode::Up => {
             state.modes.explore.file_tree.select_prev();
-            load_selected_file(state);
+            let effects = load_selected_file(state);
             state.mark_dirty();
-            vec![]
+            effects
         }
         KeyCode::Char('h') | KeyCode::Left => {
             state.modes.explore.file_tree.collapse();
@@ -56,42 +87,46 @@ fn handle_file_tree_key(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffec
         }
         KeyCode::Enter => {
             // Toggle expand for directories, or select file and move to code view
-            if let Some(entry) = state.modes.explore.file_tree.selected_entry() {
+            let effects = if let Some(entry) = state.modes.explore.file_tree.selected_entry() {
                 if entry.is_dir {
                     state.modes.explore.file_tree.toggle_expand();
+                    vec![]
                 } else {
-                    load_selected_file(state);
+                    let effects = load_selected_file(state);
                     state.focus_next_panel(); // Move to code view
+                    effects
                 }
-            }
+            } else {
+                vec![]
+            };
             state.mark_dirty();
-            vec![]
+            effects
         }
         KeyCode::Char('g') | KeyCode::Home => {
             // Go to first
             state.modes.explore.file_tree.select_first();
-            load_selected_file(state);
+            let effects = load_selected_file(state);
             state.mark_dirty();
-            vec![]
+            effects
         }
         KeyCode::Char('G') | KeyCode::End => {
             // Go to last
             state.modes.explore.file_tree.select_last();
-            load_selected_file(state);
+            let effects = load_selected_file(state);
             state.mark_dirty();
-            vec![]
+            effects
         }
         KeyCode::PageDown | KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             state.modes.explore.file_tree.page_down(10);
-            load_selected_file(state);
+            let effects = load_selected_file(state);
             state.mark_dirty();
-            vec![]
+            effects
         }
         KeyCode::PageUp | KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             state.modes.explore.file_tree.page_up(10);
-            load_selected_file(state);
+            let effects = load_selected_file(state);
             state.mark_dirty();
-            vec![]
+            effects
         }
 
         _ => vec![],
@@ -355,21 +390,109 @@ fn handle_code_view_key(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffec
     }
 }
 
+/// Visible entries in file log panel (2 lines per entry, assume ~15 entries visible)
+const FILE_LOG_VISIBLE_ENTRIES: usize = 15;
+
+/// Adjust scroll to keep selection visible
+fn adjust_file_log_scroll(state: &mut StudioState) {
+    let selected = state.modes.explore.file_log_selected;
+    let scroll = &mut state.modes.explore.file_log_scroll;
+    let visible = FILE_LOG_VISIBLE_ENTRIES;
+
+    // Scroll down if selection is below visible area
+    if selected >= *scroll + visible {
+        *scroll = selected.saturating_sub(visible - 1);
+    }
+    // Scroll up if selection is above visible area
+    if selected < *scroll {
+        *scroll = selected;
+    }
+}
+
 fn handle_context_key(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffect> {
+    let log_len = state.modes.explore.file_log.len();
+
     match key.code {
         // Navigation
         KeyCode::Char('j') | KeyCode::Down => {
-            // Scroll context panel down
+            if log_len > 0 {
+                let selected = &mut state.modes.explore.file_log_selected;
+                if *selected < log_len.saturating_sub(1) {
+                    *selected += 1;
+                }
+                adjust_file_log_scroll(state);
+            }
             state.mark_dirty();
             vec![]
         }
         KeyCode::Char('k') | KeyCode::Up => {
-            // Scroll context panel up
+            if log_len > 0 {
+                let selected = &mut state.modes.explore.file_log_selected;
+                if *selected > 0 {
+                    *selected -= 1;
+                }
+                adjust_file_log_scroll(state);
+            }
+            state.mark_dirty();
+            vec![]
+        }
+        KeyCode::Char('g') | KeyCode::Home => {
+            state.modes.explore.file_log_selected = 0;
+            state.modes.explore.file_log_scroll = 0;
+            state.mark_dirty();
+            vec![]
+        }
+        KeyCode::Char('G') | KeyCode::End => {
+            if log_len > 0 {
+                state.modes.explore.file_log_selected = log_len.saturating_sub(1);
+                adjust_file_log_scroll(state);
+            }
+            state.mark_dirty();
+            vec![]
+        }
+        KeyCode::PageDown | KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            if log_len > 0 {
+                let selected = &mut state.modes.explore.file_log_selected;
+                *selected = (*selected + 10).min(log_len.saturating_sub(1));
+                adjust_file_log_scroll(state);
+            }
+            state.mark_dirty();
+            vec![]
+        }
+        KeyCode::PageUp | KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            let selected = &mut state.modes.explore.file_log_selected;
+            *selected = selected.saturating_sub(10);
+            adjust_file_log_scroll(state);
             state.mark_dirty();
             vec![]
         }
         KeyCode::Enter => {
-            // Drill into selected context item
+            // TODO: View selected commit details or checkout that version
+            if log_len > 0 {
+                let selected = state.modes.explore.file_log_selected;
+                if let Some(entry) = state.modes.explore.file_log.get(selected) {
+                    // For now, copy the commit hash to clipboard
+                    let hash = entry.hash.clone();
+                    state.notify(Notification::info(format!(
+                        "Commit: {} - {}",
+                        &hash[..7],
+                        entry.message
+                    )));
+                    return vec![SideEffect::CopyToClipboard(hash)];
+                }
+            }
+            vec![]
+        }
+        KeyCode::Char('y') => {
+            // Copy selected commit hash
+            if log_len > 0 {
+                let selected = state.modes.explore.file_log_selected;
+                if let Some(entry) = state.modes.explore.file_log.get(selected) {
+                    let hash = entry.short_hash.clone();
+                    state.notify(Notification::success("Commit hash copied"));
+                    return vec![SideEffect::CopyToClipboard(hash)];
+                }
+            }
             vec![]
         }
 

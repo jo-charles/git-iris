@@ -50,3 +50,74 @@ pub fn select_file(state: &mut StudioState, path: PathBuf) {
     }
     state.mark_dirty();
 }
+
+/// Handle `FileLogLoading` event
+pub fn file_log_loading(state: &mut StudioState, path: PathBuf) -> Vec<SideEffect> {
+    state.modes.explore.file_log_loading = true;
+    state.modes.explore.file_log.clear();
+    state.modes.explore.file_log_selected = 0;
+    state.modes.explore.file_log_scroll = 0;
+    state.mark_dirty();
+    vec![SideEffect::LoadFileLog(path)]
+}
+
+/// Handle `FileLogLoaded` event
+pub fn file_log_loaded(
+    state: &mut StudioState,
+    _file: &Path,
+    entries: Vec<crate::studio::state::FileLogEntry>,
+) {
+    // Always update the file log - the path was already validated when loading started
+    // We also reset loading state here since results have arrived
+    state.modes.explore.file_log = entries;
+    state.modes.explore.file_log_loading = false;
+    state.modes.explore.file_log_selected = 0;
+    state.modes.explore.file_log_scroll = 0;
+    state.mark_dirty();
+}
+
+/// Handle `GlobalLogLoading` event
+pub fn global_log_loading(state: &mut StudioState) -> Vec<SideEffect> {
+    state.modes.explore.global_log_loading = true;
+    state.modes.explore.global_log.clear();
+    state.modes.explore.file_log_selected = 0;
+    state.modes.explore.file_log_scroll = 0;
+    state.mark_dirty();
+    vec![SideEffect::LoadGlobalLog]
+}
+
+/// Handle `GlobalLogLoaded` event
+pub fn global_log_loaded(
+    state: &mut StudioState,
+    entries: Vec<crate::studio::state::FileLogEntry>,
+) {
+    state.modes.explore.global_log = entries;
+    state.modes.explore.global_log_loading = false;
+    state.modes.explore.file_log_selected = 0;
+    state.modes.explore.file_log_scroll = 0;
+    state.mark_dirty();
+}
+
+/// Handle `ToggleGlobalLog` event
+pub fn toggle_global_log(state: &mut StudioState) -> Vec<SideEffect> {
+    state.modes.explore.show_global_log = !state.modes.explore.show_global_log;
+    state.modes.explore.file_log_selected = 0;
+    state.modes.explore.file_log_scroll = 0;
+
+    // Load global log if switching to global view and it's empty
+    if state.modes.explore.show_global_log && state.modes.explore.global_log.is_empty() {
+        state.modes.explore.global_log_loading = true;
+        state.notify(Notification::info("Loading commit log..."));
+        state.mark_dirty();
+        return vec![SideEffect::LoadGlobalLog];
+    }
+
+    let msg = if state.modes.explore.show_global_log {
+        "Showing global commit log"
+    } else {
+        "Showing file history"
+    };
+    state.notify(Notification::info(msg));
+    state.mark_dirty();
+    vec![]
+}
