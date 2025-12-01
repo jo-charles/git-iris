@@ -72,6 +72,8 @@ pub struct ExploreState {
     pub show_global_log: bool,
     /// Whether global log is loading
     pub global_log_loading: bool,
+    /// Pending file log path (for deferred loading after event loop starts)
+    pub pending_file_log: Option<PathBuf>,
 }
 
 impl std::fmt::Debug for ExploreState {

@@ -493,7 +493,7 @@ impl StudioApp {
             let tree_state = super::components::FileTreeState::from_paths(&all_files, &statuses);
             self.state.modes.explore.file_tree = tree_state;
 
-            // Load file log for initially selected file
+            // Initialize selected file (content only - file log loads via event system)
             if let Some(entry) = self.state.modes.explore.file_tree.selected_entry()
                 && !entry.is_dir
             {
@@ -503,9 +503,8 @@ impl StudioApp {
                 if let Err(e) = self.state.modes.explore.code_view.load_file(&path) {
                     tracing::warn!("Failed to load initial file: {}", e);
                 }
-                // Trigger file log loading
-                self.state.modes.explore.file_log_loading = true;
-                self.load_file_log(&path);
+                // Store path for deferred file log loading (will be triggered after event loop starts)
+                self.state.modes.explore.pending_file_log = Some(path);
             }
         }
     }
@@ -788,6 +787,11 @@ impl StudioApp {
         }
 
         loop {
+            // Process any pending file log load (deferred from initialization)
+            if let Some(path) = self.state.modes.explore.pending_file_log.take() {
+                self.push_event(StudioEvent::FileLogLoading(path));
+            }
+
             // Check for completed Iris tasks
             self.check_iris_results();
 
