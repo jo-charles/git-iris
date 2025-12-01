@@ -158,6 +158,8 @@ pub struct StudioApp {
     last_click: Option<(std::time::Instant, u16, u16)>,
     /// Drag selection start info (panel, line number) for code view selection
     drag_start: Option<(PanelId, usize)>,
+    /// Background task handles to abort on exit
+    background_tasks: Vec<tokio::task::JoinHandle<()>>,
 }
 
 impl StudioApp {
@@ -192,6 +194,7 @@ impl StudioApp {
             explicit_mode_set: false,
             last_click: None,
             drag_start: None,
+            background_tasks: Vec::new(),
         }
     }
 
@@ -805,7 +808,7 @@ impl StudioApp {
     }
 
     /// Load companion service asynchronously for fast TUI startup
-    fn load_companion_async(&self) {
+    fn load_companion_async(&mut self) {
         let Some(repo) = &self.state.repo else {
             return;
         };
@@ -816,7 +819,7 @@ impl StudioApp {
             .get_current_branch()
             .unwrap_or_else(|_| "main".to_string());
 
-        tokio::spawn(async move {
+        let handle = tokio::spawn(async move {
             let result = tokio::task::spawn_blocking(move || {
                 use crate::companion::{BranchMemory, CompanionService};
                 use super::state::CompanionSessionDisplay;
@@ -865,6 +868,9 @@ impl StudioApp {
                 }
             }
         });
+
+        // Store handle so we can abort on exit
+        self.background_tasks.push(handle);
     }
 
     /// Run the TUI application
@@ -2598,6 +2604,15 @@ pub enum ExitResult {
     Amended(String),
     /// An error occurred
     Error(String),
+}
+
+impl Drop for StudioApp {
+    fn drop(&mut self) {
+        // Abort all background tasks to prevent hanging on exit
+        for handle in self.background_tasks.drain(..) {
+            handle.abort();
+        }
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
