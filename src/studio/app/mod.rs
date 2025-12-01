@@ -93,6 +93,30 @@ pub enum IrisTaskResult {
     GlobalLogLoaded {
         entries: Vec<crate::studio::state::FileLogEntry>,
     },
+    /// Git status loaded (async initialization)
+    GitStatusLoaded(Box<GitStatusData>),
+    /// Companion service initialized (async)
+    CompanionReady(Box<CompanionInitData>),
+}
+
+/// Data from async git status loading
+#[derive(Debug, Clone)]
+pub struct GitStatusData {
+    pub branch: String,
+    pub staged_files: Vec<std::path::PathBuf>,
+    pub modified_files: Vec<std::path::PathBuf>,
+    pub untracked_files: Vec<std::path::PathBuf>,
+    pub commits_ahead: usize,
+    pub commits_behind: usize,
+    pub staged_diff: Option<String>,
+}
+
+/// Data from async companion initialization
+pub struct CompanionInitData {
+    /// The companion service
+    pub service: crate::companion::CompanionService,
+    /// Display data for the UI
+    pub display: super::state::CompanionSessionDisplay,
 }
 
 /// Type of content update triggered by chat
@@ -339,6 +363,9 @@ impl StudioApp {
                         DataType::ReleaseNotesCommits => {
                             self.update_release_notes_data(from_ref, to_ref);
                         }
+                        DataType::ExploreFiles => {
+                            self.update_explore_file_tree();
+                        }
                     }
                 }
 
@@ -400,9 +427,8 @@ impl StudioApp {
             };
             self.state.git_status = status;
 
-            // Update file trees for components
+            // Update file trees for components (explore tree is lazy-loaded on mode switch)
             self.update_commit_file_tree();
-            self.update_explore_file_tree();
             self.update_review_file_tree();
 
             // Load diffs into diff view
@@ -709,6 +735,138 @@ impl StudioApp {
         });
     }
 
+    /// Load git status asynchronously (for fast TUI startup)
+    fn load_git_status_async(&self) {
+        let Some(repo) = &self.state.repo else {
+            return;
+        };
+
+        let tx = self.iris_result_tx.clone();
+        let repo_path = repo.repo_path().clone();
+
+        tokio::spawn(async move {
+            let result = tokio::task::spawn_blocking(move || {
+                use crate::git::GitRepo;
+
+                // Open repo once and gather all data
+                let repo = GitRepo::new(&repo_path)?;
+
+                let branch = repo.get_current_branch().unwrap_or_default();
+                let files_info = repo.extract_files_info(false).ok();
+                let unstaged = repo.get_unstaged_files().ok();
+                let untracked = repo.get_untracked_files().unwrap_or_default();
+                let (commits_ahead, commits_behind) = repo.get_ahead_behind();
+                let staged_diff = repo.get_staged_diff_full().ok();
+
+                let staged_files: Vec<std::path::PathBuf> = files_info
+                    .as_ref()
+                    .map(|f| {
+                        f.staged_files
+                            .iter()
+                            .map(|s| s.path.clone().into())
+                            .collect()
+                    })
+                    .unwrap_or_default();
+
+                let modified_files: Vec<std::path::PathBuf> = unstaged
+                    .as_ref()
+                    .map(|f| f.iter().map(|s| s.path.clone().into()).collect())
+                    .unwrap_or_default();
+
+                let untracked_files: Vec<std::path::PathBuf> = untracked
+                    .into_iter()
+                    .map(std::path::PathBuf::from)
+                    .collect();
+
+                Ok::<_, anyhow::Error>(GitStatusData {
+                    branch,
+                    staged_files,
+                    modified_files,
+                    untracked_files,
+                    commits_ahead,
+                    commits_behind,
+                    staged_diff,
+                })
+            })
+            .await;
+
+            match result {
+                Ok(Ok(data)) => {
+                    let _ = tx.send(IrisTaskResult::GitStatusLoaded(Box::new(data)));
+                }
+                Ok(Err(e)) => {
+                    tracing::warn!("Failed to load git status: {}", e);
+                }
+                Err(e) => {
+                    tracing::warn!("Git status task panicked: {}", e);
+                }
+            }
+        });
+    }
+
+    /// Load companion service asynchronously for fast TUI startup
+    fn load_companion_async(&self) {
+        let Some(repo) = &self.state.repo else {
+            return;
+        };
+
+        let tx = self.iris_result_tx.clone();
+        let repo_path = repo.repo_path().clone();
+        let branch = repo
+            .get_current_branch()
+            .unwrap_or_else(|_| "main".to_string());
+
+        tokio::spawn(async move {
+            let result = tokio::task::spawn_blocking(move || {
+                use crate::companion::{BranchMemory, CompanionService};
+                use super::state::CompanionSessionDisplay;
+
+                // Create companion service (this is the slow part - file watcher setup)
+                let service = CompanionService::new(repo_path, &branch)?;
+
+                // Load or create branch memory
+                let mut branch_mem = service
+                    .load_branch_memory(&branch)
+                    .ok()
+                    .flatten()
+                    .unwrap_or_else(|| BranchMemory::new(branch.clone()));
+
+                // Get welcome message before recording visit
+                let welcome = branch_mem.welcome_message();
+
+                // Record this visit
+                branch_mem.record_visit();
+
+                // Save updated branch memory
+                if let Err(e) = service.save_branch_memory(&branch_mem) {
+                    tracing::warn!("Failed to save branch memory: {}", e);
+                }
+
+                let display = CompanionSessionDisplay {
+                    watcher_active: service.has_watcher(),
+                    welcome_message: welcome.clone(),
+                    welcome_shown_at: welcome.map(|_| std::time::Instant::now()),
+                    ..Default::default()
+                };
+
+                Ok::<_, anyhow::Error>(CompanionInitData { service, display })
+            })
+            .await;
+
+            match result {
+                Ok(Ok(data)) => {
+                    let _ = tx.send(IrisTaskResult::CompanionReady(Box::new(data)));
+                }
+                Ok(Err(e)) => {
+                    tracing::warn!("Failed to initialize companion: {}", e);
+                }
+                Err(e) => {
+                    tracing::warn!("Companion init task panicked: {}", e);
+                }
+            }
+        });
+    }
+
     /// Run the TUI application
     pub fn run(&mut self) -> Result<ExitResult> {
         // Install panic hook to ensure terminal is restored on panic
@@ -748,43 +906,14 @@ impl StudioApp {
         &mut self,
         terminal: &mut Terminal<CrosstermBackend<Stdout>>,
     ) -> Result<ExitResult> {
-        // Refresh git status on start
-        let _ = self.refresh_git_status();
+        // Start async git status loading for fast TUI startup
+        self.state.git_status_loading = true;
+        self.load_git_status_async();
 
-        // Set initial mode based on repo state (only if no explicit mode was set)
-        let current_mode = if self.explicit_mode_set {
-            self.state.active_mode
-        } else {
-            let suggested_mode = self.state.suggest_initial_mode();
-            self.state.switch_mode(suggested_mode);
-            suggested_mode
-        };
+        // Start async companion initialization (file watcher setup is slow)
+        self.load_companion_async();
 
-        // Auto-generate content based on initial mode
-        match current_mode {
-            Mode::Commit => {
-                if self.state.git_status.has_staged() {
-                    self.auto_generate_commit();
-                }
-            }
-            Mode::PR => {
-                self.update_pr_data(None, None);
-                self.auto_generate_pr();
-            }
-            Mode::Review => {
-                self.update_review_data(None, None);
-                self.auto_generate_review();
-            }
-            Mode::Changelog => {
-                self.update_changelog_data(None, None);
-                self.auto_generate_changelog();
-            }
-            Mode::ReleaseNotes => {
-                self.update_release_notes_data(None, None);
-                self.auto_generate_release_notes();
-            }
-            Mode::Explore => {}
-        }
+        // Note: Auto-generation happens in apply_git_status_data() after async load completes
 
         loop {
             // Process any pending file log load (deferred from initialization)
@@ -1072,10 +1201,97 @@ impl StudioApp {
                 IrisTaskResult::GlobalLogLoaded { entries } => {
                     StudioEvent::GlobalLogLoaded { entries }
                 }
+
+                IrisTaskResult::GitStatusLoaded(data) => {
+                    // Apply git status data directly (not through reducer)
+                    self.apply_git_status_data(*data);
+                    continue; // Already handled
+                }
+
+                IrisTaskResult::CompanionReady(data) => {
+                    // Apply companion data directly
+                    self.state.companion = Some(data.service);
+                    self.state.companion_display = data.display;
+                    self.state.mark_dirty();
+                    tracing::info!("Companion service initialized asynchronously");
+                    continue; // Already handled
+                }
             };
 
             self.push_event(event);
         }
+    }
+
+    /// Apply git status data from async loading
+    fn apply_git_status_data(&mut self, data: GitStatusData) {
+        use super::components::diff_view::parse_diff;
+
+        // Update git status
+        self.state.git_status = super::state::GitStatus {
+            branch: data.branch,
+            staged_count: data.staged_files.len(),
+            staged_files: data.staged_files,
+            modified_count: data.modified_files.len(),
+            modified_files: data.modified_files,
+            untracked_count: data.untracked_files.len(),
+            untracked_files: data.untracked_files,
+            commits_ahead: data.commits_ahead,
+            commits_behind: data.commits_behind,
+        };
+        self.state.git_status_loading = false;
+
+        // Update file trees
+        self.update_commit_file_tree();
+        self.update_review_file_tree();
+
+        // Load diffs from staged diff text
+        if let Some(diff_text) = data.staged_diff {
+            let diffs = parse_diff(&diff_text);
+            self.state.modes.commit.diff_view.set_diffs(diffs);
+        }
+
+        // Sync initial file selection with diff view
+        if let Some(path) = self.state.modes.commit.file_tree.selected_path() {
+            self.state.modes.commit.diff_view.select_file_by_path(&path);
+        }
+
+        // If no explicit mode was set, switch to suggested mode
+        if !self.explicit_mode_set {
+            let suggested = self.state.suggest_initial_mode();
+            if suggested != self.state.active_mode {
+                self.state.switch_mode(suggested);
+            }
+        }
+
+        // Auto-generate based on mode
+        match self.state.active_mode {
+            Mode::Commit => {
+                if self.state.git_status.has_staged() {
+                    self.auto_generate_commit();
+                }
+            }
+            Mode::Review => {
+                self.update_review_data(None, None);
+                self.auto_generate_review();
+            }
+            Mode::PR => {
+                self.update_pr_data(None, None);
+                self.auto_generate_pr();
+            }
+            Mode::Changelog => {
+                self.update_changelog_data(None, None);
+                self.auto_generate_changelog();
+            }
+            Mode::ReleaseNotes => {
+                self.update_release_notes_data(None, None);
+                self.auto_generate_release_notes();
+            }
+            Mode::Explore => {
+                self.update_explore_file_tree();
+            }
+        }
+
+        self.state.mark_dirty();
     }
 
     /// Spawn fire-and-forget status message generation using the fast model

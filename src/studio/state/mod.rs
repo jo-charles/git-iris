@@ -913,6 +913,9 @@ pub struct StudioState {
     /// Cached git status
     pub git_status: GitStatus,
 
+    /// Whether git status is currently loading
+    pub git_status_loading: bool,
+
     /// Application configuration
     pub config: Config,
 
@@ -952,55 +955,12 @@ pub struct StudioState {
 
 impl StudioState {
     /// Create new studio state
+    /// Note: Companion service is initialized asynchronously via `load_companion_async()` in app for fast startup
     pub fn new(config: Config, repo: Option<Arc<GitRepo>>) -> Self {
-        // Try to initialize companion service
-        let (companion, companion_display) = if let Some(ref git_repo) = repo {
-            let repo_path = git_repo.repo_path().clone();
-            let branch = git_repo
-                .get_current_branch()
-                .unwrap_or_else(|_| "main".to_string());
-
-            match CompanionService::new(repo_path, &branch) {
-                Ok(service) => {
-                    // Load or create branch memory
-                    let mut branch_mem = service
-                        .load_branch_memory(&branch)
-                        .ok()
-                        .flatten()
-                        .unwrap_or_else(|| crate::companion::BranchMemory::new(branch.clone()));
-
-                    // Get welcome message before recording visit (which updates last_visited)
-                    let welcome = branch_mem.welcome_message();
-
-                    // Record this visit
-                    branch_mem.record_visit();
-
-                    // Save updated branch memory
-                    if let Err(e) = service.save_branch_memory(&branch_mem) {
-                        tracing::warn!("Failed to save branch memory: {}", e);
-                    }
-
-                    let display = CompanionSessionDisplay {
-                        watcher_active: service.has_watcher(),
-                        welcome_message: welcome.clone(),
-                        welcome_shown_at: welcome.map(|_| std::time::Instant::now()),
-                        ..Default::default()
-                    };
-
-                    (Some(service), display)
-                }
-                Err(e) => {
-                    tracing::warn!("Failed to initialize companion: {}", e);
-                    (None, CompanionSessionDisplay::default())
-                }
-            }
-        } else {
-            (None, CompanionSessionDisplay::default())
-        };
-
         Self {
             repo,
             git_status: GitStatus::default(),
+            git_status_loading: false,
             config,
             active_mode: Mode::Explore,
             focused_panel: PanelId::Left,
@@ -1009,8 +969,8 @@ impl StudioState {
             chat_state: ChatState::new(),
             notifications: VecDeque::new(),
             iris_status: IrisStatus::Idle,
-            companion,
-            companion_display,
+            companion: None,
+            companion_display: CompanionSessionDisplay::default(),
             dirty: true,
             last_render: std::time::Instant::now(),
         }

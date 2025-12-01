@@ -376,6 +376,8 @@ pub enum DataType {
     PRDiff,
     ChangelogCommits,
     ReleaseNotesCommits,
+    /// Explore mode file tree (lazy-loaded on mode switch)
+    ExploreFiles,
 }
 
 /// Modal types

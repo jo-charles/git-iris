@@ -187,6 +187,11 @@ impl FileTreeState {
         }
     }
 
+    /// Check if tree is empty
+    pub fn is_empty(&self) -> bool {
+        self.root.is_empty()
+    }
+
     /// Set root nodes
     pub fn set_root(&mut self, root: Vec<TreeNode>) {
         self.root = root;

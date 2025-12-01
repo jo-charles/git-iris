@@ -111,7 +111,14 @@ pub fn reduce(
                         });
                     }
                     Mode::Explore => {
-                        // Explore mode loads files on demand
+                        // Load explore file tree if not already loaded
+                        if state.modes.explore.file_tree.is_empty() {
+                            effects.push(SideEffect::LoadData {
+                                data_type: DataType::ExploreFiles,
+                                from_ref: None,
+                                to_ref: None,
+                            });
+                        }
                     }
                 }
             }
