@@ -260,6 +260,7 @@ impl StatusMessageGenerator {
         let mut prompt = String::from("Context:\n");
 
         prompt.push_str(&format!("Task: {}\n", context.task_type));
+        prompt.push_str(&format!("Activity: {}\n", context.activity));
 
         if let Some(branch) = &context.branch {
             prompt.push_str(&format!("Branch: {}\n", branch));
