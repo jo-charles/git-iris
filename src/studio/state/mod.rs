@@ -331,6 +331,26 @@ pub enum Modal {
         /// Scroll offset for long lists
         scroll: usize,
     },
+    /// Quick commit count picker for PR mode ("last N commits")
+    CommitCount {
+        /// Current input (number as string)
+        input: String,
+        /// Which mode to update
+        target: CommitCountTarget,
+    },
+}
+
+/// Target for commit count picker
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CommitCountTarget {
+    /// Set PR "from" ref to HEAD~N
+    Pr,
+    /// Set Review "from" ref to HEAD~N
+    Review,
+    /// Set Changelog "from" ref to HEAD~N
+    Changelog,
+    /// Set Release Notes "from" ref to HEAD~N
+    ReleaseNotes,
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

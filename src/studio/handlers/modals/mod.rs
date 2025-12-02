@@ -3,6 +3,7 @@
 //! Each modal type has its own handler module for maintainability.
 
 mod chat;
+mod commit_count;
 mod confirm;
 mod emoji_selector;
 mod instructions;
@@ -34,6 +35,7 @@ pub fn handle_modal_key(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffec
         Some(Modal::EmojiSelector { .. }) => emoji_selector::handle(state, key),
         Some(Modal::Settings(_)) => settings::handle(state, key),
         Some(Modal::ThemeSelector { .. }) => theme_selector::handle(state, key),
+        Some(Modal::CommitCount { .. }) => commit_count::handle(state, key),
         None => vec![],
     }
 }

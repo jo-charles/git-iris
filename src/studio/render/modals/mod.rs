@@ -3,6 +3,7 @@
 //! Each modal type has its own module for maintainability.
 
 mod chat_modal;
+mod commit_count;
 mod confirm;
 mod emoji_selector;
 mod help;
@@ -67,6 +68,8 @@ fn modal_size(modal: &Modal, area: Rect) -> (u16, u16) {
             let list_height = (themes.len() as u16 + 8).min(28);
             (75.min(max_width), list_height.min(max_height))
         }
+        // Commit count picker - compact
+        Modal::CommitCount { .. } => (45.min(max_width), 9.min(max_height)),
     }
 }
 
@@ -124,5 +127,8 @@ pub fn render_modal(state: &StudioState, frame: &mut Frame, last_render: Instant
             selected,
             scroll,
         } => theme_selector::render(frame, modal_area, input, themes, *selected, *scroll),
+        Modal::CommitCount { input, target } => {
+            commit_count::render(frame, modal_area, input, *target);
+        }
     }
 }

@@ -188,6 +188,14 @@ pub enum Commands {
         #[arg(long, help = "Output raw markdown without any console formatting")]
         raw: bool,
 
+        /// Copy raw markdown to clipboard
+        #[arg(
+            short,
+            long,
+            help = "Copy raw markdown to clipboard (for pasting into GitHub/GitLab)"
+        )]
+        copy: bool,
+
         /// Starting branch, commit, or commitish for comparison
         #[arg(
             long,
@@ -1127,9 +1135,10 @@ pub async fn handle_command(
             common,
             print,
             raw,
+            copy,
             from,
             to,
-        } => handle_pr(common, print, raw, from, to, repository_url).await,
+        } => handle_pr(common, print, raw, copy, from, to, repository_url).await,
         Commands::Studio {
             common,
             mode,
@@ -1234,14 +1243,16 @@ async fn handle_pr_with_agent(
     common: CommonParams,
     print: bool,
     raw: bool,
+    copy: bool,
     from: Option<String>,
     to: Option<String>,
     repository_url: Option<String>,
 ) -> anyhow::Result<()> {
+    use arboard::Clipboard;
     use crate::agents::{IrisAgentService, StructuredResponse, TaskContext};
     use crate::instruction_presets::PresetType;
 
-    // Check if the preset is appropriate for PR descriptions (skip for raw output)
+    // Check if the preset is appropriate for PR descriptions (skip for raw output only)
     if !raw
         && !common.is_valid_preset_for_type(PresetType::Review)
         && !common.is_valid_preset_for_type(PresetType::Both)
@@ -1255,7 +1266,7 @@ async fn handle_pr_with_agent(
     // Create structured context for PR (handles defaults: from=main, to=HEAD)
     let context = TaskContext::for_pr(from, to);
 
-    // Create spinner for progress indication (skip for raw output)
+    // Create spinner for progress indication (skip for raw output only)
     let spinner = if raw {
         None
     } else {
@@ -1276,7 +1287,31 @@ async fn handle_pr_with_agent(
         return Err(anyhow::anyhow!("Expected pull request response"));
     };
 
-    if raw || print {
+    // Handle clipboard copy
+    if copy {
+        let raw_content = generated_pr.raw_content();
+        match Clipboard::new() {
+            Ok(mut clipboard) => match clipboard.set_text(raw_content) {
+                Ok(()) => {
+                    ui::print_success("PR description copied to clipboard");
+                }
+                Err(e) => {
+                    ui::print_error(&format!("Failed to copy to clipboard: {e}"));
+                    // Fall back to printing raw
+                    println!("{raw_content}");
+                }
+            },
+            Err(e) => {
+                ui::print_error(&format!("Clipboard unavailable: {e}"));
+                // Fall back to printing raw
+                println!("{raw_content}");
+            }
+        }
+    } else if raw {
+        // Raw markdown for piping to files or APIs
+        println!("{}", generated_pr.raw_content());
+    } else if print {
+        // Formatted output for terminal viewing
         println!("{}", generated_pr.format());
     } else {
         ui::print_success("PR description generated successfully");
@@ -1291,26 +1326,29 @@ async fn handle_pr(
     common: CommonParams,
     print: bool,
     raw: bool,
+    copy: bool,
     from: Option<String>,
     to: Option<String>,
     repository_url: Option<String>,
 ) -> anyhow::Result<()> {
     log_debug!(
-        "Handling 'pr' command with common: {:?}, print: {}, raw: {}, from: {:?}, to: {:?}",
+        "Handling 'pr' command with common: {:?}, print: {}, raw: {}, copy: {}, from: {:?}, to: {:?}",
         common,
         print,
         raw,
+        copy,
         from,
         to
     );
 
-    // For raw output, skip all formatting
+    // For raw output, skip version banner (piped output should be clean)
+    // For copy mode, show the banner since we're giving user feedback
     if !raw {
         ui::print_version(crate_version!());
         ui::print_newline();
     }
 
-    handle_pr_with_agent(common, print, raw, from, to, repository_url).await
+    handle_pr_with_agent(common, print, raw, copy, from, to, repository_url).await
 }
 
 /// Handle the `Studio` command

@@ -69,10 +69,23 @@ pub fn render(
     }
 
     if filtered.is_empty() {
-        lines.push(Line::from(Span::styled(
-            "No matching refs",
-            theme::dimmed(),
-        )));
+        if input.is_empty() {
+            lines.push(Line::from(Span::styled(
+                "No matching refs",
+                theme::dimmed(),
+            )));
+        } else {
+            // Show that the custom input will be used
+            lines.push(Line::from(vec![
+                Span::styled("▸ ", Style::default().fg(theme::success_color())),
+                Span::styled(
+                    format!("Use custom ref: {input}"),
+                    Style::default()
+                        .fg(theme::success_color())
+                        .add_modifier(Modifier::BOLD),
+                ),
+            ]));
+        }
     }
 
     // Hint at bottom
@@ -85,6 +98,10 @@ pub fn render(
         Span::styled("Esc", Style::default().fg(theme::accent_secondary())),
         Span::styled(" cancel", theme::dimmed()),
     ]));
+    lines.push(Line::from(Span::styled(
+        "Type any ref: branch, tag, HEAD~N, commit hash",
+        theme::dimmed(),
+    )));
 
     let paragraph = Paragraph::new(lines);
     frame.render_widget(paragraph, inner);

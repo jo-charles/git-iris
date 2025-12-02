@@ -42,7 +42,7 @@ pub fn render_pr_panel(state: &mut StudioState, frame: &mut Frame, area: Rect, p
         PanelId::Left => {
             // Render commits list with ref info
             let title = format!(
-                " {} → {} ({}) [f/t] ",
+                " {} → {} ({}) [f/t/#] ",
                 state.modes.pr.base_branch,
                 state.modes.pr.to_ref,
                 state.modes.pr.commits.len()

@@ -3,7 +3,7 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::studio::events::SideEffect;
-use crate::studio::state::{Modal, PanelId, RefSelectorTarget, StudioState};
+use crate::studio::state::{CommitCountTarget, Modal, PanelId, RefSelectorTarget, StudioState};
 
 use super::{copy_to_clipboard, spawn_pr_task};
 
@@ -68,6 +68,15 @@ fn handle_commits_key(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffect>
                 refs: state.get_branch_refs(),
                 selected: 0,
                 target: RefSelectorTarget::PrTo,
+            });
+            state.mark_dirty();
+            vec![]
+        }
+        // Quick "last N commits" picker
+        KeyCode::Char('#') => {
+            state.modal = Some(Modal::CommitCount {
+                input: String::new(),
+                target: CommitCountTarget::Pr,
             });
             state.mark_dirty();
             vec![]
