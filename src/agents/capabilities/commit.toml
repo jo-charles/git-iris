@@ -21,11 +21,12 @@ Do not skip this step.
 
 ## Workflow — Progressive Analysis
 1. **FIRST**: Call `project_docs(doc_type="context")` — understand the project's conventions
-2. Call `git_diff()` to get the **summary** (file list with relevance scores, no diffs yet)
-3. Review the summary to identify important files (highest relevance scores)
-4. Call `git_diff(detail="standard", files=["important-file1.rs", "important-file2.rs"])` for full diffs of key files
-5. Repeat step 4 for additional files if needed (stay focused on top 5-7 files max)
-6. Generate the commit message based on your progressive analysis
+2. **SECOND** (if no STYLE INSTRUCTIONS below): Call `git_log(count=10)` to detect commit format (see "Local Style Detection" section)
+3. Call `git_diff()` to get the **summary** (file list with relevance scores, no diffs yet)
+4. Review the summary to identify important files (highest relevance scores)
+5. Call `git_diff(detail="standard", files=["important-file1.rs", "important-file2.rs"])` for full diffs of key files
+6. Repeat step 5 for additional files if needed (stay focused on top 5-7 files max)
+7. Generate the commit message based on your progressive analysis, using the detected format
 
 **CRITICAL**: Never request all diffs at once for large changesets. Always start with summary, then selectively drill into important files.
 
@@ -61,6 +62,49 @@ When the context indicates **amend mode** (you'll see `"mode": "amend"` with an 
 
 ## Style Adaptation
 If STYLE INSTRUCTIONS are provided below, **prioritize that style** in your word choice, tone, and descriptions. The structural requirements (72 char limit, imperative mood, JSON format) still apply, but lean into the requested personality. A cosmic preset means cosmic language. A playful preset means playful vibes. Express the style!
+
+## Local Style Detection (Default Mode)
+If NO "STYLE INSTRUCTIONS" or "GITMOJI INSTRUCTIONS" section appears below, you MUST detect and mirror the repository's commit **format**:
+
+1. Call `git_log(count=10)` to analyze recent commits
+2. **Observe the actual patterns** — look for:
+   - Prefix patterns (type:, [TAG], (scope), MODULE:, etc.)
+   - Emoji usage (leading emoji, no emoji, emoji elsewhere)
+   - Scope/ticket conventions (feat(api):, [JIRA-123], #123, etc.)
+   - Capitalization style (lowercase, Sentence case, UPPERCASE)
+   - Any other consistent formatting the team uses
+
+3. **Common formats for reference:**
+
+   **Conventional Commits** — `type(scope): message`
+   - `feat: add user authentication`
+   - `fix(api): resolve null pointer`
+   → Set `emoji` to `null`. NO EMOJIS.
+
+   **Gitmoji** — emoji prefix
+   - `✨ Add user authentication`
+   - `🐛 Fix null pointer`
+   → Set `emoji` field appropriately.
+
+   **Ticket/Issue prefixes** — `[TAG-123] message` or `TAG-123: message`
+   - `[ENG-1234] Add user authentication`
+   - `PROJ-456: Fix null pointer`
+   → Mirror the exact bracket/format style. Set `emoji` to `null` unless repo mixes with emoji.
+
+   **Custom patterns** — mirror whatever you see
+   - `(auth) Add user authentication` → use `(scope) message` format
+   - `AUTH: Add user login` → use `MODULE: message` format
+   - `[feature] Add auth` → use `[type] message` format
+
+4. **CRITICAL rules:**
+   - If NO emojis in recent commits → set `emoji` to `null`, don't add any
+   - If conventional commits detected → use type prefix, NO emojis
+   - Mirror the EXACT prefix style (brackets, parens, colons, spacing)
+   - Match capitalization patterns
+
+**Mirror format, NOT quality.** Always write descriptive messages regardless of how terse existing commits are.
+
+**This detection is MANDATORY when no style instructions appear below.**
 
 ## JSON Output
 Return a `GeneratedMessage` with:

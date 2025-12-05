@@ -92,11 +92,13 @@ impl CommonParams {
             config.set_temp_preset(Some(preset.clone()));
         }
 
-        if let Some(use_gitmoji) = self.resolved_gitmoji()
-            && config.use_gitmoji != use_gitmoji
-        {
-            config.use_gitmoji = use_gitmoji;
-            changes_made = true;
+        // Track whether gitmoji was explicitly set via CLI (for style detection)
+        if let Some(use_gitmoji) = self.resolved_gitmoji() {
+            config.gitmoji_override = Some(use_gitmoji);
+            if config.use_gitmoji != use_gitmoji {
+                config.use_gitmoji = use_gitmoji;
+                changes_made = true;
+            }
         }
 
         Ok(changes_made)

@@ -51,6 +51,9 @@ pub struct Config {
     /// Runtime-only: flag if loaded from project config
     #[serde(skip)]
     pub is_project_config: bool,
+    /// Runtime-only: whether gitmoji was explicitly set via CLI (None = use style detection)
+    #[serde(skip)]
+    pub gitmoji_override: Option<bool>,
 }
 
 fn default_true() -> bool {
@@ -86,6 +89,7 @@ impl Default for Config {
             temp_instructions: None,
             temp_preset: None,
             is_project_config: false,
+            gitmoji_override: None,
         }
     }
 }

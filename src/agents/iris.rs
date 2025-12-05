@@ -627,10 +627,17 @@ Guidelines:
 
         let preset_name = config.get_effective_preset_name();
         let is_conventional = preset_name == "conventional";
-        let gitmoji_enabled = config.use_gitmoji && !is_conventional;
+        let is_default_mode = preset_name == "default" || preset_name.is_empty();
 
-        // Inject instruction preset if configured
-        if !preset_name.is_empty() && preset_name != "default" {
+        // For commits in default mode with no explicit gitmoji override, use style detection
+        // (don't inject any style instructions - let the agent detect from git_log)
+        let use_style_detection =
+            capability == "commit" && is_default_mode && config.gitmoji_override.is_none();
+
+        let gitmoji_enabled = config.use_gitmoji && !is_conventional && !use_style_detection;
+
+        // Inject instruction preset if configured (skip for default mode)
+        if !preset_name.is_empty() && !is_default_mode {
             let library = crate::instruction_presets::get_instruction_preset_library();
             if let Some(preset) = library.get_preset(preset_name) {
                 tracing::info!("📋 Injecting '{}' preset style instructions", preset_name);
@@ -644,7 +651,11 @@ Guidelines:
 
         // Handle commit-specific styling (structured JSON output with emoji field)
         if capability == "commit" {
-            if gitmoji_enabled {
+            if use_style_detection {
+                // In default mode, let the agent detect style from git_log
+                // The commit.toml prompt has instructions for this
+                tracing::info!("🔍 Using local commit style detection (default mode)");
+            } else if gitmoji_enabled {
                 system_prompt.push_str("\n\n=== GITMOJI INSTRUCTIONS ===\n");
                 system_prompt.push_str("Set the 'emoji' field to a single relevant gitmoji. ");
                 system_prompt.push_str(

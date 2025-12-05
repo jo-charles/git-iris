@@ -317,6 +317,7 @@ pub fn handle_project_config_command(
         temp_instructions: None,
         temp_preset: None,
         is_project_config: true,
+        gitmoji_override: None,
     });
 
     let mut changes_made = false;
