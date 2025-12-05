@@ -56,9 +56,11 @@ if [ -n "$GITIRIS_PRESET" ]; then
     CONFIG_PARAMS="$CONFIG_PARAMS --preset $GITIRIS_PRESET"
 fi
 
-# Gitmoji setting
-if [ -n "$GITIRIS_GITMOJI" ]; then
-    CONFIG_PARAMS="$CONFIG_PARAMS --gitmoji $GITIRIS_GITMOJI"
+# Gitmoji setting (boolean flag, not value)
+if [ "$GITIRIS_GITMOJI" = "true" ]; then
+    CONFIG_PARAMS="$CONFIG_PARAMS --gitmoji"
+elif [ "$GITIRIS_GITMOJI" = "false" ]; then
+    CONFIG_PARAMS="$CONFIG_PARAMS --no-gitmoji"
 fi
 
 # Additional parameters (comma-separated key=value pairs)
