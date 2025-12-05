@@ -666,21 +666,16 @@ Guidelines:
         if capability == "pr" || capability == "review" {
             if gitmoji_enabled {
                 system_prompt.push_str("\n\n=== EMOJI STYLING ===\n");
-                system_prompt.push_str(
-                    "Use emojis to make the output visually scannable and engaging:\n",
-                );
-                system_prompt.push_str(
-                    "- H1 title: ONE gitmoji at the start (✨, 🐛, ♻️, etc.)\n",
-                );
+                system_prompt
+                    .push_str("Use emojis to make the output visually scannable and engaging:\n");
+                system_prompt.push_str("- H1 title: ONE gitmoji at the start (✨, 🐛, ♻️, etc.)\n");
                 system_prompt.push_str(
                     "- Section headers (## headings): Add relevant emojis (🎯 What's New, ⚙️ How It Works, 📋 Commits, ⚠️ Breaking Changes, 🧪 Testing, 📝 Notes)\n",
                 );
-                system_prompt.push_str(
-                    "- Commit list entries: Include the gitmoji from each commit\n",
-                );
-                system_prompt.push_str(
-                    "- Body text: Keep clean - no scattered emojis within prose\n\n",
-                );
+                system_prompt
+                    .push_str("- Commit list entries: Include the gitmoji from each commit\n");
+                system_prompt
+                    .push_str("- Body text: Keep clean - no scattered emojis within prose\n\n");
                 system_prompt.push_str("Choose from this gitmoji list:\n\n");
                 system_prompt.push_str(&crate::gitmoji::get_gitmoji_list());
             } else if is_conventional {

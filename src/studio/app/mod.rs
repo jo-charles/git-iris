@@ -821,8 +821,8 @@ impl StudioApp {
 
         let handle = tokio::spawn(async move {
             let result = tokio::task::spawn_blocking(move || {
-                use crate::companion::{BranchMemory, CompanionService};
                 use super::state::CompanionSessionDisplay;
+                use crate::companion::{BranchMemory, CompanionService};
 
                 // Create companion service (this is the slow part - file watcher setup)
                 let service = CompanionService::new(repo_path, &branch)?;

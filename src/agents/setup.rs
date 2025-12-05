@@ -244,8 +244,12 @@ impl IrisAgentService {
         // Create the agent
         let mut agent = self.create_agent()?;
 
-        // Build task prompt with context information (no custom instructions)
-        let task_prompt = Self::build_task_prompt(capability, &context, None);
+        // Build task prompt with context information and any custom instructions from config
+        let task_prompt = Self::build_task_prompt(
+            capability,
+            &context,
+            self.config.temp_instructions.as_deref(),
+        );
 
         // Execute the task
         agent.execute_task(capability, &task_prompt).await
@@ -424,7 +428,11 @@ impl IrisAgentService {
         F: FnMut(&str, &str) + Send,
     {
         let mut agent = self.create_agent()?;
-        let task_prompt = Self::build_task_prompt(capability, &context, None);
+        let task_prompt = Self::build_task_prompt(
+            capability,
+            &context,
+            self.config.temp_instructions.as_deref(),
+        );
         agent
             .execute_task_streaming(capability, &task_prompt, on_chunk)
             .await

@@ -48,10 +48,8 @@ pub fn handle(state: &mut StudioState, key: KeyEvent) -> Vec<SideEffect> {
             // Determine which ref to use:
             // 1. If there's a matching filtered ref, use that
             // 2. Otherwise, if input is not empty, use it as a custom ref (e.g., HEAD~5)
-            let ref_to_use: Option<String> = filtered
-                .get(selected)
-                .map(|s| (*s).clone())
-                .or_else(|| {
+            let ref_to_use: Option<String> =
+                filtered.get(selected).map(|s| (*s).clone()).or_else(|| {
                     if input.is_empty() {
                         None
                     } else {

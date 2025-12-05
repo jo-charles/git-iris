@@ -1248,9 +1248,9 @@ async fn handle_pr_with_agent(
     to: Option<String>,
     repository_url: Option<String>,
 ) -> anyhow::Result<()> {
-    use arboard::Clipboard;
     use crate::agents::{IrisAgentService, StructuredResponse, TaskContext};
     use crate::instruction_presets::PresetType;
+    use arboard::Clipboard;
 
     // Check if the preset is appropriate for PR descriptions (skip for raw output only)
     if !raw

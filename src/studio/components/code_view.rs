@@ -15,6 +15,7 @@ use unicode_width::UnicodeWidthStr;
 
 use super::syntax::SyntaxHighlighter;
 use crate::studio::theme;
+use crate::studio::utils::expand_tabs;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Code View State
@@ -269,6 +270,9 @@ fn render_code_line(
     selection: Option<(usize, usize)>,
     highlighter: Option<&SyntaxHighlighter>,
 ) -> Line<'static> {
+    // Expand tabs and strip control characters to prevent visual corruption
+    let content = expand_tabs(content, 4);
+
     let is_selected = line_num == selected_line;
     let is_in_selection =
         selection.is_some_and(|(start, end)| line_num >= start && line_num <= end);
@@ -305,7 +309,7 @@ fn render_code_line(
 
     // Add syntax-highlighted content
     if let Some(hl) = highlighter {
-        let styled_spans = hl.highlight_line(content);
+        let styled_spans = hl.highlight_line(&content);
         let mut display_width = 0;
 
         for (style, text) in styled_spans {
@@ -375,7 +379,7 @@ fn render_code_line(
             }
             format!("{}...", truncated)
         } else {
-            content.to_string()
+            content.clone()
         };
 
         spans.push(Span::styled(display_content, content_style));

@@ -548,7 +548,10 @@ impl SettingsState {
             theme: theme_id,
             use_gitmoji: config.use_gitmoji,
             instruction_preset: config.instruction_preset.clone(),
-            custom_instructions: config.instructions.clone(),
+            custom_instructions: config
+                .temp_instructions
+                .clone()
+                .unwrap_or_else(|| config.instructions.clone()),
             available_providers,
             available_themes,
             available_presets,
@@ -977,6 +980,15 @@ impl StudioState {
     /// Create new studio state
     /// Note: Companion service is initialized asynchronously via `load_companion_async()` in app for fast startup
     pub fn new(config: Config, repo: Option<Arc<GitRepo>>) -> Self {
+        // Apply CLI overrides to commit mode
+        let mut modes = ModeStates::default();
+        if let Some(temp_instr) = &config.temp_instructions {
+            modes.commit.custom_instructions.clone_from(temp_instr);
+        }
+        if let Some(temp_preset) = &config.temp_preset {
+            modes.commit.preset.clone_from(temp_preset);
+        }
+
         Self {
             repo,
             git_status: GitStatus::default(),
@@ -984,7 +996,7 @@ impl StudioState {
             config,
             active_mode: Mode::Explore,
             focused_panel: PanelId::Left,
-            modes: ModeStates::default(),
+            modes,
             modal: None,
             chat_state: ChatState::new(),
             notifications: VecDeque::new(),

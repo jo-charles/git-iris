@@ -5,6 +5,37 @@
 use unicode_width::UnicodeWidthStr;
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// Tab Expansion
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Expand tab characters to spaces and strip control characters.
+///
+/// Tabs are expanded to the next multiple of `tab_width` columns.
+/// Control characters (except tab) are stripped to prevent TUI corruption.
+/// This is essential for TUI rendering where tabs and control codes
+/// would otherwise cause misalignment or visual glitches.
+pub fn expand_tabs(s: &str, tab_width: usize) -> String {
+    let mut result = String::with_capacity(s.len());
+    let mut column = 0;
+
+    for ch in s.chars() {
+        if ch == '\t' {
+            // Calculate spaces needed to reach next tab stop
+            let spaces = tab_width - (column % tab_width);
+            result.push_str(&" ".repeat(spaces));
+            column += spaces;
+        } else if !ch.is_control() {
+            // Non-control character: add to result
+            result.push(ch);
+            column += ch.to_string().width();
+        }
+        // Control characters (except tab) are silently stripped
+    }
+
+    result
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // String Truncation Utilities
 // ═══════════════════════════════════════════════════════════════════════════════
 

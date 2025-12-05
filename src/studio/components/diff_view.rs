@@ -3,7 +3,7 @@
 //! Displays git diffs with syntax highlighting for added/removed lines.
 
 use crate::studio::theme;
-use crate::studio::utils::truncate_width;
+use crate::studio::utils::{expand_tabs, truncate_width};
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
@@ -597,15 +597,17 @@ fn render_diff_line(line: &DiffLine, line_num_width: usize, width: usize) -> Lin
 
     match line.line_type {
         DiffLineType::FileHeader => {
-            let content = format!("━━━ {} ", line.content);
+            let expanded = expand_tabs(&line.content, 4);
+            let content = format!("━━━ {} ", expanded);
             let truncated = truncate_width(&content, width);
             Line::from(vec![Span::styled(truncated, style)])
         }
         DiffLineType::HunkHeader => {
             // "     " prefix takes line_num_width * 2 + 3
+            let expanded = expand_tabs(&line.content, 4);
             let prefix_width = line_num_width * 2 + 4;
             let max_content = width.saturating_sub(prefix_width);
-            let truncated = truncate_width(&line.content, max_content);
+            let truncated = truncate_width(&expanded, max_content);
             Line::from(vec![
                 Span::styled(
                     format!("{:>width$} ", "", width = line_num_width * 2 + 3),
@@ -636,11 +638,14 @@ fn render_diff_line(line: &DiffLine, line_num_width: usize, width: usize) -> Lin
                 _ => theme::dimmed(),
             };
 
+            // Expand tabs to spaces for proper width calculation and rendering
+            let expanded_content = expand_tabs(&line.content, 4);
+
             // Calculate available width for content
             // Format: "XXXX │ XXXX +content"
             let fixed_width = line_num_width * 2 + 6; // " │ " (3) + " " (1) + prefix (1) + padding (1)
             let max_content = width.saturating_sub(fixed_width);
-            let truncated = truncate_width(&line.content, max_content);
+            let truncated = truncate_width(&expanded_content, max_content);
 
             Line::from(vec![
                 Span::styled(old_num, theme::dimmed()),
