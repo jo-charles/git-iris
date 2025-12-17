@@ -164,7 +164,7 @@ priority = "optional"
 # Assets will be resolved relative to target directory by cargo-deb when using --target
 assets = [
     [
-        "release/git-iris",
+        "target/release/git-iris",
         "usr/bin/",
         "755",
     ],
