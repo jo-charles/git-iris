@@ -1,11 +1,15 @@
-name: "Git-Iris Release Notes"
-description: "Generate AI-powered release notes using Git-Iris"
+name: "Git-Iris"
+description: "AI-powered Git artifacts - release notes, changelogs, and more"
 author: "hyperb1iss"
 branding:
-  icon: "file-text"
+  icon: "git-commit"
   color: "purple"
 
 inputs:
+  command:
+    description: "Command to run: release-notes, changelog"
+    required: false
+    default: "release-notes"
   from:
     description: "Starting Git reference (tag, commit, or branch)"
     required: true
@@ -24,30 +28,41 @@ inputs:
     description: "API key for the LLM provider"
     required: true
   output-file:
-    description: "File path to write release notes (optional)"
+    description: "File path to write output (optional)"
     required: false
   version-name:
-    description: "Explicit version name to use in release notes"
+    description: "Explicit version name to use"
     required: false
   custom-instructions:
-    description: "Custom instructions for release note generation"
+    description: "Custom instructions for generation"
     required: false
+  update-file:
+    description: "Update existing file (changelog only) - prepends to existing content"
+    required: false
+    default: "false"
   version:
     description: "Git-Iris version to use (defaults to latest)"
     required: false
     default: "latest"
   build-from-source:
-    description: "Build from source instead of downloading binary (for dogfooding unreleased changes)"
+    description: "Build from source instead of downloading binary"
     required: false
     default: "false"
 
 outputs:
+  content:
+    description: "Generated content"
+    value: ${{ steps.generate.outputs.content }}
+  output-file:
+    description: "Path to the output file (if specified)"
+    value: ${{ steps.generate.outputs.output_file }}
+  # Backwards compatibility aliases
   release-notes:
-    description: "Generated release notes content"
-    value: ${{ steps.generate.outputs.release_notes }}
+    description: "Generated content (alias for backwards compatibility)"
+    value: ${{ steps.generate.outputs.content }}
   release-notes-file:
-    description: "Path to the release notes file (if output-file was specified)"
-    value: ${{ steps.generate.outputs.release_notes_file }}
+    description: "Output file path (alias for backwards compatibility)"
+    value: ${{ steps.generate.outputs.output_file }}
 
 runs:
   using: "composite"
@@ -66,7 +81,6 @@ runs:
             echo "binary=git-iris" >> $GITHUB_OUTPUT
             ;;
           macOS-ARM64|macOS-X64)
-            # ARM64 binary works on both via Rosetta 2
             echo "artifact=git-iris-macos-arm64" >> $GITHUB_OUTPUT
             echo "binary=git-iris" >> $GITHUB_OUTPUT
             ;;
@@ -80,6 +94,14 @@ runs:
             ;;
         esac
 
+    - name: Install Rust (for build-from-source)
+      if: inputs.build-from-source == 'true'
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Rust cache (for build-from-source)
+      if: inputs.build-from-source == 'true'
+      uses: Swatinem/rust-cache@v2
+
     - name: Download git-iris binary
       if: inputs.build-from-source != 'true'
       shell: bash
@@ -88,7 +110,6 @@ runs:
       run: |
         echo "::group::Downloading git-iris"
 
-        # Determine version to download
         if [ "${{ inputs.version }}" = "latest" ]; then
           VERSION=$(gh release view --repo hyperb1iss/git-iris --json tagName -q '.tagName')
         else
@@ -97,13 +118,11 @@ runs:
 
         echo "Downloading git-iris $VERSION for ${{ steps.platform.outputs.artifact }}"
 
-        # Download the artifact
         gh release download "$VERSION" \
           --repo hyperb1iss/git-iris \
           --pattern "${{ steps.platform.outputs.artifact }}" \
           --dir /tmp/git-iris-download
 
-        # The artifact is downloaded as a directory, binary is inside
         chmod +x "/tmp/git-iris-download/${{ steps.platform.outputs.binary }}"
         sudo mv "/tmp/git-iris-download/${{ steps.platform.outputs.binary }}" /usr/local/bin/git-iris
 
@@ -120,7 +139,7 @@ runs:
         echo "GIT_IRIS_BIN=./target/release/git-iris" >> $GITHUB_ENV
         echo "::endgroup::"
 
-    - name: Generate release notes
+    - name: Generate content
       id: generate
       shell: bash
       env:
@@ -131,13 +150,13 @@ runs:
         IRIS_MODEL: ${{ inputs.model }}
         IRIS_INSTRUCTIONS: ${{ inputs.custom-instructions }}
       run: |
-        echo "::group::Generating release notes"
+        echo "::group::Running git-iris ${{ inputs.command }}"
 
-        # Use built binary or installed command
         GIT_IRIS="${GIT_IRIS_BIN:-git-iris}"
+        COMMAND="${{ inputs.command }}"
 
-        # Build command
-        CMD="$GIT_IRIS release-notes --from '${{ inputs.from }}' --to '${{ inputs.to }}' --raw"
+        # Build base command
+        CMD="$GIT_IRIS $COMMAND --from '${{ inputs.from }}' --to '${{ inputs.to }}' --raw"
 
         # Add version name if specified
         if [ -n "${{ inputs.version-name }}" ]; then
@@ -145,23 +164,35 @@ runs:
         fi
 
         # Execute and capture output
-        RELEASE_NOTES=$(eval $CMD)
+        CONTENT=$(eval $CMD)
 
         # Handle multiline output for GitHub Actions
-        echo "release_notes<<EOF" >> $GITHUB_OUTPUT
-        echo "$RELEASE_NOTES" >> $GITHUB_OUTPUT
+        echo "content<<EOF" >> $GITHUB_OUTPUT
+        echo "$CONTENT" >> $GITHUB_OUTPUT
         echo "EOF" >> $GITHUB_OUTPUT
 
         # Write to file if specified
         if [ -n "${{ inputs.output-file }}" ]; then
-          echo "$RELEASE_NOTES" > "${{ inputs.output-file }}"
-          echo "release_notes_file=${{ inputs.output-file }}" >> $GITHUB_OUTPUT
-          echo "Release notes written to ${{ inputs.output-file }}"
+          OUTPUT_FILE="${{ inputs.output-file }}"
+
+          if [ "${{ inputs.update-file }}" = "true" ] && [ -f "$OUTPUT_FILE" ]; then
+            # Prepend new content to existing file (for changelogs)
+            echo "Updating existing file: $OUTPUT_FILE"
+            EXISTING=$(cat "$OUTPUT_FILE")
+            echo "$CONTENT" > "$OUTPUT_FILE"
+            echo "" >> "$OUTPUT_FILE"
+            echo "$EXISTING" >> "$OUTPUT_FILE"
+          else
+            echo "$CONTENT" > "$OUTPUT_FILE"
+          fi
+
+          echo "output_file=$OUTPUT_FILE" >> $GITHUB_OUTPUT
+          echo "Content written to $OUTPUT_FILE"
         fi
 
         echo "::endgroup::"
 
         # Print preview
-        echo "::group::Release Notes Preview"
-        echo "$RELEASE_NOTES"
+        echo "::group::Generated Content Preview"
+        echo "$CONTENT"
         echo "::endgroup::"

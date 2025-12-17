@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-5E81AC?style=for-the-badge&logo=apache&logoColor=white&color=3B6EA8)](https://opensource.org/licenses/Apache-2.0)
 [![GitHub Release](https://img.shields.io/github/release/hyperb1iss/git-iris.svg?style=for-the-badge&logo=github&logoColor=white&color=9D6DB3)][releases]
 [![Crates.io](https://img.shields.io/crates/v/git-iris.svg?style=for-the-badge&logo=rust&logoColor=white&color=D35D47)][crates]
-[![GitHub Action](https://img.shields.io/badge/GitHub_Action-Release_Notes-5E81AC?style=for-the-badge&logo=github-actions&logoColor=white)](https://github.com/marketplace/actions/git-iris-release-notes)
+[![GitHub Action](https://img.shields.io/badge/GitHub_Action-Available-5E81AC?style=for-the-badge&logo=github-actions&logoColor=white)](https://github.com/marketplace/actions/git-iris)
 [![Rust](https://img.shields.io/badge/rust-stable-EBCB8B?style=for-the-badge&logo=rust&logoColor=white&color=EFBB4D)](https://www.rust-lang.org/)
 [![ko-fi](https://img.shields.io/badge/Ko--fi-Support%20Me-A3BE8C?style=for-the-badge&logo=ko-fi&logoColor=white&color=82B062)](https://ko-fi.com/hyperb1iss)
 
@@ -175,36 +175,54 @@ For detailed instructions, examples, and CI/CD integration, see our [Docker Usag
 
 ## 🤖 GitHub Action
 
-Git-Iris is available as a GitHub Action for automated release note generation in your workflows:
+Git-Iris is available as a GitHub Action for automated release notes and changelog generation:
+
+### Release Notes
 
 ```yaml
 - name: Generate release notes
   uses: hyperb1iss/git-iris@v1
-  id: release_notes
+  id: notes
   with:
     from: v1.0.0
     to: v1.1.0
-    provider: openai
     api-key: ${{ secrets.OPENAI_API_KEY }}
     output-file: RELEASE_NOTES.md
 
 - name: Create Release
   uses: softprops/action-gh-release@v2
   with:
-    body: ${{ steps.release_notes.outputs.release-notes }}
+    body: ${{ steps.notes.outputs.content }}
+```
+
+### Changelog
+
+```yaml
+- name: Update changelog
+  uses: hyperb1iss/git-iris@v1
+  with:
+    command: changelog
+    from: v1.0.0
+    to: HEAD
+    version-name: "1.1.0"
+    api-key: ${{ secrets.OPENAI_API_KEY }}
+    output-file: CHANGELOG.md
+    update-file: "true"  # Prepends to existing changelog
 ```
 
 ### Action Inputs
 
 | Input | Description | Required | Default |
 |-------|-------------|----------|---------|
+| `command` | Command: `release-notes`, `changelog` | No | `release-notes` |
 | `from` | Starting Git reference (tag, commit, branch) | Yes | - |
 | `to` | Ending Git reference | No | `HEAD` |
 | `provider` | LLM provider (`openai`, `anthropic`, `google`) | No | `openai` |
 | `model` | Model to use (provider-specific) | No | Provider default |
 | `api-key` | API key for the LLM provider | Yes | - |
-| `output-file` | File path to write release notes | No | - |
-| `version-name` | Explicit version name for release notes | No | - |
+| `output-file` | File path to write output | No | - |
+| `version-name` | Explicit version name | No | - |
+| `update-file` | Prepend to existing file (changelog) | No | `false` |
 | `custom-instructions` | Custom instructions for generation | No | - |
 | `version` | Git-Iris version to use | No | `latest` |
 
@@ -212,8 +230,8 @@ Git-Iris is available as a GitHub Action for automated release note generation i
 
 | Output | Description |
 |--------|-------------|
-| `release-notes` | Generated release notes content |
-| `release-notes-file` | Path to output file (if specified) |
+| `content` | Generated content |
+| `output-file` | Path to output file (if specified) |
 
 ### Supported Platforms
 

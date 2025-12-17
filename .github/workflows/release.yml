@@ -1,0 +1,164 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Explicit version (e.g., 1.2.3) - leave empty to use bump type"
+        required: false
+        default: ""
+      bump:
+        description: "Version bump type (if version not specified)"
+        required: false
+        type: choice
+        default: "patch"
+        options:
+          - patch
+          - minor
+          - major
+      dry_run:
+        description: "Dry run (build & test only, skip publish)"
+        required: false
+        type: boolean
+        default: false
+      skip_changelog:
+        description: "Skip changelog generation"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: "📥 Checkout"
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: "🦀 Install Rust"
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: "📦 Rust cache"
+        uses: Swatinem/rust-cache@v2
+
+      - name: "⚙️ Configure git"
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: "🔍 Determine version"
+        id: version
+        run: |
+          # Get current version from Cargo.toml
+          CURRENT=$(grep -m1 '^version' Cargo.toml | sed 's/.*"\(.*\)".*/\1/')
+          echo "Current version: $CURRENT"
+
+          if [[ -n "${{ inputs.version }}" ]]; then
+            VERSION="${{ inputs.version }}"
+          else
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+            case "${{ inputs.bump }}" in
+              major) VERSION="$((MAJOR + 1)).0.0" ;;
+              minor) VERSION="${MAJOR}.$((MINOR + 1)).0" ;;
+              patch) VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))" ;;
+            esac
+          fi
+
+          # Validate version format
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Invalid version format: $VERSION (expected: X.Y.Z)"
+            exit 1
+          fi
+
+          # Check if tag already exists
+          if git tag -l "v$VERSION" | grep -q "v$VERSION"; then
+            echo "::error::Tag v$VERSION already exists"
+            exit 1
+          fi
+
+          echo "current=$CURRENT" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "🚀 Releasing: $CURRENT → $VERSION"
+
+      - name: "📝 Update Cargo.toml version"
+        run: |
+          sed -i 's/^version = ".*"/version = "${{ steps.version.outputs.version }}"/' Cargo.toml
+          echo "Updated Cargo.toml to version ${{ steps.version.outputs.version }}"
+
+      - name: "🔨 Build"
+        run: cargo build --release --locked
+
+      - name: "🧪 Run tests"
+        run: cargo test --locked
+
+      - name: "📋 Generate changelog"
+        if: ${{ !inputs.skip_changelog && !inputs.dry_run && secrets.OPENAI_API_KEY != '' }}
+        uses: ./
+        with:
+          command: changelog
+          from: v${{ steps.version.outputs.current }}
+          to: HEAD
+          version-name: ${{ steps.version.outputs.version }}
+          output-file: CHANGELOG.md
+          update-file: "true"
+          api-key: ${{ secrets.OPENAI_API_KEY }}
+          build-from-source: "true"
+
+      - name: "📦 Update Cargo.lock"
+        run: cargo update -p git-iris
+
+      - name: "✨ Commit version bump"
+        if: ${{ !inputs.dry_run }}
+        run: |
+          git add Cargo.toml Cargo.lock
+          # Also add CHANGELOG.md if it was modified
+          git add CHANGELOG.md 2>/dev/null || true
+          git commit -m "🔖 Release v${{ steps.version.outputs.version }}"
+
+      - name: "🏷️ Create and push tag"
+        if: ${{ !inputs.dry_run }}
+        run: |
+          git tag -a "v${{ steps.version.outputs.version }}" -m "Release v${{ steps.version.outputs.version }}"
+          git push origin HEAD:${{ github.ref_name }}
+          git push origin "v${{ steps.version.outputs.version }}"
+
+      - name: "📊 Summary"
+        run: |
+          echo "## Release ${{ inputs.dry_run && '[DRY RUN] ' || '' }}v${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [[ "${{ inputs.dry_run }}" == "true" ]]; then
+            echo "✅ Build and tests passed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Ready to release.** Run again without dry-run to publish." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✅ Version bumped: ${{ steps.version.outputs.current }} → ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+            echo "✅ Tag created and pushed: v${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "🚀 **CI/CD pipeline triggered!** The following will happen automatically:" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "- Build release binaries (Linux x64/ARM64, macOS ARM64, Windows)" >> $GITHUB_STEP_SUMMARY
+            echo "- Build .deb and .rpm packages" >> $GITHUB_STEP_SUMMARY
+            echo "- Publish Docker image to Docker Hub" >> $GITHUB_STEP_SUMMARY
+            echo "- Publish to crates.io" >> $GITHUB_STEP_SUMMARY
+            echo "- Generate release notes with git-iris" >> $GITHUB_STEP_SUMMARY
+            echo "- Create GitHub Release" >> $GITHUB_STEP_SUMMARY
+            echo "- Update v1 action tag" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "📦 [View CI/CD progress](https://github.com/${{ github.repository }}/actions)" >> $GITHUB_STEP_SUMMARY
+          fi
