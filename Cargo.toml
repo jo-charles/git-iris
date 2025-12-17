@@ -183,7 +183,7 @@ assets = [
 [package.metadata.generate-rpm]
 # Assets will be resolved relative to target directory by cargo-generate-rpm when using --target
 assets = [
-    { source = "release/git-iris", dest = "/usr/bin/git-iris", mode = "755" },
+    { source = "target/release/git-iris", dest = "/usr/bin/git-iris", mode = "755" },
     { source = "README.md", dest = "/usr/share/doc/git-iris/README", mode = "644" },
     { source = "git-iris.1", dest = "/usr/share/man/man1/git-iris.1", mode = "644" },
 ]
