@@ -361,17 +361,38 @@ jobs:
           echo "tag=$PREVIOUS_TAG" >> $GITHUB_OUTPUT
           echo "Previous tag: $PREVIOUS_TAG"
 
+      - name: 🔧 Prepare git-iris binary
+        run: |
+          chmod +x ./artifacts/git-iris-linux-amd64/git-iris
+          echo "Binary ready: ./artifacts/git-iris-linux-amd64/git-iris"
+          ./artifacts/git-iris-linux-amd64/git-iris --version
+
+      - name: 📋 Generate changelog with Git-Iris
+        id: changelog
+        if: steps.prev_tag.outputs.tag != ''
+        uses: ./
+        with:
+          command: changelog
+          from: ${{ steps.prev_tag.outputs.tag }}
+          to: ${{ github.ref_name }}
+          version-name: ${{ github.ref_name }}
+          provider: anthropic
+          api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          output-file: CHANGELOG_SECTION.md
+          binary-path: ./artifacts/git-iris-linux-amd64/git-iris
+
       - name: 📝 Generate release notes with Git-Iris
         id: release_notes
         if: steps.prev_tag.outputs.tag != ''
         uses: ./
         with:
+          command: release-notes
           from: ${{ steps.prev_tag.outputs.tag }}
           to: ${{ github.ref_name }}
-          provider: openai
-          api-key: ${{ secrets.OPENAI_API_KEY }}
+          provider: anthropic
+          api-key: ${{ secrets.ANTHROPIC_API_KEY }}
           output-file: RELEASE_NOTES.md
-          build-from-source: "true"
+          binary-path: ./artifacts/git-iris-linux-amd64/git-iris
 
       - name: 📝 Fallback release notes
         if: steps.prev_tag.outputs.tag == '' || steps.release_notes.outcome == 'failure'
@@ -388,6 +409,7 @@ jobs:
           prerelease: false
           files: |
             ./release-assets/*
+            CHANGELOG_SECTION.md
           body_path: RELEASE_NOTES.md
 
   # Auto-update major version tag (v1, v2, etc.) for GitHub Action users

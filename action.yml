@@ -48,6 +48,9 @@ inputs:
     description: "Build from source instead of downloading binary"
     required: false
     default: "false"
+  binary-path:
+    description: "Path to pre-built git-iris binary (skips download and build)"
+    required: false
 
 outputs:
   content:
@@ -94,16 +97,23 @@ runs:
             ;;
         esac
 
+    - name: Use pre-built binary
+      if: inputs.binary-path != ''
+      shell: bash
+      run: |
+        echo "Using pre-built binary: ${{ inputs.binary-path }}"
+        echo "GIT_IRIS_BIN=${{ inputs.binary-path }}" >> $GITHUB_ENV
+
     - name: Install Rust (for build-from-source)
-      if: inputs.build-from-source == 'true'
+      if: inputs.binary-path == '' && inputs.build-from-source == 'true'
       uses: dtolnay/rust-toolchain@stable
 
     - name: Rust cache (for build-from-source)
-      if: inputs.build-from-source == 'true'
+      if: inputs.binary-path == '' && inputs.build-from-source == 'true'
       uses: Swatinem/rust-cache@v2
 
     - name: Download git-iris binary
-      if: inputs.build-from-source != 'true'
+      if: inputs.binary-path == '' && inputs.build-from-source != 'true'
       shell: bash
       env:
         GH_TOKEN: ${{ github.token }}
@@ -131,7 +141,7 @@ runs:
         echo "::endgroup::"
 
     - name: Build git-iris from source
-      if: inputs.build-from-source == 'true'
+      if: inputs.binary-path == '' && inputs.build-from-source == 'true'
       shell: bash
       run: |
         echo "::group::Building git-iris from source"
@@ -143,20 +153,26 @@ runs:
       id: generate
       shell: bash
       env:
+        # LLM provider configuration
         OPENAI_API_KEY: ${{ inputs.provider == 'openai' && inputs.api-key || '' }}
         ANTHROPIC_API_KEY: ${{ inputs.provider == 'anthropic' && inputs.api-key || '' }}
         GOOGLE_API_KEY: ${{ inputs.provider == 'google' && inputs.api-key || '' }}
         IRIS_PROVIDER: ${{ inputs.provider }}
         IRIS_MODEL: ${{ inputs.model }}
         IRIS_INSTRUCTIONS: ${{ inputs.custom-instructions }}
+        # Ensure clean markdown output - no colors or formatting
+        NO_COLOR: "1"
+        TERM: dumb
+        CLICOLOR: "0"
+        CLICOLOR_FORCE: "0"
       run: |
         echo "::group::Running git-iris ${{ inputs.command }}"
 
         GIT_IRIS="${GIT_IRIS_BIN:-git-iris}"
         COMMAND="${{ inputs.command }}"
 
-        # Build base command
-        CMD="$GIT_IRIS $COMMAND --from '${{ inputs.from }}' --to '${{ inputs.to }}' --raw"
+        # Build base command (--raw ensures markdown output, --quiet suppresses spinners)
+        CMD="$GIT_IRIS $COMMAND --from '${{ inputs.from }}' --to '${{ inputs.to }}' --raw --quiet"
 
         # Add version name if specified
         if [ -n "${{ inputs.version-name }}" ]; then

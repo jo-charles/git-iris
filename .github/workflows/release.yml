@@ -100,6 +100,9 @@ jobs:
           sed -i 's/^version = ".*"/version = "${{ steps.version.outputs.version }}"/' Cargo.toml
           echo "Updated Cargo.toml to version ${{ steps.version.outputs.version }}"
 
+      - name: "📦 Update Cargo.lock"
+        run: cargo update -p git-iris
+
       - name: "🔨 Build"
         run: cargo build --release --locked
 
@@ -107,7 +110,7 @@ jobs:
         run: cargo test --locked
 
       - name: "📋 Generate changelog"
-        if: ${{ !inputs.skip_changelog && !inputs.dry_run && secrets.OPENAI_API_KEY != '' }}
+        if: ${{ !inputs.skip_changelog && !inputs.dry_run }}
         uses: ./
         with:
           command: changelog
@@ -116,11 +119,22 @@ jobs:
           version-name: ${{ steps.version.outputs.version }}
           output-file: CHANGELOG.md
           update-file: "true"
-          api-key: ${{ secrets.OPENAI_API_KEY }}
-          build-from-source: "true"
+          provider: anthropic
+          api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          binary-path: ./target/release/git-iris
 
-      - name: "📦 Update Cargo.lock"
-        run: cargo update -p git-iris
+      - name: "📝 Generate release notes"
+        if: ${{ !inputs.dry_run }}
+        id: release_notes
+        uses: ./
+        with:
+          command: release-notes
+          from: v${{ steps.version.outputs.current }}
+          to: HEAD
+          version-name: ${{ steps.version.outputs.version }}
+          provider: anthropic
+          api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          binary-path: ./target/release/git-iris
 
       - name: "✨ Commit version bump"
         if: ${{ !inputs.dry_run }}
@@ -156,9 +170,15 @@ jobs:
             echo "- Build .deb and .rpm packages" >> $GITHUB_STEP_SUMMARY
             echo "- Publish Docker image to Docker Hub" >> $GITHUB_STEP_SUMMARY
             echo "- Publish to crates.io" >> $GITHUB_STEP_SUMMARY
-            echo "- Generate release notes with git-iris" >> $GITHUB_STEP_SUMMARY
-            echo "- Create GitHub Release" >> $GITHUB_STEP_SUMMARY
+            echo "- Create GitHub Release with release notes" >> $GITHUB_STEP_SUMMARY
             echo "- Update v1 action tag" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "📦 [View CI/CD progress](https://github.com/${{ github.repository }}/actions)" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "---" >> $GITHUB_STEP_SUMMARY
+            echo "### 📝 Release Notes Preview" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            cat << 'EOF' >> $GITHUB_STEP_SUMMARY
+          ${{ steps.release_notes.outputs.content }}
+          EOF
           fi
