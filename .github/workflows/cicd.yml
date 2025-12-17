@@ -12,6 +12,11 @@ on:
   pull_request:
     branches:
       - main # Trigger on pull requests to main branch
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build/release (e.g., v1.2.3)"
+        required: false
 
 jobs:
   # This job runs for all pushes and pull requests

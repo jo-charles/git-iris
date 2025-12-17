@@ -29,6 +29,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: release
@@ -150,7 +151,7 @@ jobs:
           git add Cargo.toml Cargo.lock
           # Also add CHANGELOG.md if it was modified
           git add CHANGELOG.md 2>/dev/null || true
-          git commit -m "🔖 Release v${{ steps.version.outputs.version }}"
+          git commit -m "🔮 Release v${{ steps.version.outputs.version }}"
 
       - name: "🏷️ Create and push tag"
         if: ${{ !inputs.dry_run }}
@@ -158,6 +159,13 @@ jobs:
           git tag -a "v${{ steps.version.outputs.version }}" -m "Release v${{ steps.version.outputs.version }}"
           git push origin HEAD:${{ github.ref_name }}
           git push origin "v${{ steps.version.outputs.version }}"
+
+      - name: "🚀 Trigger CI/CD pipeline"
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run cicd.yml --ref "v${{ steps.version.outputs.version }}"
 
       - name: "📊 Summary"
         run: |
