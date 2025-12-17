@@ -171,12 +171,21 @@ runs:
         GIT_IRIS="${GIT_IRIS_BIN:-git-iris}"
         COMMAND="${{ inputs.command }}"
 
+        echo "Provider: $IRIS_PROVIDER"
+        echo "Model: $IRIS_MODEL"
+
         # Build base command (--raw ensures markdown output, --quiet suppresses spinners)
-        CMD="$GIT_IRIS $COMMAND --from '${{ inputs.from }}' --to '${{ inputs.to }}' --raw --quiet"
+        # Explicitly pass --provider to ensure it's used regardless of config
+        CMD="$GIT_IRIS $COMMAND --from '${{ inputs.from }}' --to '${{ inputs.to }}' --provider '${{ inputs.provider }}' --raw --quiet"
 
         # Add version name if specified
         if [ -n "${{ inputs.version-name }}" ]; then
           CMD="$CMD --version-name '${{ inputs.version-name }}'"
+        fi
+
+        # Add model if specified
+        if [ -n "${{ inputs.model }}" ]; then
+          CMD="$CMD --model '${{ inputs.model }}'"
         fi
 
         # Execute and capture output

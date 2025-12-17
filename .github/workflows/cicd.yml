@@ -377,6 +377,7 @@ jobs:
           to: ${{ github.ref_name }}
           version-name: ${{ github.ref_name }}
           provider: anthropic
+          model: claude-opus-4-5-20251101
           api-key: ${{ secrets.ANTHROPIC_API_KEY }}
           output-file: CHANGELOG_SECTION.md
           binary-path: ./artifacts/git-iris-linux-amd64/git-iris
@@ -390,6 +391,7 @@ jobs:
           from: ${{ steps.prev_tag.outputs.tag }}
           to: ${{ github.ref_name }}
           provider: anthropic
+          model: claude-opus-4-5-20251101
           api-key: ${{ secrets.ANTHROPIC_API_KEY }}
           output-file: RELEASE_NOTES.md
           binary-path: ./artifacts/git-iris-linux-amd64/git-iris

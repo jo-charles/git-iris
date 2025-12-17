@@ -10,6 +10,10 @@ pub struct CommonParams {
     #[arg(long, help = "Override default LLM provider", value_parser = available_providers_parser)]
     pub provider: Option<String>,
 
+    /// Override model for this operation
+    #[arg(long, help = "Override model for this operation")]
+    pub model: Option<String>,
+
     /// Custom instructions for this operation
     #[arg(short, long, help = "Custom instructions for this operation")]
     pub instructions: Option<String>,
@@ -80,6 +84,15 @@ impl CommonParams {
                 }
 
                 config.default_provider = provider_name;
+                changes_made = true;
+            }
+        }
+
+        // Apply model override if specified
+        if let Some(model) = &self.model {
+            let provider_name = config.default_provider.clone();
+            if let Some(provider_config) = config.providers.get_mut(&provider_name) {
+                provider_config.model = model.clone();
                 changes_made = true;
             }
         }
