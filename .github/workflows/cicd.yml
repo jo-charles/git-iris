@@ -17,6 +17,9 @@ on:
       tag:
         description: "Tag to build/release (e.g., v1.2.3)"
         required: false
+      release_run_id:
+        description: "Run ID of the release workflow (for artifact download)"
+        required: false
 
 jobs:
   # This job runs for all pushes and pull requests
@@ -387,22 +390,32 @@ jobs:
           output-file: CHANGELOG_SECTION.md
           binary-path: ./artifacts/git-iris-linux-amd64/git-iris
 
-      - name: 📝 Generate release notes with Git-Iris
-        id: release_notes
-        if: steps.prev_tag.outputs.tag != ''
+      - name: 📥 Download release notes from release workflow
+        id: download_notes
+        if: ${{ inputs.release_run_id != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: release-notes
+          run-id: ${{ inputs.release_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+
+      - name: 📝 Generate release notes (fallback)
+        if: steps.download_notes.outcome != 'success' && steps.prev_tag.outputs.tag != ''
         uses: ./
         with:
           command: release-notes
           from: ${{ steps.prev_tag.outputs.tag }}
           to: ${{ github.ref_name }}
+          version-name: ${{ github.ref_name }}
           provider: anthropic
           model: claude-opus-4-5-20251101
           api-key: ${{ secrets.ANTHROPIC_API_KEY }}
           output-file: RELEASE_NOTES.md
           binary-path: ./artifacts/git-iris-linux-amd64/git-iris
 
-      - name: 📝 Fallback release notes
-        if: steps.prev_tag.outputs.tag == '' || steps.release_notes.outcome == 'failure'
+      - name: 📝 Fallback release notes (no tags)
+        if: steps.prev_tag.outputs.tag == ''
         run: |
           echo "# Release ${{ github.ref_name }}" > RELEASE_NOTES.md
           echo "" >> RELEASE_NOTES.md

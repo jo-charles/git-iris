@@ -140,10 +140,19 @@ jobs:
           from: v${{ steps.version.outputs.current }}
           to: HEAD
           version-name: ${{ steps.version.outputs.version }}
+          output-file: RELEASE_NOTES.md
           provider: anthropic
           model: claude-opus-4-5-20251101
           api-key: ${{ secrets.ANTHROPIC_API_KEY }}
           binary-path: ./target/release/git-iris
+
+      - name: "📤 Upload release notes artifact"
+        if: ${{ !inputs.dry_run }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-notes
+          path: RELEASE_NOTES.md
+          retention-days: 1
 
       - name: "✨ Commit version bump"
         if: ${{ !inputs.dry_run }}
@@ -165,7 +174,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh workflow run cicd.yml --ref "v${{ steps.version.outputs.version }}"
+          gh workflow run cicd.yml --ref "v${{ steps.version.outputs.version }}" -f release_run_id=${{ github.run_id }}
 
       - name: "📊 Summary"
         run: |
