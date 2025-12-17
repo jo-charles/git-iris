@@ -175,20 +175,49 @@ fn extract_json_from_response(response: &str) -> Result<String> {
         let json_content = &response[start..end];
         debug::debug_json_parse_attempt(json_content);
 
+        // Try to sanitize before validating (control characters in strings)
+        let sanitized = sanitize_json_response(json_content);
+
         // Validate it's actually JSON by attempting to parse it
-        let _: serde_json::Value = serde_json::from_str(json_content).map_err(|e| {
+        let _: serde_json::Value = serde_json::from_str(&sanitized).map_err(|e| {
             debug::debug_json_parse_error(&format!(
                 "Found JSON-like content but it's not valid JSON: {}",
                 e
             ));
-            anyhow::anyhow!("Found JSON-like content but it's not valid JSON")
+            // Include more context in the error for debugging
+            let preview = if json_content.len() > 200 {
+                format!("{}...", &json_content[..200])
+            } else {
+                json_content.to_string()
+            };
+            anyhow::anyhow!(
+                "Found JSON-like content but it's not valid JSON: {}\nPreview: {}",
+                e,
+                preview
+            )
         })?;
 
         debug::debug_context_management(
             "Found valid JSON object",
             &format!("{} characters", json_content.len()),
         );
-        return Ok(json_content.to_string());
+        return Ok(sanitized.into_owned());
+    }
+
+    // If no JSON found, check if the response is raw markdown that we can wrap
+    // This handles cases where the model returns markdown directly without JSON wrapper
+    let trimmed = response.trim();
+    if trimmed.starts_with('#') || trimmed.starts_with("##") {
+        debug::debug_context_management(
+            "Detected raw markdown response",
+            "Wrapping in JSON structure",
+        );
+        // Escape the markdown content for JSON and wrap it
+        let escaped_content = serde_json::to_string(trimmed)?;
+        // escaped_content includes quotes, so we need to use it directly as the value
+        let wrapped = format!(r#"{{"content": {}}}"#, escaped_content);
+        debug::debug_json_parse_attempt(&wrapped);
+        return Ok(wrapped);
     }
 
     // If no JSON found, return error
