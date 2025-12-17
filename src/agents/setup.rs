@@ -324,6 +324,24 @@ impl IrisAgentService {
             .map(|i| format!("\n\n## Custom Instructions\n{}", i))
             .unwrap_or_default();
 
+        // Extract version and date info if this is a Changelog context
+        let version_info = if let TaskContext::Changelog {
+            version_name,
+            date,
+            ..
+        } = context
+        {
+            let version_str = version_name
+                .as_ref()
+                .map_or_else(|| "(derive from git refs)".to_string(), String::clone);
+            format!(
+                "\n\n## Version Information\n- Version: {}\n- Release Date: {}\n\nIMPORTANT: Use the exact version name and date provided above. Do NOT guess or make up version numbers or dates.",
+                version_str, date
+            )
+        } else {
+            String::new()
+        };
+
         match capability {
             "commit" => format!(
                 "Generate a commit message for the following context:\n{}\n\nUse: {}{}",
@@ -338,12 +356,12 @@ impl IrisAgentService {
                 context_json, diff_hint, instruction_suffix
             ),
             "changelog" => format!(
-                "Generate a changelog for:\n{}\n\nUse: {}{}",
-                context_json, diff_hint, instruction_suffix
+                "Generate a changelog for:\n{}\n\nUse: {}{}{}",
+                context_json, diff_hint, version_info, instruction_suffix
             ),
             "release_notes" => format!(
-                "Generate release notes for:\n{}\n\nUse: {}{}",
-                context_json, diff_hint, instruction_suffix
+                "Generate release notes for:\n{}\n\nUse: {}{}{}",
+                context_json, diff_hint, version_info, instruction_suffix
             ),
             _ => format!(
                 "Execute task with context:\n{}\n\nHint: {}{}",

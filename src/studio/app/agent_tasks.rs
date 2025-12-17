@@ -461,8 +461,8 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
         let streaming_tx = tx.clone();
 
         tokio::spawn(async move {
-            // Build context for changelog (comparing two refs)
-            let context = TaskContext::for_changelog(from_ref, Some(to_ref));
+            // Build context for changelog (comparing two refs, date auto-set to today)
+            let context = TaskContext::for_changelog(from_ref, Some(to_ref), None, None);
 
             // Execute with streaming
             let on_chunk = {
@@ -531,8 +531,8 @@ Simply call the appropriate tool with the new content. Do NOT echo back the full
         let streaming_tx = tx.clone();
 
         tokio::spawn(async move {
-            // Build context for release notes (comparing two refs)
-            let context = TaskContext::for_changelog(from_ref, Some(to_ref));
+            // Build context for release notes (comparing two refs, date auto-set to today)
+            let context = TaskContext::for_changelog(from_ref, Some(to_ref), None, None);
 
             // Execute with streaming
             let on_chunk = {

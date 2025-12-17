@@ -33,6 +33,18 @@ pub enum TaskContext {
         to: String,
     },
 
+    /// Generate changelog or release notes with version metadata
+    Changelog {
+        /// Starting reference (exclusive)
+        from: String,
+        /// Ending reference (inclusive)
+        to: String,
+        /// Explicit version name (e.g., "1.2.0")
+        version_name: Option<String>,
+        /// Release date in YYYY-MM-DD format
+        date: String,
+    },
+
     /// Amend the previous commit with staged changes
     /// The agent sees the combined diff from HEAD^1 to staged state
     Amend {
@@ -125,10 +137,18 @@ impl TaskContext {
     /// Create context for changelog/release-notes commands.
     ///
     /// These always require a `from` reference; `to` defaults to HEAD.
-    pub fn for_changelog(from: String, to: Option<String>) -> Self {
-        Self::Range {
+    /// Automatically sets today's date if not provided.
+    pub fn for_changelog(
+        from: String,
+        to: Option<String>,
+        version_name: Option<String>,
+        date: Option<String>,
+    ) -> Self {
+        Self::Changelog {
             from,
             to: to.unwrap_or_else(|| "HEAD".to_string()),
+            version_name,
+            date: date.unwrap_or_else(|| chrono::Local::now().format("%Y-%m-%d").to_string()),
         }
     }
 
@@ -150,7 +170,7 @@ impl TaskContext {
             Self::Commit { commit_id } => {
                 format!("git_diff(from=\"{commit_id}^1\", to=\"{commit_id}\")")
             }
-            Self::Range { from, to } => {
+            Self::Range { from, to } | Self::Changelog { from, to, .. } => {
                 format!("git_diff(from=\"{from}\", to=\"{to}\")")
             }
             Self::Amend { .. } => {
@@ -201,6 +221,17 @@ impl std::fmt::Display for TaskContext {
             }
             Self::Commit { commit_id } => write!(f, "commit {commit_id}"),
             Self::Range { from, to } => write!(f, "changes from {from} to {to}"),
+            Self::Changelog {
+                from,
+                to,
+                version_name,
+                date,
+            } => {
+                let version_str = version_name
+                    .as_ref()
+                    .map_or_else(|| "unreleased".to_string(), |v| format!("v{v}"));
+                write!(f, "changelog {version_str} ({date}) from {from} to {to}")
+            }
             Self::Amend { .. } => write!(f, "amending previous commit"),
             Self::Discover => write!(f, "auto-discovered changes"),
         }
@@ -318,8 +349,31 @@ mod tests {
 
     #[test]
     fn test_changelog() {
-        let ctx = TaskContext::for_changelog("v1.0.0".to_string(), None);
-        assert!(matches!(ctx, TaskContext::Range { from, to } if from == "v1.0.0" && to == "HEAD"));
+        let ctx = TaskContext::for_changelog(
+            "v1.0.0".to_string(),
+            None,
+            Some("1.1.0".to_string()),
+            Some("2025-01-15".to_string()),
+        );
+        assert!(matches!(
+            ctx,
+            TaskContext::Changelog { from, to, version_name, date }
+                if from == "v1.0.0" && to == "HEAD"
+                && version_name == Some("1.1.0".to_string())
+                && date == "2025-01-15"
+        ));
+    }
+
+    #[test]
+    fn test_changelog_default_date() {
+        let ctx = TaskContext::for_changelog("v1.0.0".to_string(), None, None, None);
+        // Should use today's date
+        if let TaskContext::Changelog { date, .. } = ctx {
+            assert!(!date.is_empty());
+            assert!(date.contains('-')); // YYYY-MM-DD format
+        } else {
+            panic!("Expected Changelog variant");
+        }
     }
 
     #[test]

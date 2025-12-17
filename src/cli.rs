@@ -833,8 +833,8 @@ async fn handle_changelog(
     use anyhow::Context;
     use std::sync::Arc;
 
-    // Create structured context for changelog
-    let context = TaskContext::for_changelog(from.clone(), to.clone());
+    // Create structured context for changelog with version_name and current date
+    let context = TaskContext::for_changelog(from.clone(), to.clone(), version_name.clone(), None);
     let to_ref = to.unwrap_or_else(|| "HEAD".to_string());
 
     // Create spinner for progress indication (skip for raw output)
@@ -914,16 +914,17 @@ async fn handle_release_notes(
     repository_url: Option<String>,
     update: bool,
     file: Option<String>,
-    _version_name: Option<String>,
+    version_name: Option<String>,
 ) -> anyhow::Result<()> {
     log_debug!(
-        "Handling 'release-notes' command with common: {:?}, from: {}, to: {:?}, raw: {}, update: {}, file: {:?}",
+        "Handling 'release-notes' command with common: {:?}, from: {}, to: {:?}, raw: {}, update: {}, file: {:?}, version_name: {:?}",
         common,
         from,
         to,
         raw,
         update,
-        file
+        file,
+        version_name
     );
 
     // For raw output, skip all formatting
@@ -936,8 +937,8 @@ async fn handle_release_notes(
     use std::fs;
     use std::path::Path;
 
-    // Create structured context for release notes
-    let context = TaskContext::for_changelog(from, to);
+    // Create structured context for release notes with version_name and current date
+    let context = TaskContext::for_changelog(from, to, version_name, None);
 
     // Create spinner for progress indication (skip for raw output)
     let spinner = if raw {
