@@ -1,11 +1,7 @@
 // only run this test on Linux
 #![cfg(target_os = "linux")]
 use anyhow::Result;
-use git_iris::git::GitRepo;
 use git2::Repository;
-use std::fs;
-use std::path::Path;
-use tempfile::TempDir;
 
 // Use our centralized test infrastructure
 #[path = "test_utils.rs"]

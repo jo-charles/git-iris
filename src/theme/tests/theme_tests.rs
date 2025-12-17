@@ -1,7 +1,7 @@
 //! Tests for theme module
 
 use crate::theme::{
-    self, Theme, ThemeColor, ThemeError, ThemeVariant, current, list_available_themes,
+    Theme, ThemeColor, ThemeError, ThemeVariant, current, list_available_themes,
     load_theme_by_name, set_theme,
 };
 

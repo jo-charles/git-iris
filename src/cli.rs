@@ -101,7 +101,8 @@ pub enum Commands {
     #[command(
         about = "Generate a commit message using AI",
         long_about = "Generate a commit message using AI based on the current Git context.",
-        after_help = get_dynamic_help()
+        after_help = get_dynamic_help(),
+        visible_alias = "commit"
     )]
     Gen {
         #[command(flatten)]

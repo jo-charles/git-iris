@@ -92,7 +92,7 @@ impl CommonParams {
         if let Some(model) = &self.model {
             let provider_name = config.default_provider.clone();
             if let Some(provider_config) = config.providers.get_mut(&provider_name) {
-                provider_config.model = model.clone();
+                provider_config.model.clone_from(model);
                 changes_made = true;
             }
         }

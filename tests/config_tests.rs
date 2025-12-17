@@ -119,6 +119,7 @@ fn test_project_config_security() {
     // Set up common parameters similar to CLI arguments
     let common = CommonParams {
         provider: Some("openai".to_string()),
+        model: None,
         instructions: Some("Test instructions".to_string()),
         preset: Some("default".to_string()),
         gitmoji: Some(true),
