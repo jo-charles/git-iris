@@ -1,0 +1,167 @@
+name: "Git-Iris Release Notes"
+description: "Generate AI-powered release notes using Git-Iris"
+author: "hyperb1iss"
+branding:
+  icon: "file-text"
+  color: "purple"
+
+inputs:
+  from:
+    description: "Starting Git reference (tag, commit, or branch)"
+    required: true
+  to:
+    description: "Ending Git reference (defaults to HEAD)"
+    required: false
+    default: "HEAD"
+  provider:
+    description: "LLM provider (openai, anthropic, google)"
+    required: false
+    default: "openai"
+  model:
+    description: "Model to use (provider-specific)"
+    required: false
+  api-key:
+    description: "API key for the LLM provider"
+    required: true
+  output-file:
+    description: "File path to write release notes (optional)"
+    required: false
+  version-name:
+    description: "Explicit version name to use in release notes"
+    required: false
+  custom-instructions:
+    description: "Custom instructions for release note generation"
+    required: false
+  version:
+    description: "Git-Iris version to use (defaults to latest)"
+    required: false
+    default: "latest"
+  build-from-source:
+    description: "Build from source instead of downloading binary (for dogfooding unreleased changes)"
+    required: false
+    default: "false"
+
+outputs:
+  release-notes:
+    description: "Generated release notes content"
+    value: ${{ steps.generate.outputs.release_notes }}
+  release-notes-file:
+    description: "Path to the release notes file (if output-file was specified)"
+    value: ${{ steps.generate.outputs.release_notes_file }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Determine platform
+      id: platform
+      shell: bash
+      run: |
+        case "${{ runner.os }}-${{ runner.arch }}" in
+          Linux-X64)
+            echo "artifact=git-iris-linux-amd64" >> $GITHUB_OUTPUT
+            echo "binary=git-iris" >> $GITHUB_OUTPUT
+            ;;
+          Linux-ARM64)
+            echo "artifact=git-iris-linux-arm64" >> $GITHUB_OUTPUT
+            echo "binary=git-iris" >> $GITHUB_OUTPUT
+            ;;
+          macOS-ARM64|macOS-X64)
+            # ARM64 binary works on both via Rosetta 2
+            echo "artifact=git-iris-macos-arm64" >> $GITHUB_OUTPUT
+            echo "binary=git-iris" >> $GITHUB_OUTPUT
+            ;;
+          Windows-X64)
+            echo "artifact=git-iris-windows-gnu" >> $GITHUB_OUTPUT
+            echo "binary=git-iris.exe" >> $GITHUB_OUTPUT
+            ;;
+          *)
+            echo "::error::Unsupported platform: ${{ runner.os }}-${{ runner.arch }}"
+            exit 1
+            ;;
+        esac
+
+    - name: Download git-iris binary
+      if: inputs.build-from-source != 'true'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        echo "::group::Downloading git-iris"
+
+        # Determine version to download
+        if [ "${{ inputs.version }}" = "latest" ]; then
+          VERSION=$(gh release view --repo hyperb1iss/git-iris --json tagName -q '.tagName')
+        else
+          VERSION="${{ inputs.version }}"
+        fi
+
+        echo "Downloading git-iris $VERSION for ${{ steps.platform.outputs.artifact }}"
+
+        # Download the artifact
+        gh release download "$VERSION" \
+          --repo hyperb1iss/git-iris \
+          --pattern "${{ steps.platform.outputs.artifact }}" \
+          --dir /tmp/git-iris-download
+
+        # The artifact is downloaded as a directory, binary is inside
+        chmod +x "/tmp/git-iris-download/${{ steps.platform.outputs.binary }}"
+        sudo mv "/tmp/git-iris-download/${{ steps.platform.outputs.binary }}" /usr/local/bin/git-iris
+
+        echo "git-iris installed successfully"
+        git-iris --version
+        echo "::endgroup::"
+
+    - name: Build git-iris from source
+      if: inputs.build-from-source == 'true'
+      shell: bash
+      run: |
+        echo "::group::Building git-iris from source"
+        cargo build --release --locked
+        echo "GIT_IRIS_BIN=./target/release/git-iris" >> $GITHUB_ENV
+        echo "::endgroup::"
+
+    - name: Generate release notes
+      id: generate
+      shell: bash
+      env:
+        OPENAI_API_KEY: ${{ inputs.provider == 'openai' && inputs.api-key || '' }}
+        ANTHROPIC_API_KEY: ${{ inputs.provider == 'anthropic' && inputs.api-key || '' }}
+        GOOGLE_API_KEY: ${{ inputs.provider == 'google' && inputs.api-key || '' }}
+        IRIS_PROVIDER: ${{ inputs.provider }}
+        IRIS_MODEL: ${{ inputs.model }}
+        IRIS_INSTRUCTIONS: ${{ inputs.custom-instructions }}
+      run: |
+        echo "::group::Generating release notes"
+
+        # Use built binary or installed command
+        GIT_IRIS="${GIT_IRIS_BIN:-git-iris}"
+
+        # Build command
+        CMD="$GIT_IRIS release-notes --from '${{ inputs.from }}' --to '${{ inputs.to }}' --raw"
+
+        # Add version name if specified
+        if [ -n "${{ inputs.version-name }}" ]; then
+          CMD="$CMD --version-name '${{ inputs.version-name }}'"
+        fi
+
+        # Execute and capture output
+        RELEASE_NOTES=$(eval $CMD)
+
+        # Handle multiline output for GitHub Actions
+        echo "release_notes<<EOF" >> $GITHUB_OUTPUT
+        echo "$RELEASE_NOTES" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+
+        # Write to file if specified
+        if [ -n "${{ inputs.output-file }}" ]; then
+          echo "$RELEASE_NOTES" > "${{ inputs.output-file }}"
+          echo "release_notes_file=${{ inputs.output-file }}" >> $GITHUB_OUTPUT
+          echo "Release notes written to ${{ inputs.output-file }}"
+        fi
+
+        echo "::endgroup::"
+
+        # Print preview
+        echo "::group::Release Notes Preview"
+        echo "$RELEASE_NOTES"
+        echo "::endgroup::"

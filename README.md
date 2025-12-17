@@ -7,6 +7,7 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-5E81AC?style=for-the-badge&logo=apache&logoColor=white&color=3B6EA8)](https://opensource.org/licenses/Apache-2.0)
 [![GitHub Release](https://img.shields.io/github/release/hyperb1iss/git-iris.svg?style=for-the-badge&logo=github&logoColor=white&color=9D6DB3)][releases]
 [![Crates.io](https://img.shields.io/crates/v/git-iris.svg?style=for-the-badge&logo=rust&logoColor=white&color=D35D47)][crates]
+[![GitHub Action](https://img.shields.io/badge/GitHub_Action-Release_Notes-5E81AC?style=for-the-badge&logo=github-actions&logoColor=white)](https://github.com/marketplace/actions/git-iris-release-notes)
 [![Rust](https://img.shields.io/badge/rust-stable-EBCB8B?style=for-the-badge&logo=rust&logoColor=white&color=EFBB4D)](https://www.rust-lang.org/)
 [![ko-fi](https://img.shields.io/badge/Ko--fi-Support%20Me-A3BE8C?style=for-the-badge&logo=ko-fi&logoColor=white&color=82B062)](https://ko-fi.com/hyperb1iss)
 
@@ -171,6 +172,56 @@ To build and test the Docker image locally:
 ```
 
 For detailed instructions, examples, and CI/CD integration, see our [Docker Usage Guide](docker/README.md).
+
+## 🤖 GitHub Action
+
+Git-Iris is available as a GitHub Action for automated release note generation in your workflows:
+
+```yaml
+- name: Generate release notes
+  uses: hyperb1iss/git-iris@v1
+  id: release_notes
+  with:
+    from: v1.0.0
+    to: v1.1.0
+    provider: openai
+    api-key: ${{ secrets.OPENAI_API_KEY }}
+    output-file: RELEASE_NOTES.md
+
+- name: Create Release
+  uses: softprops/action-gh-release@v2
+  with:
+    body: ${{ steps.release_notes.outputs.release-notes }}
+```
+
+### Action Inputs
+
+| Input | Description | Required | Default |
+|-------|-------------|----------|---------|
+| `from` | Starting Git reference (tag, commit, branch) | Yes | - |
+| `to` | Ending Git reference | No | `HEAD` |
+| `provider` | LLM provider (`openai`, `anthropic`, `google`) | No | `openai` |
+| `model` | Model to use (provider-specific) | No | Provider default |
+| `api-key` | API key for the LLM provider | Yes | - |
+| `output-file` | File path to write release notes | No | - |
+| `version-name` | Explicit version name for release notes | No | - |
+| `custom-instructions` | Custom instructions for generation | No | - |
+| `version` | Git-Iris version to use | No | `latest` |
+
+### Action Outputs
+
+| Output | Description |
+|--------|-------------|
+| `release-notes` | Generated release notes content |
+| `release-notes-file` | Path to output file (if specified) |
+
+### Supported Platforms
+
+The action downloads prebuilt binaries for fast execution:
+- Linux x64 (`ubuntu-latest`)
+- Linux ARM64 (`ubuntu-24.04-arm`)
+- macOS ARM64 (`macos-latest`, runs on x64 via Rosetta)
+- Windows x64 (`windows-latest`)
 
 ## ⚙️ Configuration
 

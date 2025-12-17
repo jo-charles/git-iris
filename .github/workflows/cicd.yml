@@ -100,6 +100,11 @@ jobs:
             target: x86_64-unknown-linux-gnu
             binary_name: git-iris
 
+          - build: linux-arm64
+            os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            binary_name: git-iris
+
           - build: windows-gnu
             os: windows-latest
             target: x86_64-pc-windows-gnu
@@ -349,34 +354,31 @@ jobs:
           ls -la ./release-assets
           echo "::endgroup::"
 
-      - name: 📝 Generate release notes with git-iris
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      - name: 🏷️ Get previous tag
+        id: prev_tag
         run: |
-          echo "::group::Generating release notes"
-          if [ -n "$OPENAI_API_KEY" ]; then
-            # Build git-iris locally to generate release notes
-            cargo build --release
-            
-            # Get previous tag
-            PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-            
-            if [ -n "$PREVIOUS_TAG" ]; then
-              # Generate release notes using git-iris
-              ./target/release/git-iris release-notes --from "$PREVIOUS_TAG" --to "$GITHUB_REF_NAME" --print > RELEASE_NOTES.md
-              echo "✨ Generated release notes with git-iris"
-            else
-              echo "No previous tag found, using default release notes"
-              echo "# Release $GITHUB_REF_NAME" > RELEASE_NOTES.md
-              echo "See commit history for changes." >> RELEASE_NOTES.md
-            fi
-          else
-            echo "No OpenAI API key available, using default release notes"
-            echo "# Release $GITHUB_REF_NAME" > RELEASE_NOTES.md
-            echo "See commit history for changes." >> RELEASE_NOTES.md
-          fi
-          cat RELEASE_NOTES.md
-          echo "::endgroup::"
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          echo "tag=$PREVIOUS_TAG" >> $GITHUB_OUTPUT
+          echo "Previous tag: $PREVIOUS_TAG"
+
+      - name: 📝 Generate release notes with Git-Iris
+        id: release_notes
+        if: steps.prev_tag.outputs.tag != ''
+        uses: ./
+        with:
+          from: ${{ steps.prev_tag.outputs.tag }}
+          to: ${{ github.ref_name }}
+          provider: openai
+          api-key: ${{ secrets.OPENAI_API_KEY }}
+          output-file: RELEASE_NOTES.md
+          build-from-source: "true"
+
+      - name: 📝 Fallback release notes
+        if: steps.prev_tag.outputs.tag == '' || steps.release_notes.outcome == 'failure'
+        run: |
+          echo "# Release ${{ github.ref_name }}" > RELEASE_NOTES.md
+          echo "" >> RELEASE_NOTES.md
+          echo "See [commit history](https://github.com/hyperb1iss/git-iris/commits/${{ github.ref_name }}) for changes." >> RELEASE_NOTES.md
 
       - name: 🚀 Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -387,3 +389,37 @@ jobs:
           files: |
             ./release-assets/*
           body_path: RELEASE_NOTES.md
+
+  # Auto-update major version tag (v1, v2, etc.) for GitHub Action users
+  update-major-tag:
+    name: 🏷️ Update Major Version Tag
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: create-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🏷️ Update major version tag
+        run: |
+          # Extract major version from tag (v1.2.3 -> v1)
+          FULL_TAG="${GITHUB_REF_NAME}"
+          MAJOR_TAG=$(echo "$FULL_TAG" | sed -E 's/^(v[0-9]+).*/\1/')
+
+          echo "Full tag: $FULL_TAG"
+          echo "Major tag: $MAJOR_TAG"
+
+          # Configure git
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Force update the major version tag
+          git tag -fa "$MAJOR_TAG" -m "Update $MAJOR_TAG to $FULL_TAG"
+          git push origin "$MAJOR_TAG" --force
+
+          echo "✨ Updated $MAJOR_TAG to point to $FULL_TAG"
+          echo "Users can now use: uses: hyperb1iss/git-iris@$MAJOR_TAG"
