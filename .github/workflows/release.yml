@@ -64,9 +64,15 @@ jobs:
       - name: "🔍 Determine version"
         id: version
         run: |
-          # Get current version from Cargo.toml
-          CURRENT=$(grep -m1 '^version' Cargo.toml | sed 's/.*"\(.*\)".*/\1/')
-          echo "Current version: $CURRENT"
+          # Get the latest git tag as the "current" version for changelog
+          CURRENT_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [[ -n "$CURRENT_TAG" ]]; then
+            CURRENT="${CURRENT_TAG#v}"  # Strip 'v' prefix
+          else
+            # Fallback to Cargo.toml if no tags exist
+            CURRENT=$(grep -m1 '^version' Cargo.toml | sed 's/.*"\(.*\)".*/\1/')
+          fi
+          echo "Current version: $CURRENT (from tag: ${CURRENT_TAG:-none})"
 
           if [[ -n "${{ inputs.version }}" ]]; then
             VERSION="${{ inputs.version }}"
