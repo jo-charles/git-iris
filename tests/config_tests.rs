@@ -1,5 +1,7 @@
 use git_iris::common::CommonParams;
+use git_iris::config::Config;
 use git_iris::providers::ProviderConfig;
+use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::path::Path;
@@ -157,4 +159,206 @@ fn test_project_config_security() {
 
     // Clean up - restore original directory
     env::set_current_dir(original_dir).expect("Failed to restore original directory");
+}
+
+#[test]
+fn test_project_config_only_serializes_changed_values() {
+    // Test Config serialization directly without file system operations
+    // This avoids current directory race conditions in parallel tests
+    let config = Config {
+        default_provider: String::new(),
+        providers: HashMap::new(),
+        use_gitmoji: false, // Explicitly changed from default
+        instructions: String::new(),
+        instruction_preset: "conventional".to_string(), // Explicitly changed from default
+        theme: String::new(),
+        subagent_timeout_secs: 120,
+        temp_instructions: None,
+        temp_preset: None,
+        is_project_config: true,
+        gitmoji_override: None,
+    };
+
+    let content = toml::to_string_pretty(&config).expect("Failed to serialize config");
+
+    // Should contain the explicitly set values
+    assert!(
+        content.contains("use_gitmoji = false"),
+        "use_gitmoji should be serialized when false. Got:\n{content}"
+    );
+    assert!(
+        content.contains(r#"instruction_preset = "conventional""#),
+        "instruction_preset should be serialized when non-default. Got:\n{content}"
+    );
+
+    // Should NOT contain default/empty values
+    assert!(
+        !content.contains("default_provider"),
+        "default_provider should NOT be serialized when empty. Got:\n{content}"
+    );
+    assert!(
+        !content.contains("theme"),
+        "theme should NOT be serialized when empty. Got:\n{content}"
+    );
+    assert!(
+        !content.contains("subagent_timeout"),
+        "subagent_timeout should NOT be serialized when default (120). Got:\n{content}"
+    );
+    assert!(
+        !content.contains("instructions ="),
+        "empty instructions should NOT be serialized. Got:\n{content}"
+    );
+    assert!(
+        !content.contains("[providers]"),
+        "empty providers table should NOT be serialized. Got:\n{content}"
+    );
+}
+
+#[test]
+fn test_project_config_with_provider_only_serializes_set_fields() {
+    // Test Config serialization directly without file system operations
+    // This avoids current directory race conditions in parallel tests
+    let mut providers = HashMap::new();
+    providers.insert(
+        "anthropic".to_string(),
+        ProviderConfig {
+            api_key: String::new(),
+            model: "claude-sonnet-4-5-20250929".to_string(),
+            fast_model: None,
+            token_limit: None,
+            additional_params: HashMap::new(),
+        },
+    );
+
+    let config = Config {
+        default_provider: "anthropic".to_string(),
+        providers,
+        use_gitmoji: true, // default, should NOT serialize
+        instructions: String::new(),
+        instruction_preset: "default".to_string(), // default, should NOT serialize
+        theme: String::new(),
+        subagent_timeout_secs: 120,
+        temp_instructions: None,
+        temp_preset: None,
+        is_project_config: true,
+        gitmoji_override: None,
+    };
+
+    let content = toml::to_string_pretty(&config).expect("Failed to serialize config");
+
+    // Should contain provider and model
+    assert!(
+        content.contains(r#"default_provider = "anthropic""#),
+        "default_provider should be serialized when set. Got:\n{content}"
+    );
+    assert!(
+        content.contains("[providers.anthropic]"),
+        "provider section should exist. Got:\n{content}"
+    );
+    assert!(
+        content.contains(r#"model = "claude-sonnet-4-5-20250929""#),
+        "model should be serialized. Got:\n{content}"
+    );
+
+    // Should NOT contain defaults
+    assert!(
+        !content.contains("use_gitmoji"),
+        "use_gitmoji=true (default) should NOT be serialized. Got:\n{content}"
+    );
+    assert!(
+        !content.contains("instruction_preset"),
+        "instruction_preset=default should NOT be serialized. Got:\n{content}"
+    );
+    assert!(
+        !content.contains("theme"),
+        "empty theme should NOT be serialized. Got:\n{content}"
+    );
+    assert!(
+        !content.contains("api_key"),
+        "empty api_key should NOT be serialized. Got:\n{content}"
+    );
+    assert!(
+        !content.contains("fast_model"),
+        "None fast_model should NOT be serialized. Got:\n{content}"
+    );
+    assert!(
+        !content.contains("token_limit"),
+        "None token_limit should NOT be serialized. Got:\n{content}"
+    );
+}
+
+#[test]
+fn test_provider_config_skip_serialization() {
+    // Test that ProviderConfig properly skips empty fields
+    let config = ProviderConfig {
+        api_key: String::new(),
+        model: String::new(),
+        fast_model: None,
+        token_limit: None,
+        additional_params: HashMap::new(),
+    };
+
+    let serialized = toml::to_string(&config).expect("Failed to serialize");
+
+    // All fields are empty/None, should result in empty or minimal output
+    assert!(
+        !serialized.contains("api_key"),
+        "empty api_key should not serialize"
+    );
+    assert!(
+        !serialized.contains("model"),
+        "empty model should not serialize"
+    );
+    assert!(
+        !serialized.contains("fast_model"),
+        "None fast_model should not serialize"
+    );
+    assert!(
+        !serialized.contains("token_limit"),
+        "None token_limit should not serialize"
+    );
+    assert!(
+        !serialized.contains("additional_params"),
+        "empty additional_params should not serialize"
+    );
+}
+
+#[test]
+fn test_provider_config_serializes_set_values() {
+    let mut params = HashMap::new();
+    params.insert("temperature".to_string(), "0.7".to_string());
+
+    let config = ProviderConfig {
+        api_key: String::new(), // Still empty, should skip
+        model: "gpt-4".to_string(),
+        fast_model: Some("gpt-4o-mini".to_string()),
+        token_limit: Some(4096),
+        additional_params: params,
+    };
+
+    let serialized = toml::to_string(&config).expect("Failed to serialize");
+
+    // Set values should appear
+    assert!(
+        serialized.contains(r#"model = "gpt-4""#),
+        "model should serialize"
+    );
+    assert!(
+        serialized.contains(r#"fast_model = "gpt-4o-mini""#),
+        "fast_model should serialize"
+    );
+    assert!(
+        serialized.contains("token_limit = 4096"),
+        "token_limit should serialize"
+    );
+    assert!(
+        serialized.contains("temperature"),
+        "additional_params should serialize"
+    );
+
+    // Empty api_key should NOT appear
+    assert!(
+        !serialized.contains("api_key"),
+        "empty api_key should not serialize"
+    );
 }

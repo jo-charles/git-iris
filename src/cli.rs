@@ -320,10 +320,6 @@ pub enum Commands {
         #[arg(long, help = "Set API key for the specified provider")]
         api_key: Option<String>,
 
-        /// Set model for the specified provider
-        #[arg(long, help = "Set model for the specified provider")]
-        model: Option<String>,
-
         /// Set fast model for the specified provider (used for status updates and simple tasks)
         #[arg(
             long,
@@ -358,10 +354,6 @@ pub enum Commands {
     ProjectConfig {
         #[command(flatten)]
         common: CommonParams,
-
-        /// Set model for the specified provider
-        #[arg(long, help = "Set model for the specified provider")]
-        model: Option<String>,
 
         /// Set fast model for the specified provider (used for status updates and simple tasks)
         #[arg(
@@ -1030,7 +1022,6 @@ pub async fn handle_command(
         Commands::Config {
             common,
             api_key,
-            model,
             fast_model,
             token_limit,
             param,
@@ -1038,7 +1029,7 @@ pub async fn handle_command(
         } => handle_config(
             &common,
             api_key,
-            model,
+            common.model.clone(),
             fast_model,
             token_limit,
             param,
@@ -1109,7 +1100,6 @@ pub async fn handle_command(
         }
         Commands::ProjectConfig {
             common,
-            model,
             fast_model,
             token_limit,
             param,
@@ -1117,7 +1107,7 @@ pub async fn handle_command(
             print,
         } => commands::handle_project_config_command(
             &common,
-            model,
+            common.model.clone(),
             fast_model,
             token_limit,
             param,

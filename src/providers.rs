@@ -114,7 +114,7 @@ pub struct ProviderConfig {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub api_key: String,
     /// Primary model for complex analysis
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub model: String,
     /// Fast model for simple tasks
     #[serde(default, skip_serializing_if = "Option::is_none")]

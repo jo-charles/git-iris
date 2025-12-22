@@ -22,25 +22,28 @@ pub const PROJECT_CONFIG_FILENAME: &str = ".irisconfig";
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct Config {
     /// Default LLM provider
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub default_provider: String,
     /// Provider-specific configurations (keyed by provider name)
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub providers: HashMap<String, ProviderConfig>,
     /// Use gitmoji in commit messages
-    #[serde(default = "default_true")]
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
     pub use_gitmoji: bool,
     /// Custom instructions for all operations
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub instructions: String,
     /// Instruction preset name
-    #[serde(default = "default_preset")]
+    #[serde(default = "default_preset", skip_serializing_if = "is_default_preset")]
     pub instruction_preset: String,
     /// Theme name (empty = default `SilkCircuit` Neon)
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub theme: String,
     /// Timeout in seconds for parallel subagent tasks (default: 120)
-    #[serde(default = "default_subagent_timeout")]
+    #[serde(
+        default = "default_subagent_timeout",
+        skip_serializing_if = "is_default_subagent_timeout"
+    )]
     pub subagent_timeout_secs: u64,
     /// Runtime-only: temporary instructions override
     #[serde(skip)]
@@ -60,12 +63,26 @@ fn default_true() -> bool {
     true
 }
 
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_true(val: &bool) -> bool {
+    *val
+}
+
 fn default_preset() -> String {
     "default".to_string()
 }
 
+fn is_default_preset(val: &str) -> bool {
+    val.is_empty() || val == "default"
+}
+
 fn default_subagent_timeout() -> u64 {
     120 // 2 minutes
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_default_subagent_timeout(val: &u64) -> bool {
+    *val == 120
 }
 
 impl Default for Config {
